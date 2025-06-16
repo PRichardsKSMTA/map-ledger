@@ -4,6 +4,13 @@
   "scripts": {
     "lint:frontend": "npm --workspace frontend run lint",
     "lint:backend": "npm --workspace backend run lint",
-    "lint": "npm run lint:frontend && npm run lint:backend"
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "test:frontend": "npm --workspace frontend run test",
+    "test:backend": "npm --workspace backend run test",
+    "test": "npm run test:frontend && npm run test:backend",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "husky": "^9.0.11"
   }
 }
