@@ -18,13 +18,15 @@ function guessMatches(source: string[], dest: string[]): Record<string, string |
     const normalizedDest = normalize(d);
     let match: string | undefined;
 
+    const available = source.filter(s => !used.has(s));
+
     if (normalizedDest === 'accountdescription') {
-      match = source.find(s => normalize(s).includes('description'));
+      match = available.find(s => normalize(s).includes('description'));
     } else if (normalizedDest === 'netchange') {
-      const netChangeMatches = source.filter(s => normalize(s).includes('netchange'));
+      const netChangeMatches = available.filter(s => normalize(s).includes('netchange'));
       match = netChangeMatches.length > 0 ? netChangeMatches[netChangeMatches.length - 1] : undefined;
     } else {
-      match = source.find(s => normalize(s) === normalizedDest);
+      match = available.find(s => normalize(s) === normalizedDest);
     }
 
     if (match) {
