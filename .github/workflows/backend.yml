@@ -73,7 +73,7 @@ jobs:
           app-name: mapledger-api-staging
           slot-name: staging
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_STAGING_PUBLISH_PROFILE }}
-          package: ./backend/dist
+          package: ./backend
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
