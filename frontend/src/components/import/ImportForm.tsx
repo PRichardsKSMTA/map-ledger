@@ -21,7 +21,7 @@ const templateHeaders = [
 interface ImportFormProps {
   onImport: (
     uploads: AccountRow[],
-    operationId: string,
+    operationIds: string[],
     headerMap: Record<string, string | null>,
     glMonth: string
   ) => void;
@@ -33,7 +33,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const { entities } = useOrganizationStore();
   const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
-  const [operationId, setOperationId] = useState('');
+  const [operationIds, setOperationIds] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [glMonth, setGlMonth] = useState('');
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
@@ -64,15 +64,15 @@ useEffect(() => {
   } else {
     setClientId('');
   }
-  setOperationId('');
+  setOperationIds([]);
 }, [entityIds, clientOptions]);
 
 useEffect(() => {
   const client = clientOptions.find(c => c.id === clientId);
   if (client && client.operations.length === 1) {
-    setOperationId(client.operations[0].id);
+    setOperationIds([client.operations[0].id]);
   } else {
-    setOperationId('');
+    setOperationIds([]);
   }
 }, [clientId, clientOptions]);
 
@@ -89,14 +89,14 @@ useEffect(() => {
 
   const processFile = async (file: File) => {
     try {
-      if (!operationId) {
+      if (operationIds.length === 0) {
         setError('Please select an operation before uploading.');
         setSelectedFile(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
 
-      const clientConfig: ClientTemplateConfig | null = await getClientTemplateMapping(operationId);
+      const clientConfig: ClientTemplateConfig | null = await getClientTemplateMapping(operationIds[0]);
       console.log('Fetched client config:', clientConfig);
 
       const parsed = await parseTrialBalanceWorkbook(file); // Future: pass config to this function
@@ -144,8 +144,8 @@ useEffect(() => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedFile && operationId && includedRows && headerMap && glMonth) {
-      onImport(includedRows, operationId, headerMap, glMonth);
+    if (selectedFile && operationIds.length > 0 && includedRows && headerMap && glMonth) {
+      onImport(includedRows, operationIds, headerMap, glMonth);
     } else {
       setError('Please complete all steps including column matching, GL Month, and account review.');
     }
@@ -186,20 +186,13 @@ useEffect(() => {
         ))}
       </Select>
 
-      <Select
+      <MultiSelect
         label="Operation"
-        value={operationId}
-        onChange={e => setOperationId(e.target.value)}
-        required
+        options={operationOptions.map(op => ({ value: op.id, label: op.name }))}
+        value={operationIds}
+        onChange={setOperationIds}
         disabled={!clientId || operationOptions.length === 0}
-      >
-        {operationOptions.length > 1 && (
-          <option value="">Select an operation</option>
-        )}
-        {operationOptions.map(op => (
-          <option key={op.id} value={op.id}>{op.name}</option>
-        ))}
-      </Select>
+      />
 
       {includedRows && (
         <div>
@@ -234,7 +227,7 @@ useEffect(() => {
                   setIncludedRows(null);
                   setAvailableEntities([]);
                   setGlMonth('');
-                  setOperationId('');
+                  setOperationIds([]);
                   setClientId('');
                   setEntityIds(entities.length === 1 ? [entities[0].id] : []);
                 }}
@@ -321,7 +314,7 @@ useEffect(() => {
 
           <button
             type="submit"
-            disabled={!selectedFile || !operationId || isImporting || uploads.length === 0 || !headerMap || !glMonth}
+            disabled={!selectedFile || operationIds.length === 0 || isImporting || uploads.length === 0 || !headerMap || !glMonth}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
           >
             {isImporting ? (
