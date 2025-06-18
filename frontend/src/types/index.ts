@@ -128,3 +128,19 @@ export interface OperationalMetric {
   value: number;
   period: string;
 }
+export interface OperationRef {
+  id: string; // SCAC code
+  name: string;
+}
+
+export interface ClientRef {
+  id: string;
+  name: string;
+  operations: OperationRef[];
+}
+
+export interface EntityRef {
+  id: string;
+  name: string;
+  clients: ClientRef[];
+}

@@ -13,7 +13,7 @@ export default function Import() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleFileImport = async (file: File, clientId: string) => {
+  const handleFileImport = async (file: File, operationId: string) => {
     setIsImporting(true);
     setError(null);
     setSuccess(null);
@@ -45,7 +45,7 @@ export default function Import() {
       const importId = crypto.randomUUID();
       addImport({
         id: importId,
-        clientId,
+        clientId: operationId,
         fileName: file.name,
         period,
         timestamp: new Date().toISOString(),
