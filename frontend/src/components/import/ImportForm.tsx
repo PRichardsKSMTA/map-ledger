@@ -41,6 +41,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const [availableEntities, setAvailableEntities] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+
   const clientOptions = useMemo(() => {
     const selected = entities.filter(e => entityIds.includes(e.id));
     const all = selected.flatMap(e => e.clients);
@@ -58,6 +59,7 @@ useEffect(() => {
 }, [entities]);
 
 useEffect(() => {
+
   if (clientOptions.length === 1) {
     setClientId(clientOptions[0].id);
   } else {
