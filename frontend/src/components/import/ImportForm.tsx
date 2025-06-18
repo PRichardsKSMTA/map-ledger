@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, X, Download } from 'lucide-react';
 import Select from '../ui/Select';
+import MultiSelect from '../ui/MultiSelect';
 import { useOrganizationStore } from '../../store/organizationStore';
 import { parseTrialBalanceWorkbook, ParsedUpload } from '../../utils/parseTrialBalanceWorkbook';
 import ColumnMatcher from '../ColumnMatcher';
@@ -41,7 +42,6 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const [availableEntities, setAvailableEntities] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-
   const clientOptions = useMemo(() => {
     const selected = entities.filter(e => entityIds.includes(e.id));
     const all = selected.flatMap(e => e.clients);
@@ -59,7 +59,6 @@ useEffect(() => {
 }, [entities]);
 
 useEffect(() => {
-
   if (clientOptions.length === 1) {
     setClientId(clientOptions[0].id);
   } else {
@@ -167,19 +166,12 @@ useEffect(() => {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Select
+      <MultiSelect
         label="Entity"
-        multiple
+        options={entities.map(ent => ({ value: ent.id, label: ent.name }))}
         value={entityIds}
-        onChange={e =>
-          setEntityIds(Array.from(e.target.selectedOptions).map(o => o.value))
-        }
-        required
-      >
-        {entities.map(ent => (
-          <option key={ent.id} value={ent.id}>{ent.name}</option>
-        ))}
-      </Select>
+        onChange={setEntityIds}
+      />
 
       <Select
         label="Client"
