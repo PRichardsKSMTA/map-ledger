@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, X, Download } from 'lucide-react';
 import Select from '../ui/Select';
 import { useOrganizationStore } from '../../store/organizationStore';
@@ -30,7 +30,7 @@ interface ImportFormProps {
 export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { entities } = useOrganizationStore();
-  const [entityId, setEntityId] = useState('');
+  const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
   const [operationId, setOperationId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -41,44 +41,39 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const [availableEntities, setAvailableEntities] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const clientOptions =
-    entities.find(e => e.id === entityId)?.clients ?? [];
-  const operationOptions =
-    clientOptions.find(c => c.id === clientId)?.operations ?? [];
+  const clientOptions = useMemo(() => {
+    const selected = entities.filter(e => entityIds.includes(e.id));
+    const all = selected.flatMap(e => e.clients);
+    return all.filter((c, idx) => all.findIndex(cc => cc.id === c.id) === idx);
+  }, [entities, entityIds]);
+
+  const operationOptions = useMemo(() => {
+    return clientOptions.find(c => c.id === clientId)?.operations ?? [];
+  }, [clientId, clientOptions]);
 
 useEffect(() => {
   if (entities.length === 1) {
-    setEntityId(entities[0].id);
+    setEntityIds([entities[0].id]);
   }
 }, [entities]);
 
 useEffect(() => {
-  const entity = entities.find(e => e.id === entityId);
-  if (entity) {
-    if (entity.clients.length === 1) {
-      setClientId(entity.clients[0].id);
-    } else {
-      setClientId('');
-    }
+  if (clientOptions.length === 1) {
+    setClientId(clientOptions[0].id);
   } else {
     setClientId('');
   }
   setOperationId('');
-}, [entityId, entities]);
+}, [entityIds, clientOptions]);
 
 useEffect(() => {
-  const entity = entities.find(e => e.id === entityId);
-  const client = entity?.clients.find(c => c.id === clientId);
-  if (client) {
-    if (client.operations.length === 1) {
-      setOperationId(client.operations[0].id);
-    } else {
-      setOperationId('');
-    }
+  const client = clientOptions.find(c => c.id === clientId);
+  if (client && client.operations.length === 1) {
+    setOperationId(client.operations[0].id);
   } else {
     setOperationId('');
   }
-}, [clientId, entityId, entities]);
+}, [clientId, clientOptions]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -172,45 +167,45 @@ useEffect(() => {
     <form onSubmit={handleSubmit} className="space-y-6">
       <Select
         label="Entity"
-        value={entityId}
-        onChange={e => setEntityId(e.target.value)}
+        multiple
+        value={entityIds}
+        onChange={e =>
+          setEntityIds(Array.from(e.target.selectedOptions).map(o => o.value))
+        }
         required
       >
-        {entities.length > 1 && <option value="">Select an entity</option>}
         {entities.map(ent => (
           <option key={ent.id} value={ent.id}>{ent.name}</option>
         ))}
       </Select>
 
-      {entityId && (
-        <Select
-          label="Client"
-          value={clientId}
-          onChange={e => setClientId(e.target.value)}
-          required
-          disabled={clientOptions.length === 0}
-        >
-          {clientOptions.length > 1 && <option value="">Select a client</option>}
-          {clientOptions.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </Select>
-      )}
+      <Select
+        label="Client"
+        value={clientId}
+        onChange={e => setClientId(e.target.value)}
+        required
+        disabled={entityIds.length === 0 || clientOptions.length === 0}
+      >
+        {clientOptions.length > 1 && <option value="">Select a client</option>}
+        {clientOptions.map(c => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </Select>
 
-      {clientId && (
-        <Select
-          label="Operation"
-          value={operationId}
-          onChange={e => setOperationId(e.target.value)}
-          required
-          disabled={operationOptions.length === 0}
-        >
-          {operationOptions.length > 1 && <option value="">Select an operation</option>}
-          {operationOptions.map(op => (
-            <option key={op.id} value={op.id}>{op.name}</option>
-          ))}
-        </Select>
-      )}
+      <Select
+        label="Operation"
+        value={operationId}
+        onChange={e => setOperationId(e.target.value)}
+        required
+        disabled={!clientId || operationOptions.length === 0}
+      >
+        {operationOptions.length > 1 && (
+          <option value="">Select an operation</option>
+        )}
+        {operationOptions.map(op => (
+          <option key={op.id} value={op.id}>{op.name}</option>
+        ))}
+      </Select>
 
       {includedRows && (
         <div>
@@ -247,7 +242,7 @@ useEffect(() => {
                   setGlMonth('');
                   setOperationId('');
                   setClientId('');
-                  setEntityId(entities.length === 1 ? entities[0].id : '');
+                  setEntityIds(entities.length === 1 ? [entities[0].id] : []);
                 }}
                 className="text-gray-500 hover:text-red-500"
               >

@@ -24,26 +24,42 @@ interface OrganizationState {
 const sampleData: Entity[] = [
   {
     id: 'ent1',
-    name: 'Logistics Group',
+    name: 'TMS',
     clients: [
       {
         id: 'cli1',
-        name: 'TransCo Logistics',
+        name: 'CarrierOne',
+        operations: [{ id: 'CO1', name: 'Mainline' }],
+      },
+      {
+        id: 'cli2',
+        name: 'CarrierTwo',
         operations: [
-          { id: 'TRNS', name: 'Main Line' },
-          { id: 'WEST', name: 'West Division' },
+          { id: 'CT1', name: 'Linehaul' },
+          { id: 'CT2', name: 'Intermodal' },
         ],
       },
     ],
   },
   {
     id: 'ent2',
-    name: 'Healthcare Holdings',
+    name: 'TMS2',
     clients: [
       {
-        id: 'cli2',
-        name: 'HealthCare Solutions',
-        operations: [{ id: 'HLTH', name: 'Primary' }],
+        id: 'cli3',
+        name: 'CarrierThree',
+        operations: [{ id: 'C3P', name: 'Primary' }],
+      },
+    ],
+  },
+  {
+    id: 'ent3',
+    name: 'TMS3',
+    clients: [
+      {
+        id: 'cli4',
+        name: 'CarrierFour',
+        operations: [{ id: 'C4P', name: 'Primary' }],
       },
     ],
   },
