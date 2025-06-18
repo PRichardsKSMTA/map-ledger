@@ -5,6 +5,7 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
+import { AccountRow } from '../components/ExcludeAccounts';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -13,44 +14,26 @@ export default function Import() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleFileImport = async (file: File, operationId: string) => {
+  const handleFileImport = async (
+    rows: AccountRow[],
+    operationIds: string[],
+    _headerMap: Record<string, string | null>,
+    glMonth: string
+  ) => {
     setIsImporting(true);
     setError(null);
     setSuccess(null);
 
     try {
-      // Validate file type
-      if (!file.name.endsWith('.csv')) {
-        throw new Error('Please upload a CSV file');
-      }
-
-      // Read and validate CSV content
-      const content = await file.text();
-      const lines = content.split('\n');
-      
-      // Validate header row
-      const header = lines[0].toLowerCase();
-      const requiredColumns = ['gl_month_quarter', 'gl_account', 'gl_description', 'net_change'];
-      const missingColumns = requiredColumns.filter(col => !header.includes(col));
-      
-      if (missingColumns.length > 0) {
-        throw new Error(`Missing required columns: ${missingColumns.join(', ')}`);
-      }
-
-      // Get the period from the first data row
-      const firstDataRow = lines[1]?.split(',');
-      const period = firstDataRow?.[0] || new Date().toISOString();
-
-      // Process the import
       const importId = crypto.randomUUID();
       addImport({
         id: importId,
-        clientId: operationId,
-        fileName: file.name,
-        period,
+        clientId: operationIds.join(','),
+        fileName: 'import',
+        period: glMonth,
         timestamp: new Date().toISOString(),
         status: 'completed',
-        rowCount: lines.length - 1,
+        rowCount: rows.length,
         importedBy: user?.email || '',
       });
 
