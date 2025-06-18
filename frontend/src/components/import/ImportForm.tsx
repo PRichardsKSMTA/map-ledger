@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Upload, X, Download } from 'lucide-react';
 import Select from '../ui/Select';
-import { useClientStore } from '../../store/clientStore';
+import MultiSelect from '../ui/MultiSelect';
+import { useOrganizationStore } from '../../store/organizationStore';
 import { parseTrialBalanceWorkbook, ParsedUpload } from '../../utils/parseTrialBalanceWorkbook';
 import ColumnMatcher from '../ColumnMatcher';
 import ExcludeAccounts, { AccountRow } from '../ExcludeAccounts';
@@ -18,19 +19,22 @@ const templateHeaders = [
 ];
 
 interface ImportFormProps {
-  availableScacs: string[];
-  onImport: (uploads: AccountRow[], clientId: string, headerMap: Record<string, string | null>, glMonth: string) => void;
+  onImport: (
+    uploads: AccountRow[],
+    operationId: string,
+    headerMap: Record<string, string | null>,
+    glMonth: string
+  ) => void;
   isImporting: boolean;
 }
 
-export default function ImportForm({ availableScacs, onImport, isImporting }: ImportFormProps) {
-  // TEMP MOCK: Inject fallback SCACs if none provided
-  if (!availableScacs || availableScacs.length === 0) {
-    availableScacs = ['MOCK1', 'MOCK2'];
-  }
+export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { entities } = useOrganizationStore();
+  const [entityIds, setEntityIds] = useState<string[]>([]);
+  const [clientId, setClientId] = useState('');
+  const [operationId, setOperationId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [clientId, setClientId] = useState<string>('');
   const [glMonth, setGlMonth] = useState('');
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
   const [headerMap, setHeaderMap] = useState<Record<string, string | null> | null>(null);
@@ -38,11 +42,39 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
   const [availableEntities, setAvailableEntities] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (Array.isArray(availableScacs) && availableScacs.length === 1) {
-  setClientId(availableScacs[0]);
-}
-  }, [availableScacs]);
+  const clientOptions = useMemo(() => {
+    const selected = entities.filter(e => entityIds.includes(e.id));
+    const all = selected.flatMap(e => e.clients);
+    return all.filter((c, idx) => all.findIndex(cc => cc.id === c.id) === idx);
+  }, [entities, entityIds]);
+
+  const operationOptions = useMemo(() => {
+    return clientOptions.find(c => c.id === clientId)?.operations ?? [];
+  }, [clientId, clientOptions]);
+
+useEffect(() => {
+  if (entities.length === 1) {
+    setEntityIds([entities[0].id]);
+  }
+}, [entities]);
+
+useEffect(() => {
+  if (clientOptions.length === 1) {
+    setClientId(clientOptions[0].id);
+  } else {
+    setClientId('');
+  }
+  setOperationId('');
+}, [entityIds, clientOptions]);
+
+useEffect(() => {
+  const client = clientOptions.find(c => c.id === clientId);
+  if (client && client.operations.length === 1) {
+    setOperationId(client.operations[0].id);
+  } else {
+    setOperationId('');
+  }
+}, [clientId, clientOptions]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -57,14 +89,14 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
 
   const processFile = async (file: File) => {
     try {
-      if (!clientId) {
-  setError('Please select an operation before uploading.');
-  setSelectedFile(null); // reset file to allow retry
-  if (fileInputRef.current) fileInputRef.current.value = '';
-  return;
-}
+      if (!operationId) {
+        setError('Please select an operation before uploading.');
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
 
-      const clientConfig: ClientTemplateConfig | null = await getClientTemplateMapping(clientId);
+      const clientConfig: ClientTemplateConfig | null = await getClientTemplateMapping(operationId);
       console.log('Fetched client config:', clientConfig);
 
       const parsed = await parseTrialBalanceWorkbook(file); // Future: pass config to this function
@@ -112,8 +144,8 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedFile && clientId && includedRows && headerMap && glMonth) {
-      onImport(includedRows, clientId, headerMap, glMonth);
+    if (selectedFile && operationId && includedRows && headerMap && glMonth) {
+      onImport(includedRows, operationId, headerMap, glMonth);
     } else {
       setError('Please complete all steps including column matching, GL Month, and account review.');
     }
@@ -134,17 +166,40 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {Array.isArray(availableScacs) && availableScacs.length > 1 ? (
-        <Select label="Operation" value={clientId} onChange={(e) => setClientId(e.target.value)} required>
+      <MultiSelect
+        label="Entity"
+        options={entities.map(ent => ({ value: ent.id, label: ent.name }))}
+        value={entityIds}
+        onChange={setEntityIds}
+      />
+
+      <Select
+        label="Client"
+        value={clientId}
+        onChange={e => setClientId(e.target.value)}
+        required
+        disabled={entityIds.length === 0 || clientOptions.length === 0}
+      >
+        {clientOptions.length > 1 && <option value="">Select a client</option>}
+        {clientOptions.map(c => (
+          <option key={c.id} value={c.id}>{c.name}</option>
+        ))}
+      </Select>
+
+      <Select
+        label="Operation"
+        value={operationId}
+        onChange={e => setOperationId(e.target.value)}
+        required
+        disabled={!clientId || operationOptions.length === 0}
+      >
+        {operationOptions.length > 1 && (
           <option value="">Select an operation</option>
-          {availableScacs.map((scac) => (
-            <option key={scac} value={scac}>{scac}</option>
-          ))}
-        </Select>
-      ) : (
-        <div className="text-sm font-medium text-gray-700">No operations available. Please connect to a data source first.
-        </div>
-      )}
+        )}
+        {operationOptions.map(op => (
+          <option key={op.id} value={op.id}>{op.name}</option>
+        ))}
+      </Select>
 
       {includedRows && (
         <div>
@@ -179,7 +234,9 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
                   setIncludedRows(null);
                   setAvailableEntities([]);
                   setGlMonth('');
-                  setClientId(Array.isArray(availableScacs) && availableScacs.length === 1 ? availableScacs[0] : '');
+                  setOperationId('');
+                  setClientId('');
+                  setEntityIds(entities.length === 1 ? [entities[0].id] : []);
                 }}
                 className="text-gray-500 hover:text-red-500"
               >
@@ -264,7 +321,7 @@ export default function ImportForm({ availableScacs, onImport, isImporting }: Im
 
           <button
             type="submit"
-            disabled={!selectedFile || !clientId || isImporting || uploads.length === 0 || !headerMap || !glMonth}
+            disabled={!selectedFile || !operationId || isImporting || uploads.length === 0 || !headerMap || !glMonth}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
           >
             {isImporting ? (
