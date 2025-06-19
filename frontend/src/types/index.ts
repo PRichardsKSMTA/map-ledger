@@ -144,3 +144,24 @@ export interface EntityRef {
   name: string;
   clients: ClientRef[];
 }
+
+export interface GLAccountEntityBreakdown {
+  id: string;
+  entity: string;
+  balance: number;
+}
+
+export interface GLAccountMappingRow {
+  id: string;
+  accountId: string;
+  accountName: string;
+  balance: number;
+  operation: string;
+  distributionMethod: string;
+  distributionValue?: number;
+  suggestedCOAId?: string;
+  suggestedCOADescription?: string;
+  confidenceScore: number;
+  manualCOAId?: string;
+  entities: GLAccountEntityBreakdown[];
+}
