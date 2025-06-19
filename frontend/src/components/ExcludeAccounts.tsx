@@ -14,9 +14,12 @@ interface ExcludeAccountsProps {
 }
 
 export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProps) {
-  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
+  // Track excluded rows by their index to avoid issues with duplicate or
+  // missing account IDs. Using an index based key ensures each row can be
+  // toggled independently without React key warnings.
+  const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
 
-  const toggleExclude = (id: string) => {
+  const toggleExclude = (id: number) => {
     setExcludedIds(prev => {
       const updated = new Set(prev);
       if (updated.has(id)) {
@@ -28,17 +31,18 @@ export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProp
     });
   };
 
-  const included = rows.filter(r => !excludedIds.has(r.accountId));
-  const excluded = rows.filter(r => excludedIds.has(r.accountId));
+  const included = rows.filter((_, idx) => !excludedIds.has(idx));
+  const excluded = rows.filter((_, idx) => excludedIds.has(idx));
 
   useEffect(() => {
     // Auto-exclude typical balance sheet accounts (simple example)
     const balanceSheetHints = ['asset', 'liability', 'equity'];
-    const defaultExcludes = new Set(
-      rows
-        .filter(r => balanceSheetHints.some(h => r.description.toLowerCase().includes(h)))
-        .map(r => r.accountId)
-    );
+    const defaultExcludes = new Set<number>();
+    rows.forEach((r, idx) => {
+      if (balanceSheetHints.some(h => r.description.toLowerCase().includes(h))) {
+        defaultExcludes.add(idx);
+      }
+    });
     setExcludedIds(defaultExcludes);
   }, [rows]);
 
@@ -58,13 +62,13 @@ export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProp
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => (
-            <tr key={row.accountId} className="border-t hover:bg-gray-50">
+          {rows.map((row, idx) => (
+            <tr key={`${row.accountId}-${idx}`} className="border-t hover:bg-gray-50">
               <td className="p-2">
                 <input
                   type="checkbox"
-                  checked={excludedIds.has(row.accountId)}
-                  onChange={() => toggleExclude(row.accountId)}
+                  checked={excludedIds.has(idx)}
+                  onChange={() => toggleExclude(idx)}
                 />
               </td>
               <td className="p-2">{row.entity}</td>
