@@ -7,6 +7,7 @@ import { parseTrialBalanceWorkbook, ParsedUpload } from '../../utils/parseTrialB
 import ColumnMatcher from '../ColumnMatcher';
 import ExcludeAccounts, { AccountRow } from '../ExcludeAccounts';
 import { getClientTemplateMapping, ClientTemplateConfig } from '../../utils/getClientTemplateMapping';
+import PreviewTable from './PreviewTable';
 
 const templateHeaders = [
   'GL ID',
@@ -277,31 +278,7 @@ useEffect(() => {
         />
       )}
 
-      {includedRows && includedRows.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Preview (First 5 Rows)</h3>
-          <div className="overflow-auto rounded border">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  {Object.keys(includedRows[0]).map((key, colIdx) => (
-                    <th key={`header-${colIdx}-${key}`} className="p-2 text-left font-medium text-gray-600">{key}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {includedRows.slice(0, 5).map((row, i) => (
-                  <tr key={i} className="border-t">
-                    {Object.values(row).map((val, colIdx) => (
-                      <td key={`cell-${i}-${colIdx}`} className="p-2 text-gray-800">{val}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {includedRows && includedRows.length > 0 && <PreviewTable rows={includedRows} />}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
 
