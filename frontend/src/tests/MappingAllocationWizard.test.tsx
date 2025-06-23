@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import MappingAllocationWizard from '../components/MappingAllocationWizard';
+import MappingAllocationWizard from '../components/mapping/MappingAllocationWizard';
 
 describe('MappingAllocationWizard', () => {
   test('clicking Configure Allocation moves to allocation stage', () => {

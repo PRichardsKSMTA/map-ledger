@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import MappingAllocationWizard from "../components/MappingAllocationWizard";
+import MappingAllocationWizard from "../components/mapping/MappingAllocationWizard";
 
 export default function Mapping() {
   const { uploadId = 'demo' } = useParams();

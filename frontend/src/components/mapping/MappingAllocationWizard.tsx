@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import MappingTable from './mapping/MappingTable';
-import RatioAllocationManager from './mapping/RatioAllocationManager';
+import MappingTable from './MappingTable';
+import RatioAllocationManager from './RatioAllocationManager';
 
 export type Stage = 'mapping' | 'allocation';
 
