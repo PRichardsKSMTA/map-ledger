@@ -1,10 +1,16 @@
 import { useState } from 'react';
+import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useMappingStore } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 
-export default function MappingTable() {
+interface MappingTableProps {
+  onConfigureAllocation?: (glAccountRawId: string) => void;
+}
+
+export default function MappingTable(props: MappingTableProps) {
   const { accounts, setManualMapping, bulkAccept, finalizeMappings } = useMappingStore();
+  const { allocations } = useRatioAllocationStore();
   const { datapoints } = useTemplateStore();
   const coaOptions = datapoints['1'] || [];
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -84,7 +90,17 @@ export default function MappingTable() {
                   <td className="p-2">{acc.distributionValue ?? '-'}</td>
                   <td className="p-2">{acc.suggestedCOAId}</td>
                   <td className="p-2">{acc.suggestedCOADescription}</td>
-                  <td className="p-2 text-right">{acc.confidenceScore}%</td>
+                  <td className="p-2 text-right">
+                    <div className="flex items-center space-x-2 justify-end">
+                      <span>{acc.confidenceScore}%</span>
+                      {acc.distributionMethod !== 'None' &&
+                        !allocations.some(a => a.sourceAccount.id === acc.id) && (
+                          <span className="inline-flex items-center rounded bg-yellow-100 px-1.5 py-0.5 text-xs font-medium text-yellow-800">
+                            Needs Allocation
+                          </span>
+                        )}
+                    </div>
+                  </td>
                   <td className="p-2">
                     <select
                       className="border rounded p-1"
@@ -98,6 +114,16 @@ export default function MappingTable() {
                         </option>
                       ))}
                     </select>
+                    {acc.distributionMethod !== 'None' && (
+                      <div>
+                        <button
+                          onClick={() => props.onConfigureAllocation?.(acc.id)}
+                          className="text-blue-600 underline mt-1 text-xs"
+                        >
+                          Configure Allocation
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
                 {expanded.has(acc.id) && acc.entities.map(ent => (
