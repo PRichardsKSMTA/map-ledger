@@ -8,7 +8,7 @@ import {
   ParsedUpload,
 } from '../../utils/parseTrialBalanceWorkbook';
 import ColumnMatcher from './ColumnMatcher';
-import ExcludeAccounts, { AccountRow } from '../ExcludeAccounts';
+import ExcludeAccounts, { AccountRow } from './ExcludeAccounts';
 import {
   getClientTemplateMapping,
   ClientTemplateConfig,

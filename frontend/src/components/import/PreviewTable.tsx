@@ -1,5 +1,5 @@
 import React from 'react';
-import { AccountRow } from '../ExcludeAccounts';
+import { AccountRow } from './ExcludeAccounts';
 
 interface PreviewTableProps {
   rows: AccountRow[];

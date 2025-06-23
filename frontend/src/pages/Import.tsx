@@ -5,7 +5,7 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
-import { AccountRow } from '../components/ExcludeAccounts';
+import { AccountRow } from '../components/import/ExcludeAccounts';
 import TemplateGuide from '../components/import/TemplateGuide';
 
 export default function Import() {
