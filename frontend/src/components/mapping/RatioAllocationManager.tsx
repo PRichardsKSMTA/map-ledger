@@ -1,10 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import RatioAllocationBuilder from './RatioAllocationBuilder';
 import RatioAllocationList from './RatioAllocationList';
 import { Calculator, List } from 'lucide-react';
+import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 
-const RatioAllocationManager = () => {
+interface RatioAllocationManagerProps {
+  initialSourceAccountId?: string;
+  onDone: () => void;
+}
+
+const RatioAllocationManager = ({ initialSourceAccountId, onDone }: RatioAllocationManagerProps) => {
   const [activeView, setActiveView] = useState<'list' | 'builder'>('builder');
+  const { getOrCreateAllocation } = useRatioAllocationStore();
+
+  useEffect(() => {
+    if (initialSourceAccountId) {
+      getOrCreateAllocation(initialSourceAccountId);
+      setActiveView('builder');
+    }
+  }, [initialSourceAccountId, getOrCreateAllocation]);
   
   return (
     <div className="space-y-6">
@@ -47,6 +61,15 @@ const RatioAllocationManager = () => {
       ) : (
         <RatioAllocationList />
       )}
+
+      <div className="flex justify-end">
+        <button
+          onClick={onDone}
+          className="px-3 py-2 rounded-md border bg-white text-gray-700 hover:bg-gray-50"
+        >
+          Back to Mapping
+        </button>
+      </div>
     </div>
   );
 };
