@@ -1,13 +1,13 @@
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { 
-  Users, 
-  Building2, 
-  FileSpreadsheet, 
+import {
+  Users,
+  Building2,
+  FileSpreadsheet,
   Upload,
   BarChart3,
   Settings,
-  Network
+  Network,
 } from 'lucide-react';
 
 export default function Sidebar() {
@@ -23,8 +23,8 @@ export default function Sidebar() {
               to="/users"
               className={({ isActive }) =>
                 `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  isActive 
-                    ? 'bg-primary-600 text-white shadow-md' 
+                  isActive
+                    ? 'bg-primary-600 text-white shadow-md'
                     : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
                 }`
               }
@@ -38,8 +38,8 @@ export default function Sidebar() {
             to="/clients"
             className={({ isActive }) =>
               `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'bg-primary-600 text-white shadow-md' 
+                isActive
+                  ? 'bg-primary-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
               }`
             }
@@ -53,8 +53,8 @@ export default function Sidebar() {
               to="/templates"
               className={({ isActive }) =>
                 `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                  isActive 
-                    ? 'bg-primary-600 text-white shadow-md' 
+                  isActive
+                    ? 'bg-primary-600 text-white shadow-md'
                     : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
                 }`
               }
@@ -68,8 +68,8 @@ export default function Sidebar() {
             to="/import"
             className={({ isActive }) =>
               `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'bg-primary-600 text-white shadow-md' 
+                isActive
+                  ? 'bg-primary-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
               }`
             }
@@ -79,11 +79,11 @@ export default function Sidebar() {
           </NavLink>
 
           <NavLink
-            to="/mapping"
+            to="/gl/mapping/demo"
             className={({ isActive }) =>
               `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'bg-primary-600 text-white shadow-md' 
+                isActive
+                  ? 'bg-primary-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
               }`
             }
@@ -96,8 +96,8 @@ export default function Sidebar() {
             to="/integrations"
             className={({ isActive }) =>
               `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'bg-primary-600 text-white shadow-md' 
+                isActive
+                  ? 'bg-primary-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
               }`
             }
@@ -112,8 +112,8 @@ export default function Sidebar() {
             to="/settings"
             className={({ isActive }) =>
               `flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${
-                isActive 
-                  ? 'bg-primary-600 text-white shadow-md' 
+                isActive
+                  ? 'bg-primary-600 text-white shadow-md'
                   : 'text-gray-600 hover:bg-primary-50 hover:text-primary-600'
               }`
             }
