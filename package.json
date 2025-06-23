@@ -8,7 +8,8 @@
     "test:frontend": "npm --workspace frontend run test",
     "test:backend": "npm --workspace backend run test",
     "test": "npm run test:frontend && npm run test:backend",
-    "postinstall": "husky install"
+    "postinstall": "husky install",
+    "dev": "npm --workspace frontend run dev"
   },
   "devDependencies": {
     "husky": "^9.0.11"
