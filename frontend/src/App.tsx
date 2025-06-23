@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useAuthStore } from './store/authStore';
+import { Navigate } from 'react-router-dom';
 
 // Lazy load pages
 const Login = React.lazy(() => import('./pages/Login'));
@@ -57,11 +58,12 @@ function App() {
               <Import />
             </React.Suspense>
           } />
-          <Route path="mapping" element={
+          <Route path="gl/:uploadId/map" element={
             <React.Suspense fallback={<div>Loading...</div>}>
               <Mapping />
             </React.Suspense>
           } />
+          <Route path="allocations" element={<Navigate to="/gl/demo/map?stage=allocation" replace />} />
           <Route path="integrations" element={
             <React.Suspense fallback={<div>Loading...</div>}>
               <Integrations />

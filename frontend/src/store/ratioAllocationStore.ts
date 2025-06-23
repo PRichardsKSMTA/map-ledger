@@ -76,6 +76,7 @@ interface RatioAllocationState {
   isProcessing: boolean;
   selectedPeriod: string | null;
   results: AllocationResult[];
+  getOrCreateAllocation: (sourceAccountId: string) => RatioAllocation;
   addAllocation: (allocation: Omit<RatioAllocation, 'id'>) => void;
   updateAllocation: (id: string, allocation: Partial<RatioAllocation>) => void;
   deleteAllocation: (id: string) => void;
@@ -89,6 +90,21 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   isProcessing: false,
   selectedPeriod: null,
   results: [],
+
+  getOrCreateAllocation: (sourceAccountId: string) => {
+    const existing = get().allocations.find(a => a.sourceAccount.id === sourceAccountId);
+    if (existing) return existing;
+    const allocation: RatioAllocation = {
+      id: crypto.randomUUID(),
+      name: `Allocation ${sourceAccountId}`,
+      sourceAccount: { id: sourceAccountId, number: sourceAccountId, description: '' },
+      targetDatapoints: [],
+      effectiveDate: new Date().toISOString(),
+      status: 'active',
+    };
+    set(state => ({ allocations: [...state.allocations, allocation] }));
+    return allocation;
+  },
   
   addAllocation: (allocation) => {
     set((state) => ({
