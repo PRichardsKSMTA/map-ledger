@@ -17,7 +17,8 @@ export default function Import() {
 
   const handleFileImport = async (
     rows: AccountRow[],
-    operationIds: string[],
+    clientId: string,
+    entityIds: string[],
     _headerMap: Record<string, string | null>,
     glMonth: string
   ) => {
@@ -29,7 +30,7 @@ export default function Import() {
       const importId = crypto.randomUUID();
       addImport({
         id: importId,
-        clientId: operationIds.join(','),
+        clientId,
         fileName: 'import',
         period: glMonth,
         timestamp: new Date().toISOString(),

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 export interface AccountRow {
   entity: string;
   accountId: string;
   description: string;
   netChange: number;
+  glMonth?: string;
   [key: string]: any;
 }
 
@@ -34,22 +35,10 @@ export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProp
   const included = rows.filter((_, idx) => !excludedIds.has(idx));
   const excluded = rows.filter((_, idx) => excludedIds.has(idx));
 
-  useEffect(() => {
-    // Auto-exclude typical balance sheet accounts (simple example)
-    const balanceSheetHints = ['asset', 'liability', 'equity'];
-    const defaultExcludes = new Set<number>();
-    rows.forEach((r, idx) => {
-      if (balanceSheetHints.some(h => r.description.toLowerCase().includes(h))) {
-        defaultExcludes.add(idx);
-      }
-    });
-    setExcludedIds(defaultExcludes);
-  }, [rows]);
-
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold text-gray-800">Review and Exclude Accounts</h2>
-      <p className="text-sm text-gray-600">Uncheck any accounts you want included in mapping. By default, balance sheet accounts are excluded.</p>
+      <p className="text-sm text-gray-600">Check any accounts you want excluded in mapping.</p>
 
       <table className="min-w-full text-sm border">
         <thead>
