@@ -28,7 +28,8 @@ const templateHeaders = [
 interface ImportFormProps {
   onImport: (
     uploads: AccountRow[],
-    operationIds: string[],
+    clientId: string,
+    entityIds: string[],
     headerMap: Record<string, string | null>,
     glMonth: string
   ) => void;
@@ -40,7 +41,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const { entities } = useOrganizationStore();
   const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
-  const [operationIds, setOperationIds] = useState<string[]>([]);
+  const [allRows, setAllRows] = useState<AccountRow[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [glMonth, setGlMonth] = useState('');
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
@@ -54,16 +55,16 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const [error, setError] = useState<string | null>(null);
 
   const clientOptions = useMemo(() => {
-    const selected = entities.filter((e) => entityIds.includes(e.id));
-    const all = selected.flatMap((e) => e.clients);
+    const all = entities.flatMap((e) => e.clients);
     return all.filter(
       (c, idx) => all.findIndex((cc) => cc.id === c.id) === idx
     );
-  }, [entities, entityIds]);
+  }, [entities]);
 
-  const operationOptions = useMemo(() => {
-    return clientOptions.find((c) => c.id === clientId)?.operations ?? [];
-  }, [clientId, clientOptions]);
+  const entityOptions = useMemo(() => {
+    if (!clientId) return [];
+    return entities.filter((e) => e.clients.some((c) => c.id === clientId));
+  }, [clientId, entities]);
 
   useEffect(() => {
     if (entities.length === 1) {
@@ -74,26 +75,32 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   useEffect(() => {
     if (clientOptions.length === 1) {
       setClientId(clientOptions[0].id);
-    } else {
-      setClientId('');
     }
-    setOperationIds([]);
-  }, [entityIds, clientOptions]);
+  }, [clientOptions]);
 
   useEffect(() => {
-    const client = clientOptions.find((c) => c.id === clientId);
-    if (client && client.operations.length === 1) {
-      setOperationIds([client.operations[0].id]);
+    const available = entityOptions.map((e) => e.id);
+    if (available.length === 1) {
+      setEntityIds([available[0]]);
     } else {
-      setOperationIds([]);
+      setEntityIds([]);
     }
-  }, [clientId, clientOptions]);
+  }, [clientId, entityOptions]);
 
   useEffect(() => {
     if (uploads.length > 0) {
       setGlMonth(uploads[selectedSheet]?.metadata?.glMonth || '');
     }
   }, [uploads, selectedSheet]);
+
+  useEffect(() => {
+    const filtered = allRows.filter(
+      (r) => !glMonth || r.glMonth === glMonth
+    );
+    setIncludedRows(filtered);
+    const unique = Array.from(new Set(filtered.map((r) => r.entity).filter(Boolean)));
+    setAvailableEntities(unique);
+  }, [glMonth, allRows]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -108,8 +115,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   const processFile = async (file: File) => {
     try {
-      if (operationIds.length === 0) {
-        setError('Please select an operation before uploading.');
+      if (!clientId || entityIds.length === 0) {
+        setError('Please select a client and entity before uploading.');
         setSelectedFile(null);
         setSelectedSheet(0);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -117,7 +124,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       }
 
       const clientConfig: ClientTemplateConfig | null =
-        await getClientTemplateMapping(operationIds[0]);
+        await getClientTemplateMapping(clientId);
       console.log('Fetched client config:', clientConfig);
 
       const parsed = await parseTrialBalanceWorkbook(file); // Future: pass config to this function
@@ -140,6 +147,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setHeaderMap(null);
       setIncludedRows(null);
       setAvailableEntities([]);
+      setAllRows([]);
     }
   };
 
@@ -155,31 +163,36 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     );
 
     const sheet = uploads[selectedSheet];
-    const allRows: AccountRow[] = sheet.rows.map((row) => ({
+    const rows: AccountRow[] = sheet.rows.map((row) => ({
       accountId: row[keyMap['GL ID']]?.toString() || '',
       description: row[keyMap['Account Description']]?.toString() || '',
       netChange: Number(row[keyMap['Net Change']]) || 0,
       entity: row[keyMap['Entity']]?.toString() || '',
+      glMonth: sheet.metadata.glMonth,
       ...row,
     }));
 
     const uniqueEntities = Array.from(
-      new Set(allRows.map((r) => r.entity).filter(Boolean))
+      new Set(rows.map((r) => r.entity).filter(Boolean))
     );
     setAvailableEntities(uniqueEntities);
-    setIncludedRows(allRows);
+    setAllRows(rows);
+    setIncludedRows(
+      rows.filter((r) => !glMonth || r.glMonth === glMonth)
+    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (
       selectedFile &&
-      operationIds.length > 0 &&
+      clientId &&
+      entityIds.length > 0 &&
       includedRows &&
       headerMap &&
       glMonth
     ) {
-      onImport(includedRows, operationIds, headerMap, glMonth);
+      onImport(includedRows, clientId, entityIds, headerMap, glMonth);
     } else {
       setError(
         'Please complete all steps including column matching, GL Month, and account review.'
@@ -202,19 +215,12 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <MultiSelect
-        label="Entity"
-        options={entities.map((ent) => ({ value: ent.id, label: ent.name }))}
-        value={entityIds}
-        onChange={setEntityIds}
-      />
-
       <Select
         label="Client"
         value={clientId}
         onChange={(e) => setClientId(e.target.value)}
         required
-        disabled={entityIds.length === 0 || clientOptions.length === 0}
+        disabled={clientOptions.length === 0}
       >
         {clientOptions.length > 1 && <option value="">Select a client</option>}
         {clientOptions.map((c) => (
@@ -225,35 +231,13 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       </Select>
 
       <MultiSelect
-        label="Operation"
-        options={operationOptions.map((op) => ({
-          value: op.id,
-          label: op.name,
-        }))}
-        value={operationIds}
-        onChange={setOperationIds}
-        disabled={!clientId || operationOptions.length === 0}
+        label="Entity"
+        options={entityOptions.map((ent) => ({ value: ent.id, label: ent.name }))}
+        value={entityIds}
+        onChange={setEntityIds}
+        disabled={!clientId}
       />
 
-      {includedRows && (
-        <div>
-          <label
-            htmlFor="gl-month"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            GL Month
-          </label>
-          <input
-            type="month"
-            id="gl-month"
-            name="gl-month"
-            value={glMonth}
-            onChange={(e) => setGlMonth(e.target.value)}
-            required
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          />
-        </div>
-      )}
 
       <div
         className="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg"
@@ -273,8 +257,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                   setHeaderMap(null);
                   setIncludedRows(null);
                   setAvailableEntities([]);
+                  setAllRows([]);
                   setGlMonth('');
-                  setOperationIds([]);
                   setClientId('');
                   setEntityIds(entities.length === 1 ? [entities[0].id] : []);
                 }}
@@ -338,13 +322,34 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         />
       )}
 
-      {headerMap && includedRows && (
-        <ExcludeAccounts
-          rows={includedRows}
-          onConfirm={(included, excluded) => {
-            setIncludedRows(included);
-          }}
-        />
+      {headerMap && (
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="gl-month"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              GL Month
+            </label>
+            <input
+              type="month"
+              id="gl-month"
+              name="gl-month"
+              value={glMonth}
+              onChange={(e) => setGlMonth(e.target.value)}
+              required
+              className="block w-40 border rounded-md px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            />
+          </div>
+          {includedRows && (
+            <ExcludeAccounts
+              rows={includedRows}
+              onConfirm={(included) => {
+                setIncludedRows(included);
+              }}
+            />
+          )}
+        </div>
       )}
 
       {includedRows && includedRows.length > 0 && (
@@ -368,7 +373,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
             type="submit"
             disabled={
               !selectedFile ||
-              operationIds.length === 0 ||
+              !clientId ||
+              entityIds.length === 0 ||
               isImporting ||
               uploads.length === 0 ||
               !headerMap ||
