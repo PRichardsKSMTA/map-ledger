@@ -1,8 +1,19 @@
-# Function Guidelines
+# Functions
 
-This folder contains individual Azure Functions.
+**Purpose**    
+Azure Functions implementing REST endpoints.
 
-- Each subfolder should implement one API endpoint such as `/api/industries`, `/api/masterclients`, `/api/operations`, `/api/gl/*`, and `/api/mapping/*`【F:MapLedger Runbook 3.html†L370-L380】【F:MapLedger Runbook 3.html†L500-L612】.
-- Use TypeORM repositories from `src/entities` and `src/repositories` for data access.
-- Validate JWT tokens and enforce RBAC for each request【F:MapLedger Runbook 3.html†L312-L321】.
-- Write Jest tests that mock Azure Function context and external dependencies; aim for ≥80% coverage【F:MapLedger Runbook 3.html†L1341-L1372】.
+## Key Exports
+| Name | Type | Description |
+|------|------|-------------|
+| glUpload | function | Handles GL file uploads |
+| industries | function | Lists industries |
+| masterclients | function | Lists master clients |
+| mappingSuggest | function | Returns mapping suggestions |
+
+## Runbook Cross-References
+§3 System Architecture, §4 Ingestion
+
+## TODO (owner: @unassigned)
+1. Flesh out endpoint docs
+2. Add examples for local testing

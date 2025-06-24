@@ -1,8 +1,19 @@
-# Component Guidelines
+# Components
 
-Reusable React components live here.
+**Purpose**    
+Shared React components used across pages.
 
-- Ensure accessibility: keyboard navigation, proper ARIA roles, and high-contrast support【F:MapLedger Runbook 3.html†L840-L842】.
-- Use functional components and React hooks.
-- Provide tests using Jest and React Testing Library. Refer to runbook examples for UploadForm, MappingPage, COATemplateEditor, BenchmarkDashboard, and AuthContext【F:MapLedger Runbook 3.html†L1398-L1432】.
-- Mock Axios and MSAL modules in tests when needed【F:MapLedger Runbook 3.html†L1392-L1396】.
+## Key Exports
+| Name | Type | Description |
+|------|------|-------------|
+| Layout | component | Main page layout wrapper |
+| Navbar | component | Top navigation bar |
+| Sidebar | component | App side navigation |
+| various UI components | component | Domain specific elements |
+
+## Runbook Cross-References
+§8 UX
+
+## TODO (owner: @unassigned)
+1. Expand Storybook examples
+2. Document design tokens
