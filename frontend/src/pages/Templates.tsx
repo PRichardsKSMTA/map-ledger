@@ -6,6 +6,7 @@ import TemplateList from '../components/templates/TemplateList';
 import TemplateForm from '../components/templates/TemplateForm';
 import DatapointForm from '../components/templates/DatapointForm';
 import DatapointList from '../components/templates/DatapointList';
+import TemplateImportForm from '../components/templates/TemplateImportForm';
 import { COATemplate, Datapoint } from '../types';
 
 export default function Templates() {
@@ -23,6 +24,7 @@ export default function Templates() {
   } = useTemplateStore();
   
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<COATemplate | undefined>();
   const [selectedTemplate, setSelectedTemplate] = useState<COATemplate | undefined>();
   const [isDatapointFormOpen, setIsDatapointFormOpen] = useState(false);
@@ -35,6 +37,7 @@ export default function Templates() {
   const handleTemplateEdit = (template: COATemplate) => {
     setEditingTemplate(template);
     setIsFormOpen(true);
+    setIsImportOpen(false);
     setSelectedTemplate(undefined);
   };
 
@@ -45,17 +48,20 @@ export default function Templates() {
       addTemplate(template);
     }
     setIsFormOpen(false);
+    setIsImportOpen(false);
     setEditingTemplate(undefined);
   };
 
   const handleTemplateCancel = () => {
     setIsFormOpen(false);
+    setIsImportOpen(false);
     setEditingTemplate(undefined);
   };
 
   const handleTemplateSelect = (template: COATemplate) => {
     setSelectedTemplate(template);
     setIsFormOpen(false);
+    setIsImportOpen(false);
   };
 
   const handleDatapointSubmit = (datapoint: Omit<Datapoint, 'id' | 'templateId' | 'sortOrder'>) => {
@@ -111,14 +117,23 @@ export default function Templates() {
           ) : (
             <>
               <h1 className="text-2xl font-semibold text-gray-900">COA Templates</h1>
-              {!isFormOpen && (
-                <button
-                  onClick={() => setIsFormOpen(true)}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Template
-                </button>
+              {!isFormOpen && !isImportOpen && (
+                <>
+                  <button
+                    onClick={() => setIsFormOpen(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 mr-2"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Template
+                  </button>
+                  <button
+                    onClick={() => setIsImportOpen(true)}
+                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-500 hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Build From File
+                  </button>
+                </>
               )}
             </>
           )}
@@ -158,6 +173,10 @@ export default function Templates() {
                 onSubmit={handleTemplateSubmit}
                 onCancel={handleTemplateCancel}
               />
+            </div>
+          ) : isImportOpen ? (
+            <div className="bg-white shadow rounded-lg p-6">
+              <TemplateImportForm onClose={() => setIsImportOpen(false)} />
             </div>
           ) : (
             <div className="bg-white shadow rounded-lg overflow-hidden">
