@@ -165,3 +165,44 @@ export interface GLAccountMappingRow {
   manualCOAId?: string;
   entities: GLAccountEntityBreakdown[];
 }
+
+export interface GLUpload {
+  id: string;
+  masterClientId: string;
+  uploadedBy: string;
+  fileName: string;
+  fileUrl: string;
+  operationIds?: string[];
+  allocationRules?: string;
+  uploadDate: string;
+  status: 'Uploaded' | 'Processing' | 'Processed' | 'Error';
+  errorMessage?: string;
+}
+
+export interface GLAccountRaw {
+  id: string;
+  glUploadId: string;
+  accountCode: string;
+  description: string;
+  debit?: number;
+  credit?: number;
+  balance: number;
+}
+
+export interface MappingSuggestion {
+  id: string;
+  glAccountRawId: string;
+  suggestedCOACode?: string;
+  suggestedCOADesc?: string;
+  confidenceScore?: number;
+  aiResponseJson?: string;
+  createdDate: string;
+}
+
+export interface FinalMapping {
+  id: string;
+  glAccountRawId: string;
+  mappedCOAAccountId: string;
+  mappedBy: string;
+  mappedDate: string;
+}
