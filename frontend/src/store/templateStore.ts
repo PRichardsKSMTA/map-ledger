@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { COATemplate, Datapoint } from '../types';
+import { parseCOATemplateFile } from '../utils/parseCOATemplateFile';
+import { buildTemplateFromRows } from '../utils/buildTemplateFromRows';
 
 // Sample template data
 const sampleTemplates: COATemplate[] = [
@@ -120,6 +122,10 @@ interface TemplateState {
   updateDatapoint: (templateId: string, datapointId: string, datapoint: Omit<Datapoint, 'id' | 'templateId' | 'sortOrder'>) => void;
   deleteDatapoint: (templateId: string, datapointId: string) => void;
   reorderDatapoints: (templateId: string, datapointIds: string[]) => void;
+  importTemplateFromFile: (
+    file: File,
+    info: { name: string; industry: string; interval: 'Monthly' | 'Quarterly' }
+  ) => Promise<void>;
 }
 
 export const useTemplateStore = create<TemplateState>((set) => ({
@@ -191,4 +197,13 @@ export const useTemplateStore = create<TemplateState>((set) => ({
           .filter((dp): dp is Datapoint => dp !== null),
       },
     })),
+  importTemplateFromFile: async (file, info) => {
+    const rows = await parseCOATemplateFile(file);
+    const id = crypto.randomUUID();
+    const { template, datapoints } = buildTemplateFromRows(rows, info, id);
+    set((state) => ({
+      templates: [...state.templates, template],
+      datapoints: { ...state.datapoints, [id]: datapoints },
+    }));
+  },
 }));
