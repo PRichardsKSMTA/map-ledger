@@ -1,8 +1,19 @@
-# Pages Guidelines
+# Pages
 
-These files implement routeable pages.
+**Purpose**    
+Routeable React pages served by the router.
 
-- Pages should match the route list in the runbook and use React Router v6【F:MapLedger Runbook 3.html†L1028-L1037】.
-- Enforce role-based access with MSAL.js; hide SuperUser pages when the user lacks that role【F:MapLedger Runbook 3.html†L312-L321】.
-- Compose UI from components in `src/components` and maintain WCAG 2.1 AA accessibility【F:MapLedger Runbook 3.html†L840-L842】.
-- Include tests for page behavior to help maintain ≥80% coverage.
+## Key Exports
+| Name | Type | Description |
+|------|------|-------------|
+| Login | component | User authentication screen |
+| Dashboard | component | Main overview page |
+| Clients | component | Manage client profiles |
+| Users | component | Admin user management |
+
+## Runbook Cross-References
+§8 UX, §3 System Architecture
+
+## TODO (owner: @unassigned)
+1. Add screenshot references
+2. Note route guard patterns

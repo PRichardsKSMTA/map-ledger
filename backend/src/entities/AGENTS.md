@@ -1,8 +1,19 @@
-# Entity Guidelines
+# Entities
 
-TypeORM entities are defined here and map directly to the database schema.
+**Purpose**          
+TypeORM models for the database tables.
 
-- Implement entities for tables described in the runbook such as Industry, MasterClient, ClientOperation, COATemplate, COAAccount, GLUpload, GLAccountRaw, MappingSuggestion, and FinalMapping【F:MapLedger Runbook 3.html†L340-L566】.
-- Define relations and cascades according to the schema.
-- Entities should be fully typed in TypeScript.
-- Unit tests should verify entity mappings as part of overall coverage requirements.
+## Key Exports
+| Name | Type | Description |
+|------|------|-------------|
+| GLUpload | class | Upload metadata entity |
+| Industry | class | Industry lookup table |
+| MappingSuggestion | class | Suggestion mapping table |
+| MasterClient | class | Master client definitions |
+
+## Runbook Cross-References
+§3 System Architecture, §4 Ingestion
+
+## TODO (owner: @unassigned)
+1. Document relations and cascades
+2. Link entity docs to ER diagram
