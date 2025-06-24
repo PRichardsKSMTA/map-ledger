@@ -59,6 +59,8 @@ export function buildTemplateFromRows(rows: COARow[], info: TemplateInfo, templa
           row['gl_id'] ||
           ''
       ),
+      detailLevel: Number(row['DETAIL_LEVEL'] || row['detail_level'] || 1),
+
       functionalGroupId: func.id,
       operationalGroupId: op.id,
       sortOrder: idx,
