@@ -11,12 +11,26 @@ function normalize(str: string): string {
 
 export async function parseCOATemplateFile(file: File): Promise<COARow[]> {
   const ext = file.name.split('.').pop()?.toLowerCase();
+  const allowed = ['gl_id', 'detail_level', 'gl_name'];
+  const allowedNormalized = allowed.map(normalize);
+
   if (ext === 'csv') {
     return new Promise((resolve, reject) => {
       Papa.parse<COARow>(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (r) => resolve(r.data as COARow[]),
+        complete: (r) => {
+          const filtered = (r.data as COARow[]).map((row) => {
+            const obj: COARow = {};
+            Object.entries(row).forEach(([key, val]) => {
+              if (allowedNormalized.includes(normalize(key))) {
+                obj[key.trim()] = typeof val === 'string' ? val.trim() : val;
+              }
+            });
+            return obj;
+          });
+          resolve(filtered);
+        },
         error: (e) => reject(e),
       });
     });
@@ -29,18 +43,25 @@ export async function parseCOATemplateFile(file: File): Promise<COARow[]> {
     const sheet = workbook.worksheets[0];
     if (!sheet) return [];
     const headerRow = sheet.getRow(1);
-    const headers = headerRow.values
+    const rawHeaders = headerRow.values
       ? (headerRow.values as Array<string>).slice(1).map((h) => String(h))
       : [];
+    const headerMap: { index: number; name: string }[] = [];
+    rawHeaders.forEach((h, i) => {
+      if (allowedNormalized.includes(normalize(h))) {
+        headerMap.push({ index: i + 1, name: h });
+      }
+    });
     const rows: COARow[] = [];
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
       const vals = row.values as Array<string | number>;
       if (!Array.isArray(vals)) return;
       const obj: COARow = {};
-      vals.slice(1).forEach((val, idx) => {
+      headerMap.forEach(({ index, name }) => {
+        const val = vals[index];
         if (val !== undefined && val !== null && val !== '') {
-          obj[headers[idx]] = typeof val === 'string' ? val.trim() : val;
+          obj[name] = typeof val === 'string' ? val.trim() : val;
         }
       });
       if (Object.keys(obj).length > 0) rows.push(obj);
