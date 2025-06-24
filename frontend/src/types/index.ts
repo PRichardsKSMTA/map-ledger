@@ -45,6 +45,10 @@ export interface Datapoint {
   accountType: 'Assets' | 'Liabilities' | 'Equity' | 'Revenue' | 'Expenses';
   balanceType: 'Debit' | 'Credit';
   coreGLAccount: string;
+  /**
+   * 1 denotes a leaf account in the COA, 2 denotes a roll-up group
+   */
+  detailLevel?: number;
   functionalGroupId: string;
   operationalGroupId: string;
   formula?: string;
