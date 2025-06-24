@@ -1,874 +1,387 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>MapLedger Run Book (Detailed)</title>
-  <style>
-    /* Layout Reset */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+<meta charset="UTF-8" />
+<title>MapLedger Runbook — Master Copy (Updated 23 Jun 2025)</title>
+<style>
+body{font-family:system-ui,sans-serif;line-height:1.5;margin:0 2rem 4rem;color:#1a1a1a}
+h1,h2,h3,h4{color:#104e8b;margin-top:2.2rem}
+h1{font-size:2rem;border-bottom:4px solid #104e8b;padding-bottom:.3rem;margin-top:1.5rem}
+h2{font-size:1.4rem;border-left:6px solid #104e8b;padding-left:.6rem}
+table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.9rem}
+th,td{border:1px solid #dadada;padding:.4rem .6rem;vertical-align:top}
+tr:nth-child(even){background:#f8f8f8}
+code,pre{background:#f3f3f3;border:1px solid #e2e2e2;border-radius:4px;padding:.1rem .3rem;font-size:.85rem}
+.example-block{border:2px dashed #777;padding:1rem;margin:1.2rem 0;background:#fafafa}
+.toc a{color:#104e8b;text-decoration:none}
+</style>
 
-    body {
-      font-family: Arial, sans-serif;
-      display: flex;
-      color: #333;
-    }
+<style>
+#side-nav{position:fixed;left:0;top:0;height:100%;width:220px;background:#f2f6fa;border-right:1px solid #d0d7de;padding:1rem;overflow-y:auto}
+#side-nav a{display:block;color:#104e8b;text-decoration:none;margin:.4rem 0;font-size:.9rem}
+#content{margin-left:240px}
+@media(max-width:900px){#side-nav{display:none}#content{margin-left:0}}
+</style>
 
-    /* Vertical Navigation Bar */
-    nav {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 240px;
-      height: 100vh;
-      background-color: #f8f9fa;
-      border-right: 1px solid #ddd;
-      overflow-y: auto;
-      padding: 1rem;
-    }
-    nav h2 {
-      font-size: 1.1rem;
-      margin-bottom: 0.75rem;
-      color: #2c3e50;
-    }
-    nav ul {
-      list-style: none;
-    }
-    nav li {
-      margin-bottom: 0.5rem;
-    }
-    nav a {
-      text-decoration: none;
-      color: #007bff;
-      font-size: 0.95rem;
-    }
-    nav a:hover {
-      text-decoration: underline;
-    }
-
-    /* Main Content Area */
-    main {
-      margin-left: 260px;
-      padding: 2rem;
-      width: calc(100% - 260px);
-      line-height: 1.6;
-    }
-    h1, h2, h3, h4 {
-      color: #2c3e50;
-      margin-top: 1.5rem;
-    }
-    section {
-      margin-bottom: 2.5rem;
-    }
-    .task-list, .role-list, .subtask-list {
-      margin-left: 1.5rem;
-    }
-    .task-list li, .role-list li, .subtask-list li {
-      margin-bottom: 0.5rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1rem;
-    }
-    table th, table td {
-      border: 1px solid #ccc;
-      padding: 0.5rem;
-      vertical-align: top;
-    }
-    table th {
-      background-color: #f2f2f2;
-      text-align: left;
-    }
-    pre {
-      background-color: #f9f9f9;
-      border: 1px solid #eaeaea;
-      padding: 1rem;
-      overflow-x: auto;
-    }
-    .timeline-img, .workflow-img, .ui-screenshot {
-      max-width: 100%;
-      border: 1px solid #ccc;
-      margin-top: 1rem;
-      margin-bottom: 1rem;
-    }
-    .workflow-container {
-      text-align: center;
-    }
-    .footer {
-      margin-top: 3rem;
-      font-size: 0.9rem;
-      color: #777;
-      border-top: 1px solid #ddd;
-      padding-top: 1rem;
-    }
-    /* Reference Links */
-    .references ul {
-      margin-left: 1.5rem;
-      list-style: disc;
-    }
-    .chat-transcript {
-      background-color: #f9f9f9;
-      border: 1px solid #ddd;
-      padding: 1rem;
-      margin-top: 1rem;
-      white-space: pre-wrap;
-      font-family: Consolas, monospace;
-      max-height: 400px;
-      overflow-y: auto;
-    }
-  </style>
 </head>
 <body>
+<div id="side-nav"><h3>Runbook</h3><a href="#vision">1 · Vision & Objectives</a><a href="#terminology">2 · Core Terminology</a><a href="#architecture">3 · System Architecture</a><a href="#ingestion">4 · Data‑Ingestion Pipeline</a><a href="#scoa">5 · Standard Chart of Accounts (S‑COA)</a><a href="#workflow">>6 · Consolidate → Map → Allocate Workflow</a><a href="#examples">7 · Visual Examples (from Trial‑Balance workbook)</a><a href="#distribution">
+>8 · Distribution Methods & Metrics</a><a href="#frontend">9 · Front‑End UX Flow</a><a href="#permissions">10 · Roles & Permissions</a><a href="#nfr">11 · Non‑Functional Requirements</a><a href="#release">12 · Release Timeline</a><a href="#codex">13 · Codex Workflow & Repo Docs</a></div><div id="content">
+<h1>MapLedger Runbook — Master Copy <small>(updated 23 Jun 2025)</small></h1>
+<p><em>This self‑contained HTML replaces all previous Markdown runbooks. Commit as <code>docs/runbook.html</code>.</em></p>
 
-  <!-- Vertical Navigation -->
-  <nav>
-    <h2>On this page</h2>
-    <ul>
-      <li><a href="#introduction">1. Introduction</a></li>
-      <li><a href="#scope-objectives">2. Project Scope &amp; Objectives</a></li>
-      <li><a href="#roles-responsibilities">3. Roles &amp; Responsibilities</a></li>
-      <li><a href="#functional-requirements">4. Functional Requirements</a>
-        <ul>
-          <li><a href="#auth">4.1 Authentication &amp; Authorization</a></li>
-          <li><a href="#master-data">4.2 Master Data &amp; Hierarchy Management</a></li>
-          <li><a href="#coa-management">4.3 Chart of Accounts (COA) Management</a></li>
-          <li><a href="#gl-upload">4.4 GL Upload &amp; Preprocessing</a></li>
-          <li><a href="#ai-mapping">4.5 AI-Assisted Mapping</a></li>
-          <li><a href="#exception-handling">4.6 Exception Handling (Manual Overrides)</a></li>
-          <li><a href="#benchmarking">4.7 Finalization &amp; Benchmarking</a></li>
-          <li><a href="#user-management">4.8 Admin / Viewer Management</a></li>
-          <li><a href="#audit-notifications">4.9 Audit Logging &amp; Notifications</a></li>
-        </ul>
-      </li>
-      <li><a href="#non-functional-requirements">5. Non-Functional Requirements</a></li>
-      <li><a href="#timeline-overview">6. 24-Week Development Timeline</a></li>
-      <li><a href="#detailed-weekly-plan">7. Detailed Weekly Plan</a></li>
-      <li><a href="#workflow-overview">8. Core Workflow Diagram</a></li>
-      <li><a href="#deployment-instructions">9. Deployment &amp; Environment Setup</a></li>
-      <li><a href="#testing-plan">10. Testing Plan</a></li>
-      <li><a href="#risk-management">11. Risk Management</a></li>
-      <li><a href="#conclusion">12. Conclusion &amp; Next Steps</a></li>
-      <li><a href="#references">13. References</a></li>
-      <li><a href="#chat-transcripts">14. Chat Transcripts</a></li>
-    </ul>
-  </nav>
+<section class="toc">
+<h2>Table of Contents</h2>
+<ol>
+<li><a href="#vision">Vision & Objectives</a></li>
+<li><a href="#terminology">Core Terminology</a></li>
+<li><a href="#architecture">System Architecture</a></li>
+<li><a href="#ingestion">Data‑Ingestion Pipeline</a></li>
+<li><a href="#scoa">Standard Chart of Accounts</a></li>
+<li><a href="#workflow">Consolidate → Map → Allocate</a></li>
+<li><a href="#examples">Visual Examples</a></li>
+<li><a href="#distribution">Distribution Methods & Metrics</a></li>
+<li><a href="#frontend">Front‑End UX Flow</a></li>
+<li><a href="#permissions">Roles & Permissions</a></li>
+<li><a href="#nfr">Non‑Functional Requirements</a></li>
+<li><a href="#release">Release Timeline</a></li>
+<li><a href="#codex">Codex Guidance & Repo Docs</a></li>
+</ol>
+</section>
 
-  <main>
+<hr/>
 
-    <!-- 1. Introduction -->
-    <section id="introduction">
-      <h2>1. Introduction</h2>
-      <p>
-        <strong>MapLedger</strong> is a TypeScript-based, React-fronted web application integrated into the KSM Kanvas platform. It enables client organizations to upload their General Ledger (GL) data and map each account line to an industry-standard Chart of Accounts (COA), leveraging AI assistance (OpenAI). Once mappings are finalized, MapLedger compiles standardized financial data for benchmarking across peer companies within the same industry.
-      </p>
-      <p>This Run Book provides a comprehensive, end-to-end technical roadmap—detailing each component, architecture, workflow, and development task sequence—required to deliver a Minimum Viable Product (MVP) within 24 weeks (target completion: November 16, 2025).</p>
+<h2 id="vision">1 · Vision & Objectives</h2>
+<ul>
+<li><strong>One‑click ingestion</strong> of any client Trial Balance (CSV/XLSX) regardless of layout.</li>
+<li><strong>AI‑assisted mapping</strong> to a single Standard COA (S‑COA) with confidence scoring.</li>
+<li><strong>Multi‑entity consolidation</strong> across periods, ledgers, operations.</li>
+<li><strong>Rule‑driven allocation</strong> of consolidated balances to operations (direct or metric ratios).</li>
+<li><strong>Governed access</strong> through Azure AD roles from organisation → client → operation.</li>
+<li><strong>MVP go‑live</strong> target: <strong>16 Nov 2025</strong>.</li>
+</ul>
 
-      <!-- UI Screenshots -->
-      <h3>1.1 Example UI Screenshots</h3>
-      <p>Below are representative screenshots from the current MapLedger UI (hosted at <a href="https://earnest-naiad-cb964d.netlify.app/" target="_blank">Earnest Naiad</a>). These help convey the look-and-feel, navigation, and primary user flows in the application.</p>
-      <img src="screenshots/dashboard-overview.png" alt="MapLedger Dashboard Overview" class="ui-screenshot" />
-      <img src="screenshots/gl-upload-page.png" alt="GL Upload Page UI" class="ui-screenshot" />
-      <img src="screenshots/mapping-page.png" alt="AI-Assisted Mapping Page UI" class="ui-screenshot" />
-      <p><em>Note: Ensure these screenshot files are saved in a <code>screenshots/</code> folder alongside this HTML.</em></p>
-    </section>
 
-    <!-- 2. Project Scope & Objectives -->
-    <section id="scope-objectives">
-      <h2>2. Project Scope &amp; Objectives</h2>
+<h3>Screenshots (placeholders)</h3>
+<p><img src="screenshots/dashboard.png" alt="Dashboard mock" style="width:100%;max-width:600px;border:1px solid #ccc"/></p>
+<p><img src="screenshots/upload.png" alt="GL Upload" style="width:100%;max-width:600px;border:1px solid #ccc"/></p>
+<p><img src="screenshots/mapping.png" alt="Mapping UI" style="width:100%;max-width:600px;border:1px solid #ccc"/></p>
+<h2 id="terminology">2 · Core Terminology</h2>
+<table>
+<thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><strong>Entity</strong></td><td>Legal ledger supplying its own Trial Balance (e.g. VAN LLC).</td></tr>
+<tr><td><strong>Operation</strong></td><td>Business line that receives allocated costs (Van, Flatbed, …).</td></tr>
+<tr><td><strong>S‑COA</strong></td><td>Canonical chart defined in §5.</td></tr>
+<tr><td><strong>Distribution Method</strong></td><td>Rule for splitting a value: <code>Direct</code>, <code>PctOfMiles</code>, <code>PctOf&lt;Metric&gt;</code>, <code>CustomRatio</code>.</td></tr>
+<tr><td><strong>Layout Hash</strong></td><td>SHA‑256 fingerprint of the first 20 rows; key for cached column maps.</td></tr>
+<tr><td><strong>GLAccountRaw</strong></td><td>Staging table holding every cleaned TB line.</td></tr>
+<tr><td><strong>GLUpload</strong></td><td>Upload session header (blob URL, status, user).</td></tr>
+</tbody>
+</table>
 
-      <h3>2.1 Scope</h3>
-      <ul class="task-list">
-        <li>Develop a Single-Page Application (SPA) in React + TypeScript, styled with TailwindCSS, embedded within KSM Kanvas.</li>
-        <li>Backend microservices using Azure Functions (TypeScript) for all API endpoints.</li>
-        <li>Relational database on Azure SQL (managed instance) to store clients, operations, COA templates, mapping results, and audit logs.</li>
-        <li>Authentication and authorization via Azure Active Directory (Azure AD) with role-based access control (RBAC).</li>
-        <li>AI-Assisted mapping service calling OpenAI’s GPT model from Azure Functions, with caching and rate-limiting.</li>
-        <li>Admin console for Super Users (KSM internal) to define industries, prototype COA templates, and manage client hierarchies.</li>
-        <li>Admin portal for client Admins (CFOs/Controllers) to upload GL files (Excel/CSV), review AI suggestions, handle exceptions, and finalize mappings.</li>
-        <li>Viewer portal for read-only access to finalized mappings and benchmarking reports.</li>
-        <li>Reporting engine (Azure Synapse Analytics or Azure SQL Data Warehouse) for peer benchmarking dashboards and exports (PDF/Excel).</li>
-      </ul>
+<h2 id="architecture">3 · System Architecture</h2>
+<pre>
+React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
+                        ▲                    │   ↳ Redis (layout cache)
+                        │                    ▼
+                Browser ◄──── REST JSON ◄── SuggestMappings (Function + GPT‑4)
+                                                   │
+                                                   ▼
+                                           Azure SQL (stg & dbo)
+</pre>
+<p><em>For full endpoint lists, CLI snippets, and DDL, see <a href="runbook_detailed.html">Runbook&nbsp;Detailed Spec</a>.</em></p>
+<p><strong>Numeric Storage Rule:</strong> persist raw decimals (no $ or commas). Formatting is applied only in the UI via <code>Intl.NumberFormat</code>.</p>
+<p><em>Store numeric facts without <code>$</code> or commas; UI formats using <code>Intl.NumberFormat</code>.</em></p>
 
-      <h3>2.2 Objectives</h3>
-      <ul class="task-list">
-        <li><em>Super Users:</em> Create/edit/delete industries, manage COA templates, manage Master Clients &amp; Operations, assign Admin/Viewer roles.</li>
-        <li><em>Admin Users:</em> Upload GLs, initiate AI-assisted mapping, review and resolve exceptions, manage Viewer accounts, export benchmarking reports.</li>
-        <li><em>Viewer Users:</em> View finalized mappings and benchmarking dashboards, without modification privileges.</li>
-        <li>Deliver a production-ready MVP by November 16, 2025, covering all core functional and non-functional requirements.</li>
-        <li>Ensure high performance and 99.9% uptime, with comprehensive test coverage (unit, integration, end-to-end).</li>
-      </ul>
-    </section>
+<h2 id="ingestion">4 · Data‑Ingestion Pipeline</h2>
+<ol>
+<li><strong>Fingerprint</strong> sheet → <code>layoutHash</code>.</li>
+<li><strong>Detect layout</strong> – reuse cache or invoke GPT‑4 (few‑shot with sample sheets).</li>
+<li><strong>Parse &amp; normalise</strong> – drop metadata/subtotals, merge multi‑row headers, melt wide months, strip symbols.</li>
+<li><strong>Deduplicate</strong> on entity + account + period.</li>
+<li><strong>Insert</strong> into <code>stg.GLAccountRaw</code>; <code>MERGE</code> into <code>dbo.GLAccountFact</code>.</li>
+<li><strong>Totals view</strong> rebuilds group/subtotal lines for reports.</li>
+</ol>
 
-    <!-- 3. Roles & Responsibilities -->
-    <section id="roles-responsibilities">
-      <h2>3. Roles &amp; Responsibilities</h2>
+<h2 id="scoa">5 · Standard Chart of Accounts (S‑COA)</h2>
+<p>The FreightMath Standard Chart of Accounts (S‑COA) currently contains <strong>80</strong> GL accounts. Each line supplies a <code>GL_ID</code>, <code>GL_NAME</code>, and <code>DETAIL_LEVEL</code> (1 = leaf / 2 = roll‑up).</p>
+<h3>5.1 JSON Export</h3>
+<p>The full COA is generated from the spreadsheet by <code>scripts/build_coa_json.ts</code>. Below is an excerpt; Codex should reference the JSON rather than hard‑coding IDs.</p>
+<pre>{
+  &quot;templateId&quot;: &quot;default-freight-v1&quot;,
+  &quot;accountCount&quot;: 80,
+  &quot;accountsSample&quot;: [
+    {
+      &quot;glId&quot;: &quot;2990&quot;,
+      &quot;glName&quot;: &quot;OPERATING RATIO - TOTAL ASSET OPERATIONS&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;2&quot;,
+      &quot;glName&quot;: &quot;FREIGHT REVENUE LINEHAUL - COMPANY FLEET&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;3&quot;,
+      &quot;glName&quot;: &quot;FREIGHT REVENUE LINEHAUL - OWNER OPERATOR&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;296&quot;,
+      &quot;glName&quot;: &quot;FREIGHT REVENUE LINEHAUL - LEASE PURCHASE&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;102&quot;,
+      &quot;glName&quot;: &quot;FREIGHT REVENUE LINEHAUL - BROKERAGE&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;4&quot;,
+      &quot;glName&quot;: &quot;ACCESSORIAL REVENUE - COMPANY FLEET&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;5&quot;,
+      &quot;glName&quot;: &quot;ACCESSORIAL REVENUE - OWNER OPERATOR&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;299&quot;,
+      &quot;glName&quot;: &quot;ACCESSORIAL REVENUE - LEASE PURCHASE&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;105&quot;,
+      &quot;glName&quot;: &quot;ACCESSORIAL REVENUE - BROKERAGE&quot;,
+      &quot;detailLevel&quot;: 1
+    },
+    {
+      &quot;glId&quot;: &quot;6&quot;,
+      &quot;glName&quot;: &quot;FUEL SURCHARGE REVENUE - COMPANY FLEET&quot;,
+      &quot;detailLevel&quot;: 1
+    }
+  ]
+}</pre>
+<h3>5.2 Preview (first 15 rows)</h3>
+<table class="dataframe coa-preview">
+  <thead>
+    <tr style="text-align: right;">
+      <th>GL_ID</th>
+      <th>GL_NAME</th>
+      <th>DETAIL_LEVEL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>2990</td>
+      <td>OPERATING RATIO - TOTAL ASSET OPERATIONS</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>FREIGHT REVENUE LINEHAUL - COMPANY FLEET</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>FREIGHT REVENUE LINEHAUL - OWNER OPERATOR</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>296</td>
+      <td>FREIGHT REVENUE LINEHAUL - LEASE PURCHASE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>102</td>
+      <td>FREIGHT REVENUE LINEHAUL - BROKERAGE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>ACCESSORIAL REVENUE - COMPANY FLEET</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>ACCESSORIAL REVENUE - OWNER OPERATOR</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>299</td>
+      <td>ACCESSORIAL REVENUE - LEASE PURCHASE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>105</td>
+      <td>ACCESSORIAL REVENUE - BROKERAGE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>FUEL SURCHARGE REVENUE - COMPANY FLEET</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>FUEL SURCHARGE REVENUE - OWNER OPERATOR</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>302</td>
+      <td>FUEL SURCHARGE REVENUE - LEASE PURCHASE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>108</td>
+      <td>FUEL SURCHARGE REVENUE - BROKERAGE</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>DRIVER WAGES - COMPANY FLEET</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <td>89</td>
+      <td>DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET</td>
+      <td>1</td>
+    </tr>
+  </tbody>
+</table>
+<h3>5.3 Update Script</h3>
+<ol><li>Run <code>npm run build:coa</code> to refresh <code>data/fm_coa.json</code> whenever the Excel changes.</li><li>CI checks will fail if the JSON is out of sync.</li></ol>
+<h2 id="workflow">>6 · Consolidate → Map → Allocate Workflow</h2>
+<ol>
+<li>Upload each entity’s TB.</li>
+<li>System creates <strong>Consolidated</strong> totals per period.</li>
+<li>AI suggests S‑COA mapping; user approves/overrides.</li>
+<li>Wizard allocates each mapped total to operations:<br/>
+   • <code>DirectEntity</code> auto‑links entity rows.<br/>
+   • <code>DirectConsolidated</code> manual % on the total.<br/>
+   • Ratio methods pull reference metrics (miles, headcount…).</li>
+<li>Commit writes <code>dbo.OpGLFact</code> (operation‑level facts).</li>
+</ol>
 
-      <h3>3.1 Super Users (KSM Internal)</h3>
-      <ul class="role-list">
-        <li><strong>Define Industries &amp; COA Templates:</strong>
-          <ul class="subtask-list">
-            <li>Upload and maintain COA JSON templates for each industry.</li>
-            <li>Edit COA templates to add/remove accounts or categories (e.g., “Cost of Goods Sold”, “Operating Expenses”).</li>
-          </ul>
-        </li>
-        <li><strong>Manage Client Hierarchy:</strong>
-          <ul class="subtask-list">
-            <li>Create Master Client records:
-              <ul class="subtask-list">
-                <li>Fields: <code>MasterClientID (GUID)</code>, <code>Name</code>, <code>IndustryID</code>.</li>
-              </ul>
-            </li>
-            <li>Create Client Operation records:
-              <ul class="subtask-list">
-                <li>Fields: <code>OperationID (5-char code)</code>, <code>MasterClientID (FK)</code>, <code>Name</code>, <code>Location</code>.</li>
-              </ul>
-            </li>
-            <li>Define rules for license allotment (Number of Operations per Master, Data retention periods).</li>
-          </ul>
-        </li>
-        <li><strong>User Management:</strong>
-          <ul class="subtask-list">
-            <li>Assign Admin and Viewer roles to client users (via Azure AD group membership).</li>
-            <li>Revoke roles as needed.</li>
-          </ul>
-        </li>
-      </ul>
 
-      <h3>3.2 Admin Users (Client CFO/Controller)</h3>
-      <ul class="role-list">
-        <li><strong>API Integration:</strong>
-          <ul class="subtask-list">
-            <li>Configure data source (e.g., NetSuite, QuickBooks, Dynamics) integration:
-              <ul class="subtask-list">
-                <li>Provide API credentials / OAuth tokens.</li>
-                <li>Map GL export fields to standard <code>AccountCode</code>, <code>Description</code>, <code>Balance</code> columns.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>GL Upload &amp; Allocation:</strong>
-          <ul class="subtask-list">
-            <li>Upload Excel/CSV trial balance files.</li>
-            <li>If GL covers multiple Operations:
-              <ul class="subtask-list">
-                <li>Select applicable Operations from a multi-select dropdown.</li>
-                <li>Define allocation logic for shared accounts (e.g., allocate overhead by revenue %, headcount, or fixed ratios).</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>AI-Assisted Mapping:</strong>
-          <ul class="subtask-list">
-            <li>Review suggested COA mappings (displayed in a table with confidence scores).</li>
-            <li>Accept high-confidence mappings in bulk (≥ 90%).</li>
-            <li>For low-confidence or unmatched accounts, select appropriate COA codes manually or via fuzzy search interface.</li>
-          </ul>
-        </li>
-        <li><strong>Finalize &amp; Export:</strong>
-          <ul class="subtask-list">
-            <li>Publish final mapping results to Azure SQL.</li>
-            <li>Generate benchmarking reports: peer percentile comparisons for profit margins, expense ratios, etc.</li>
-            <li>Download reports as PDF or Excel.</li>
-          </ul>
-        </li>
-        <li><strong>Viewer Management:</strong>
-          <ul class="subtask-list">
-            <li>Invite Viewer Users by email (automatically send Azure AD invitation link).</li>
-            <li>Assign Viewer roles within their Operation context.</li>
-            <li>Revoke Viewer roles when no longer needed.</li>
-          </ul>
-        </li>
-      </ul>
+<h2 id="examples">7 · Visual Examples (from Trial‑Balance workbook)</h2>
 
-      <h3>3.3 Viewer Users</h3>
-      <ul class="role-list">
-        <li><strong>Access Read-Only Dashboards:</strong>
-          <ul class="subtask-list">
-            <li>Authenticate via Azure AD; view finalized COA mapping tables.</li>
-            <li>Access benchmarking dashboards: bar charts, line charts, percentile tables comparing their Operation to industry peers.</li>
-          </ul>
-        </li>
-        <li><strong>Download Reports:</strong>
-          <ul class="subtask-list">
-            <li>Export benchmark data to PDF/Excel (read-only, cannot modify mappings).</li>
-          </ul>
-        </li>
-      </ul>
-    </section>
+<h3>7.1 Consolidation (Entities ➜ Consolidated)</h3>
+<div class="example-block">
+<table>
+<thead><tr><th>Row Type</th><th>Concat ID</th><th>Description</th><th>USD</th></tr></thead>
+<tbody>
+<tr><td><strong>Consolidated</strong></td><td>10100</td><td>Accounts Receivable</td><td>501 000</td></tr>
+<tr><td>Entity Row</td><td>VAN‑10100</td><td>Accounts Receivable – VAN</td><td>500 000</td></tr>
+<tr><td>Entity Row</td><td>META‑10100</td><td>Accounts Receivable – META</td><td>  1 000</td></tr>
+<tr><td><strong>Consolidated</strong></td><td>11000</td><td>Prepaid Expense</td><td>    9 500</td></tr>
+<tr><td>Entity Row</td><td>VAN‑11000</td><td>Prepaid Expense – VAN</td><td>    9 000</td></tr>
+<tr><td>Entity Row</td><td>META‑11000</td><td>Prepaid Expense – META</td><td>      500</td></tr>
+</tbody></table>
+</div>
 
-    <!-- 4. Functional Requirements -->
-    <section id="functional-requirements">
-      <h2>4. Functional Requirements</h2>
+<h3>7.2 Mapping (Consolidated ➜ S‑COA)</h3>
+<div class="example-block">
+<table>
+<thead><tr><th>Consolidated ID</th><th>Suggested S‑COA GL_ID</th><th>Name</th><th>Confidence</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>10100</td><td>10100</td><td>Accounts Receivable</td><td>95 %</td><td>✔ Accepted</td></tr>
+<tr><td>21107‑800 (Credit Card)</td><td>70000</td><td>Credit Card Fees</td><td>78 %</td><td>⚠ Review</td></tr>
+<tr><td>23150 (Tolls / Scales)</td><td>53300 → Tolls<br/>53400 → Scales</td><td>Split Mapping</td><td>80 %</td><td>🛠 User split</td></tr>
+</tbody></table>
+</div>
 
-      <!-- 4.1 Authentication & Authorization -->
-      <h3 id="auth">4.1 Authentication &amp; Authorization</h3>
-      <ul class="task-list">
-        <li>Integrate with Azure AD (v2.0 endpoint) to handle user login:
-          <ul class="subtask-list">
-            <li>Register two Azure AD App Registrations:
-              <ul class="subtask-list">
-                <li><strong>Front-End App:</strong> Single-Page Application (SPA) with redirect URI <code>https://kanvas.ksmbusiness.com/mapledger</code>.</li>
-                <li><strong>Backend API App:</strong> Web API requiring <code>api://{clientId}/.default</code> scope.</li>
-              </ul>
-            </li>
-            <li>Implement MSAL.js (v3+) in React to acquire ID tokens + access tokens.</li>
-            <li>Enforce role-based routes on front end (e.g., hide Super User pages if not in Azure AD SuperUser group).</li>
-            <li>Backend: Validate JWT tokens using Azure Functions’ EasyAuth or custom JWT validation middleware. Check Azure AD group claims for RBAC (SuperUser, Admin, Viewer).</li>
-          </ul>
-        </li>
-        <li>Role Hierarchy &amp; Permissions:
-          <ul class="subtask-list">
-            <li>SuperUser group (Azure AD) → Full CRUD on industries, COA templates, clients, operations, user roles.</li>
-            <li>Admin group (per Master Client) → CUD on GL uploads, mapping revisions, Viewer invites.</li>
-            <li>Viewer group (per Operation) → READ only on mappings, reports.</li>
-          </ul>
-        </li>
-      </ul>
+<h3>7.3 Allocation (Mapped Total ➜ Operations)</h3>
+<div class="example-block">
+<table>
+<thead><tr><th>S‑COA GL_ID</th><th>Operation</th><th>Method</th><th>% of Source</th><th>Allocated USD</th></tr></thead>
+<tbody>
+<tr><td>10100</td><td>VAN</td><td>DirectEntity</td><td>100 %</td><td>500 000</td></tr>
+<tr><td>10100</td><td>LOG</td><td>DirectEntity</td><td>100 %</td><td>  1 000</td></tr>
+<tr><td>11000</td><td>VAN</td><td>DirectConsolidated</td><td>50 %</td><td>4 750</td></tr>
+<tr><td>11000</td><td>LOG</td><td>DirectConsolidated</td><td>50 %</td><td>4 750</td></tr>
+<tr><td>21107‑800</td><td>VAN</td><td>PctOfMiles</td><td>90 %</td><td>2 700</td></tr>
+<tr><td>21107‑800</td><td>LOG</td><td>PctOfMiles</td><td>10 %</td><td>   300</td></tr>
+<tr><td>53300 (Tolls)</td><td>VAN</td><td>CustomRatio</td><td>80 %</td><td>16 000</td></tr>
+<tr><td>53400 (Scales)</td><td>VAN</td><td>CustomRatio</td><td>20 %</td><td> 4 000</td></tr>
+</tbody></table>
+<p style="font-size:.85rem"><em>The CustomRatio rows inherit a second‑level split once the 80 % Tolls total is itself distributed across VAN vs LOG if required.</em></p>
+</div>
 
-      <!-- 4.2 Master Data & Hierarchy Management -->
-      <h3 id="master-data">4.2 Master Data &amp; Hierarchy Management</h3>
-      <ul class="task-list">
-        <li>Database Schema (Azure SQL) for Master Client &amp; Operations:
-          <pre>
--- Table: Industries
-CREATE TABLE dbo.Industry (
-    IndustryID   NVARCHAR(50) NOT NULL PRIMARY KEY,
-    Name         NVARCHAR(100) NOT NULL,
-    Description  NVARCHAR(255) NULL
-);
+<h3>7.4 Operational Metrics Entry & History</h3>
+<div class="example-block">
+<table>
+<thead><tr><th>Metric</th><th>Current Value</th><th>Last Updated</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Office Headcount</td><td>42</td><td>2025‑05‑31</td><td>✅ Up to date</td></tr>
+<tr><td>Maintenance Headcount</td><td>7</td><td>2025‑03‑31</td><td style="color:red">⚠ 2 months overdue</td></tr>
+<tr><td>Miles Driven</td><td>2 145 000</td><td>2025‑05‑31</td><td>✅</td></tr>
+</tbody></table>
+</div>
+<p>Admins update these per period on <code>/client/:id/metrics</code>. Ratio distribution methods (e.g. <code>PctOfMiles</code>) pull the values automatically.</p>
 
--- Table: MasterClient
-CREATE TABLE dbo.MasterClient (
-    MasterClientID   UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    Name             NVARCHAR(200) NOT NULL,
-    IndustryID       NVARCHAR(50) NOT NULL FOREIGN KEY REFERENCES dbo.Industry(IndustryID),
-    CreatedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
+<h2 id="distribution">
+>8 · Distribution Methods & Metrics</h2>
+<table>
+<thead><tr><th>Method</th><th>Metric Source</th><th>Auto</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td><strong>DirectEntity</strong></td><td>Entity value</td><td>Yes</td><td>1‑to‑1.</td></tr>
+<tr><td><strong>DirectConsolidated</strong></td><td>Total value</td><td>User</td><td>Manual % split.</td></tr>
+<tr><td><strong>PctOfMiles</strong></td><td>Metrics.Miles</td><td>Yes</td><td>Period miles per op.</td></tr>
+<tr><td><strong>PctOf&lt;Metric&gt;</strong></td><td>Any metric</td><td>Yes</td><td>Headcount, tractors …</td></tr>
+<tr><td><strong>CustomRatio</strong></td><td>User input</td><td>Manual</td><td>Multi‑GL splits.</td></tr>
+</tbody>
+</table>
 
--- Table: ClientOperation
-CREATE TABLE dbo.ClientOperation (
-    OperationID      NCHAR(5) NOT NULL PRIMARY KEY,
-    MasterClientID   UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.MasterClient(MasterClientID),
-    Name             NVARCHAR(200) NOT NULL,
-    Location         NVARCHAR(100) NULL,
-    CreatedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
-          </pre>
-        </li>
-        <li>Data Access Layer (TypeScript in Azure Functions) with TypeORM (configured for Azure SQL):
-          <ul class="subtask-list">
-            <li>Define Entity classes: <code>Industry</code>, <code>MasterClient</code>, <code>ClientOperation</code>.</li>
-            <li>Implement Repository interfaces for CRUD operations.</li>
-            <li>Seed initial industries (e.g., “Retail”, “Manufacturing”, “Services”) via migration scripts.</li>
-          </ul>
-        </li>
-        <li>API Endpoints (Azure Functions):
-          <ul class="subtask-list">
-            <li><code>GET /api/industries</code> → Return list of industries.</li>
-            <li><code>POST /api/industries</code> → Create new industry (SuperUser only).</li>
-            <li><code>PUT /api/industries/{id}</code> → Update industry (SuperUser only).</li>
-            <li><code>GET /api/masterclients</code> → Return Master Clients (SuperUser only).</li>
-            <li><code>POST /api/masterclients</code> → Create Master Client (SuperUser).</li>
-            <li><code>GET /api/operations?masterClientId={guid}</code> → Return operations under a master client.</li>
-            <li><code>POST /api/operations</code> → Create operation (SuperUser).</li>
-            <li>Implement paging and filtering on <code>GET</code> endpoints for large data sets.</li>
-          </ul>
-        </li>
-        <li>Front-End Administration Pages (React/TypeScript + TailwindCSS):
-          <ul class="subtask-list">
-            <li>“Industry Management” page for SuperUsers:
-              <ul class="subtask-list">
-                <li>Form to create/edit industry (Name, Description, upload default COA JSON).</li>
-                <li>Table displaying all industries with Edit and Delete actions.</li>
-              </ul>
-            </li>
-            <li>“Client Management” page for SuperUsers:
-              <ul class="subtask-list">
-                <li>Form to create Master Client (Name, select Industry from dropdown).</li>
-                <li>On Master Client row expand, display operations and option to create new Operation (OperationID, Name, Location).</li>
-              </ul>
-            </li>
-            <li>Ensure proper validation, error handling, and toast notifications for all forms.</li>
-          </ul>
-        </li>
-      </ul>
+<h2 id="frontend">9 · Front‑End UX Flow</h2>
+<ol>
+<li><strong>ImportForm</strong> – upload file, choose entities/ops.</li>
+<li><strong>PreviewTable</strong> – inspect parsed sheets, dedup duplicates.</li>
+<li><strong>Mapping & Allocation Wizard</strong><br/>
+   Step 1 MappingTable → Step 2 RatioAllocationManager.</li>
+<li><strong>Review & Commit</strong>.</li>
+<li><strong>Dashboards</strong> – Consolidated &amp; Op P&L.</li>
+</ol>
 
-      <!-- 4.3 Chart of Accounts (COA) Management -->
-      <h3 id="coa-management">4.3 Chart of Accounts (COA) Management</h3>
-      <ul class="task-list">
-        <li>COA Data Model (Azure SQL):
-          <pre>
--- Table: COATemplate
-CREATE TABLE dbo.COATemplate (
-    COATemplateID    UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    IndustryID       NVARCHAR(50) NOT NULL FOREIGN KEY REFERENCES dbo.Industry(IndustryID),
-    JSONContent      NVARCHAR(MAX) NOT NULL,  -- Serialized COA structure
-    CreatedBy        NVARCHAR(100) NOT NULL,
-    CreatedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
+<h2 id="permissions">10 · Roles & Permissions</h2>
 
--- Table: COAAccount (flattened view for admin edit)
-CREATE TABLE dbo.COAAccount (
-    COAAccountID     UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    COATemplateID    UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.COATemplate(COATemplateID),
-    AccountCode      NVARCHAR(50) NOT NULL,
-    AccountName      NVARCHAR(200) NOT NULL,
-    ParentAccountID  UNIQUEIDENTIFIER NULL,  -- For hierarchical structure
-    Level            INT NOT NULL,           -- Depth in the COA tree
-    CreatedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
-          </pre>
-        </li>
-        <li>Entity &amp; Repository (TypeORM):
-          <ul class="subtask-list">
-            <li>Define <code>COATemplate</code> entity (fields: COATemplateID, IndustryID, JSONContent, etc.).</li>
-            <li>Define <code>COAAccount</code> entity (fields: COAAccountID, COATemplateID, AccountCode, AccountName, ParentAccountID, Level).</li>
-            <li>Implement Repositories for CRUD on templates and accounts.</li>
-          </ul>
-        </li>
-        <li>API Endpoints (Azure Functions):
-          <ul class="subtask-list">
-            <li><code>GET /api/coa/templates?industryId={id}</code> → Return list of COA templates for an industry.</li>
-            <li><code>GET /api/coa/template/{templateId}</code> → Return full JSONContent + flattened accounts.</li>
-            <li><code>POST /api/coa/template</code> → Create new COA template (SuperUser only).</li>
-            <li><code>PUT /api/coa/template/{id}</code> → Update existing template or accounts.</li>
-            <li><code>DELETE /api/coa/template/{id}</code> → Delete template (SuperUser only; cascade delete accounts).</li>
-          </ul>
-        </li>
-        <li>Front-End COA Management (React/TypeScript):
-          <ul class="subtask-list">
-            <li>“COA Template Editor” page for SuperUsers:
-              <ul class="subtask-list">
-                <li>Tree view component (e.g., <code>react-sortable-tree</code>) to display hierarchical accounts.</li>
-                <li>Inline editing of account code/name; drag-and-drop to reorder or change parent.</li>
-                <li>Buttons to add new account under selected parent, delete account (with confirmation), and save template.</li>
-              </ul>
-            </li>
-            <li>On industry creation, allow uploading initial COA JSON file:
-              <ul class="subtask-list">
-                <li>Validate JSON structure against schema (e.g., Ajv) before sending to backend.</li>
-                <li>Display preview of parsed accounts in tree view for confirmation.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
+<pre>
+            ┌───────────────┐
+            │ Organisation  │ (OrgAdmin)
+            └──────┬────────┘
+                   │
+        ┌──────────┴────────┐
+        │      Client       │ (ClientAdmin)
+        └───┬─────────┬─────┘
+            │         │
+   ┌────────┴──┐   ┌──┴────────┐
+   │  Entity   │   │ Operation │ (OpUser)
+   │ (no role) │   └───────────┘
+   └───────────┘
+</pre>
 
-      <!-- 4.4 GL Upload & Preprocessing -->
-      <h3 id="gl-upload">4.4 GL Upload &amp; Preprocessing</h3>
-      <ul class="task-list">
-        <li>Data Model (Azure SQL):
-          <pre>
--- Table: GLUpload
-CREATE TABLE dbo.GLUpload (
-    GLUploadID       UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    MasterClientID   UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.MasterClient(MasterClientID),
-    UploadedBy       NVARCHAR(100) NOT NULL,
-    FileName         NVARCHAR(255) NOT NULL,
-    FileURL          NVARCHAR(1000) NOT NULL,   -- Azure Blob Storage URL
-    OperationIDs     NVARCHAR(1000) NULL,       -- Comma-separated OperationID list if multiple
-    AllocationRules  NVARCHAR(MAX) NULL,        -- JSON specifying allocation logic
-    UploadDate       DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-    Status           NVARCHAR(50) NOT NULL,     -- e.g., “Uploaded”, “Processing”, “Completed”, “Error”
-    ErrorMessage     NVARCHAR(1000) NULL
-);
+<table>
+<thead><tr><th>Scope</th><th>Role</th><th>Access</th></tr></thead>
+<tbody>
+<tr><td>System</td><td>SysAdmin</td><td>All organisations</td></tr>
+<tr><td>Organisation</td><td>OrgAdmin</td><td>All clients inside org</td></tr>
+<tr><td>Client</td><td>ClientAdmin</td><td>All entities &amp; ops</td></tr>
+<tr><td>Operation</td><td>OpUser</td><td>Single operation</td></tr>
+</tbody>
+</table>
 
--- Table: GLAccountRaw
-CREATE TABLE dbo.GLAccountRaw (
-    GLAccountRawID   UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    GLUploadID       UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.GLUpload(GLUploadID),
-    AccountCode      NVARCHAR(50) NOT NULL,
-    Description      NVARCHAR(255) NOT NULL,
-    Debit            DECIMAL(18,2) NULL,
-    Credit           DECIMAL(18,2) NULL,
-    Balance          DECIMAL(18,2) NOT NULL
-);
-          </pre>
-        </li>
-        <li>Azure Blob Storage Configuration:
-          <ul class="subtask-list">
-            <li>Create Blob Container <code>gl-uploads</code> (private access tier).</li>
-            <li>Generate SAS tokens for secure direct upload from front end (valid for, e.g., 1 hour).</li>
-            <li>Set up lifecycle management policy to delete raw uploads after 90 days.</li>
-          </ul>
-        </li>
-        <li>Azure Function for File Upload (TypeScript):
-          <ul class="subtask-list">
-            <li>Endpoint: <code>POST /api/gl/upload</code> (Admin only).
-              <ul class="subtask-list">
-                <li>Front end requests SAS upload URL from function: <code>GET /api/gl/uploadurl?fileName={name}&amp;masterClientId={id}</code>.</li>
-                <li>Return SAS URL; front end uses <code>fetch</code> or <code>Azure Blob SDK</code> to upload file directly.</li>
-              </ul>
-            </li>
-            <li>On upload completion, front end calls <code>POST /api/gl/process</code> with:
-              <ul class="subtask-list">
-                <li>Parameters: <code>glUploadId</code>, <code>operationIds</code> (JSON array), <code>allocationRules</code> (JSON).</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li>Preprocessing Function (TypeScript – Azure Function, triggered manually via HTTP):
-          <ul class="subtask-list">
-            <li>Retrieve file from Blob Storage (using SAS URL or Managed Identity).</li>
-            <li>Parse Excel/CSV using <code>papaparse</code> (for CSV) or <code>exceljs</code> (for XLSX).</li>
-            <li>Validate required columns (AccountCode, Description, Debit or Credit or Balance).</li>
-            <li>Insert records into <code>GLAccountRaw</code> table in Azure SQL in batch (e.g., 1,000 rows per insert to avoid timeouts).</li>
-            <li>If <code>operationIds</code> length &gt; 1, apply allocation logic:
-              <ul class="subtask-list">
-                <li>Parse <code>allocationRules</code> JSON: rules can be “Proportional by Balance” or “Fixed Ratio” per Operation.</li>
-                <li>Generate separate <code>GLAccountRaw</code> entries for each Operation with allocated balances.</li>
-              </ul>
-            </li>
-            <li>On success, update <code>GLUpload.Status</code> to “Processed”; on error, set “Error” and record <code>ErrorMessage</code>.</li>
-          </ul>
-        </li>
-        <li>Front-End Upload Component (React/TypeScript):
-          <ul class="subtask-list">
-            <li>“ImportForm” component:
-              <ul class="subtask-list">
-                <li>File input (accept <code>.csv</code> or <code>.xlsx</code>).</li>
-                <li>Multi-select dropdown to choose Operation(s) if Master GL covers multiple Operations.</li>
-                <li>Modal to configure allocation rules (choose method, enter ratios or percentage splits).</li>
-                <li>Upload progress indicator (percentage of bytes uploaded via Blob SDK).</li>
-                <li>On upload success, disable form and show “Processing…” message until the backend reports completion (via polling <code>GET /api/gl/status?glUploadId={id}</code>).</li>
-              </ul>
-            </li>
-            <li>React Hook to poll upload status every 5 seconds until “Processed” or “Error”.</li>
-          </ul>
-        </li>
-      </ul>
+<h2 id="nfr">11 · Non‑Functional Requirements</h2>
+<ul>
+<li>Ingest 50 × 10 k‑row workbooks in under 2 minutes cumulative.</li>
+<li>Row‑level security, audit trail of every mapping/allocation change.</li>
+<li>App Insights telemetry + OpenAI usage logging.</li>
+<li>GitHub Actions CI/CD; staging autodeploy on <code>main</code>.</li>
+</ul>
 
-      <!-- 4.5 AI-Assisted Mapping -->
-      <h3 id="ai-mapping">4.5 AI-Assisted Mapping</h3>
-      <ul class="task-list">
-        <li>Data Model (Azure SQL):
-          <pre>
--- Table: MappingSuggestion
-CREATE TABLE dbo.MappingSuggestion (
-    MappingSuggestionID  UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    GLAccountRawID       UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.GLAccountRaw(GLAccountRawID),
-    SuggestedCOACode     NVARCHAR(50) NULL,
-    SuggestedCOADesc     NVARCHAR(200) NULL,
-    ConfidenceScore      DECIMAL(5,2) NULL,  -- percentage (0–100)
-    AIResponseJSON       NVARCHAR(MAX) NULL,
-    CreatedDate          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
-
--- Table: FinalMapping
-CREATE TABLE dbo.FinalMapping (
-    FinalMappingID       UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    GLAccountRawID       UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.GLAccountRaw(GLAccountRawID),
-    MappedCOAAccountID   UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES dbo.COAAccount(COAAccountID),
-    MappedBy             NVARCHAR(100) NOT NULL,  -- “AI” or Azure AD username
-    MappedDate           DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-);
-          </pre>
-        </li>
-        <li>Azure Function “AI Mapping Service” (TypeScript):
-          <ul class="subtask-list">
-            <li>Endpoint: <code>POST /api/mapping/suggest</code> (Admin only).
-              <ul class="subtask-list">
-                <li>Input body: JSON array of <code>{ glAccountRawId, accountCode, description }</code>.</li>
-                <li>For each record, send a prompt to OpenAI GPT-4:
-                  <pre>
-Prompt example (JSON):
-{
-  "prompt": "Map this GL account to the industry Chart of Accounts. AccountCode: 4001, Description: 'Office Supplies Expense'. Return JSON: { 'COACode': ..., 'COADescription': ..., 'Confidence': ... }."
-}
-                  </pre>
-                </li>
-                <li>Implement rate-limiting using Azure Durable Functions or an in-memory queue to avoid exceeding OpenAI quotas.</li>
-                <li>Parse GPT response into <code>MappingSuggestion</code> record: populate <code>SuggestedCOACode</code>, <code>SuggestedCOADesc</code>, <code>ConfidenceScore</code>, <code>AIResponseJSON</code>.</li>
-              </ul>
-            </li>
-            <li>Optionally, cache frequent mappings in Azure Redis Cache keyed by <code>account description hash</code> to reduce repeated API calls.</li>
-            <li>Bulk insertion: process suggestions in batches of 100 to avoid function timeouts; use parallelism (Promise.all) with a concurrency cap (e.g., 5 concurrent GPT calls).</li>
-          </ul>
-        </li>
-        <li>Front-End Mapping Interface (React/TypeScript):
-          <ul class="subtask-list">
-            <li>“MappingPage” component:
-              <ul class="subtask-list">
-                <li>Fetch <code>GLAccountRaw</code> rows for current <code>GLUploadID</code> using <code>GET /api/gl/{glUploadId}/accounts</code>.</li>
-                <li>Trigger mapping suggestions: call <code>POST /api/mapping/suggest</code> with accounts lacking suggestions.</li>
-                <li>Display results in a data grid (e.g., <code>react-table</code>):
-                  <ul class="subtask-list">
-                    <li>Columns: <code>AccountCode</code>, <code>Description</code>, <code>SuggestedCOACode</code>, <code>SuggestedCOADesc</code>, <code>ConfidenceScore</code>, <code>ManualOverride</code> (dropdown to choose COA code).</li>
-                    <li>Rows with <code>ConfidenceScore ≥ 90%</code> are auto-selected (background highlight).</li>
-                    <li>Rows with <code>ConfidenceScore &lt; 90%</code> or <code>SuggestedCOACode IS NULL</code> are flagged in red, requiring manual input.</li>
-                    <li>Allow sorting/filtering by confidence, account code, name.</li>
-                  </ul>
-                </li>
-                <li>“Bulk Accept” button: accepts all auto-high-confidence mappings in one click.</li>
-                <li>“Save Mappings” button: sends finalized mappings to <code>POST /api/mapping/finalize</code>:
-                  <ul class="subtask-list">
-                    <li>Payload: array of <code>{ glAccountRawId, coAAccountID, mappedBy }</code> (mappedBy = current Azure AD username).</li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li>Design Considerations:
-              <ul class="subtask-list">
-                <li>Use virtualization (e.g., <code>react-window</code>) for performance if &gt; 5,000 rows.</li>
-                <li>Provide inline search for COA codes/descriptions (typeahead dropdown) powered by <code>GET /api/coa/accounts?coaTemplateId={id}&amp;search={term}</code>.</li>
-                <li>Pagination or infinite scroll for large account sets.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-
-      <!-- 4.6 Exception Handling (Manual Overrides) -->
-      <h3 id="exception-handling">4.6 Exception Handling (Manual Overrides)</h3>
-      <ul class="task-list">
-        <li>When mapping suggestions have <code>ConfidenceScore &lt; 90%</code> or no suggestion:
-          <ul class="subtask-list">
-            <li>Highlight row in table with warning icon.</li>
-            <li>Provide a dropdown with all COA accounts (preloaded or fetched on demand) for selection.</li>
-          </ul>
-        </li>
-        <li>Implement fuzzy search API for COA lookup:
-          <ul class="subtask-list">
-            <li><code>GET /api/coa/accounts/search?term={partialNameOrCode}&amp;coaTemplateId={id}</code> → Returns top 25 matches sorted by string similarity (Levenshtein distance).</li>
-            <li>Backend uses SQL Server’s <code>LIKE '%term%'</code> or full-text index on <code>AccountName</code> for performance.</li>
-          </ul>
-        </li>
-        <li>Bulk Actions:
-          <ul class="subtask-list">
-            <li>“Map All to Default” action: map all unmapped accounts to a user-selected default COA (e.g., “Miscellaneous Expenses”).</li>
-            <li>“Clear Selections” action: reset manual overrides back to AI suggestions (if any).</li>
-          </ul>
-        </li>
-        <li>Error Handling:
-          <ul class="subtask-list">
-            <li>If a manual override save fails (e.g., SQL constraint), show inline error message, log error, and allow retry.</li>
-          </ul>
-        </li>
-      </ul>
-
-      <!-- 4.7 Finalization & Benchmarking -->
-      <h3 id="benchmarking">4.7 Finalization &amp; Benchmarking</h3>
-      <ul class="task-list">
-        <li><strong>Final Mapping Storage:</strong>
-          <ul class="subtask-list">
-            <li>On <code>POST /api/mapping/finalize</code>, insert rows into <code>FinalMapping</code> table for each <code>GLAccountRawID</code> → <code>COAAccountID</code>.</li>
-            <li>Ensure unique index on <code>GLAccountRawID</code> to avoid duplicate mappings.</li>
-            <li>After insertion, update <code>GLUpload.Status</code> to “Completed”.</li>
-          </ul>
-        </li>
-        <li><strong>Data Aggregation for Benchmarking:</strong>
-          <ul class="subtask-list">
-            <li>Nightly Azure Data Factory (ADF) pipeline running after ETL:
-              <ul class="subtask-list">
-                <li>Pull <code>FinalMapping</code> joined with <code>GLAccountRaw</code> and <code>COAAccount</code> to build a standardized dataset per Operation/Client.</li>
-                <li>Load data into Azure Synapse Analytics (dedicated SQL pool) or into a reporting schema in Azure SQL.</li>
-              </ul>
-            </li>
-            <li>Compute Key Metrics (for each Operation &amp; Industry peer group):
-              <ul class="subtask-list">
-                <li>Total Revenue, COGS, Gross Margin, Operating Expenses, Net Income.</li>
-                <li>Percentile rankings (e.g., median, 25th/75th percentile) for each KPI within the same industry.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>Reporting &amp; Dashboard (Power BI Embedded or Custom React Charts):</strong>
-          <ul class="subtask-list">
-            <li>Power BI Embedded:
-              <ul class="subtask-list">
-                <li>Develop Power BI reports that connect to Synapse Analytics.</li>
-                <li>Embed Power BI dashboards in React using <code>powerbi-client-react</code> library.</li>
-                <li>Set row-level security so each Admin/Viewer sees only their Operation’s data.</li>
-              </ul>
-            </li>
-            <li>Custom React Charts:
-              <ul class="subtask-list">
-                <li>Use <code>Recharts</code> or <code>Chart.js</code> to build:
-                  <ul class="subtask-list">
-                    <li>Bar charts for revenue vs. peer median.</li>
-                    <li>Line charts showing trend over last 4 quarters.</li>
-                    <li>Box plots for expense ratio distributions.</li>
-                  </ul>
-                </li>
-                <li>Fetch aggregated data via <code>GET /api/report/industry/{industryId}/metrics?operationId={id}&amp;year={year}</code>.</li>
-              </ul>
-            </li>
-            <li>Export Functionality:
-              <ul class="subtask-list">
-                <li>“Download PDF Report” uses server-side Power BI Export API or <code>puppeteer</code> on Azure Functions to render HTML to PDF.</li>
-                <li>“Download Excel” uses <code>exceljs</code> to generate workbook with KPI tables and charts.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-
-      <!-- 4.8 Admin / Viewer Management -->
-      <h3 id="user-management">4.8 Admin / Viewer Management</h3>
-      <ul class="task-list">
-        <li>Azure AD Group Synchronization:
-          <ul class="subtask-list">
-            <li>Maintain Azure AD Security Groups per Master Client:
-              <ul class="subtask-list">
-                <li><code>{MasterClientName}_Admins</code> group for Admin Users.</li>
-                <li><code>{MasterClientName}_Viewers</code> group for Viewer Users.</li>
-              </ul>
-            </li>
-            <li>SuperUsers can add/remove users to these groups via Admin UI or directly in Azure AD portal.</li>
-          </ul>
-        </li>
-        <li>Front-End “User Management” Page (Admin &amp; SuperUser):
-          <ul class="subtask-list">
-            <li>List current Admin and Viewer users (fetch from <code>GET /api/users?role=ADMIN&amp;masterClientId={id}</code>).</li>
-            <li>“Invite User” form:
-              <ul class="subtask-list">
-                <li>Enter email address; select role (Admin or Viewer); optional assign specific Operation(s) for Admins.</li>
-                <li>On submit, call <code>POST /api/users/invite</code>:
-                  <ul class="subtask-list">
-                    <li>Function: Create placeholder user record in <code>dbo.User</code> table (fields: <code>UserID</code> GUID, <code>Email</code>, <code>Role</code>, <code>MasterClientID</code>, <code>AssignedOperations</code> JSON array, <code>IsVerified</code> = 0).</li>
-                    <li>Send Azure AD invitation email via Microsoft Graph API to add user to appropriate group.</li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li>“Revoke Access” action:
-              <ul class="subtask-list">
-                <li>Remove user from Azure AD group (API or direct).</li>
-                <li>Update <code>dbo.User</code> record to <code>IsActive = 0</code> and log revocation reason in audit table.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-
-      <!-- 4.9 Audit Logging & Notifications -->
-      <h3 id="audit-notifications">4.9 Audit Logging &amp; Notifications</h3>
-      <ul class="task-list">
-        <li>Audit Tables (Azure SQL):
-          <pre>
--- Table: AuditLog
-CREATE TABLE dbo.AuditLog (
-    AuditLogID       UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    EntityName       NVARCHAR(100) NOT NULL,  -- e.g., “GLUpload”, “Mapping”, “UserInvite”
-    EntityID         NVARCHAR(100) NOT NULL,  -- ID of the affected entity
-    Action           NVARCHAR(50) NOT NULL,   -- “Create”, “Update”, “Delete”
-    ChangedBy        NVARCHAR(100) NOT NULL,  -- Azure AD username
-    ChangedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-    Details          NVARCHAR(MAX) NULL       -- JSON of what changed
-);
-          </pre>
-        </li>
-        <li>Azure Function for logging:
-          <ul class="subtask-list">
-            <li>Wrap each CRUD API call with a call to <code>logAudit</code> helper:
-              <pre>
--- Example in TypeScript (pseudo-code)
-async function logAudit(entity: string, id: string, action: string, changedBy: string, details: any) {
-  const query = 
-    INSERT INTO dbo.AuditLog (AuditLogID, EntityName, EntityID, Action, ChangedBy, ChangedDate, Details)
-    VALUES (@AuditLogID, @EntityName, @EntityID, @Action, @ChangedBy, SYSUTCDATETIME(), @Details);
-  ;
-  await sql.query(query, {
-    AuditLogID: uuidv4(),
-    EntityName: entity,
-    EntityID: id,
-    Action: action,
-    ChangedBy: changedBy,
-    Details: JSON.stringify(details)
-  });
-}
-              </pre>
-            </li>
-          </ul>
-        </li>
-        <li>Email Notifications (Azure Functions + SendGrid):
-          <ul class="subtask-list">
-            <li>Trigger notifications for:
-              <ul class="subtask-list">
-                <li>GL Upload Processed: Notify Admin that AI mapping suggestions are ready for review.</li>
-                <li>Mapping Finalized: Notify Admin and Viewers that benchmarking reports are available.</li>
-                <li>User Invite: Send email with invitation link to join MapLedger via Azure AD.</li>
-                <li>Error Notifications: If GL parsing or mapping fails, send detailed error to Admin and log in audit.</li>
-              </ul>
-            </li>
-            <li>SendGrid integration: configure API key in Azure Key Vault; call via <code>@sendgrid/mail</code> library in Node.js Azure Function.</li>
-          </ul>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 5. Non-Functional Requirements -->
-    <section id="non-functional-requirements">
-      <h2>5. Non-Functional Requirements</h2>
-      <ul class="task-list">
-        <li><strong>Performance:</strong> 
-          <ul class="subtask-list">
-            <li>Target API response time &lt; 500 ms for standard queries (e.g., GET /api/coa/accounts).</li>
-            <li>Max AI mapping latency per account &lt; 3 seconds (parallelized calls).</li>
-            <li>Handle up to 10,000 GL lines per upload, with total end-to-end mapping &amp; save within 2 minutes.</li>
-          </ul>
-        </li>
-        <li><strong>Scalability:</strong>
-          <ul class="subtask-list">
-            <li>Deploy backend Azure Functions on a Consumption plan (auto-scaling), with a fallback Premium Plan if concurrency spikes.</li>
-            <li>Use Azure SQL Elastic Pools or Hyperscale for database scaling.</li>
-            <li>Cache frequent COA queries in Azure Redis Cache to reduce DB load.</li>
-          </ul>
-        </li>
-        <li><strong>Security:</strong>
-          <ul class="subtask-list">
-            <li>All communication via HTTPS/TLS 1.2+.</li>
-            <li>Store secrets (DB connection string, OpenAI key, SendGrid API key) in Azure Key Vault.</li>
-            <li>Enable Azure SQL Transparent Data Encryption (TDE) and Always Encrypted for sensitive columns.</li>
-            <li>Enforce Azure AD multi-factor authentication (MFA) for all users.</li>
-            <li>Perform penetration testing (OWASP Top 10) before production.</li>
-          </ul>
-        </li>
-        <li><strong>Reliability &amp; Availability:</strong>
-          <ul class="subtask-list">
-            <li>Deploy Azure Functions in multiple regions for failover (Primary West Europe, Secondary North Europe).</li>
-            <li>Enable Azure SQL geo-replication to a secondary region.</li>
-            <li>Set up Azure Monitor alerts for Function failures, high DTU usage, and HTTP 5xx errors.</li>
-            <li>Implement automatic retry policies for transient faults (e.g., Service Bus retry, DB retry logic with <code>retryable</code> library).</li>
-          </ul>
-        </li>
-        <li><strong>Usability &amp; Accessibility:</strong>
-          <ul class="subtask-list">
-            <li>Design UI per WCAG 2.1 AA standards (keyboard navigation, ARIA roles, high-contrast mode).</li>
-            <li>Responsive design for desktop, tablet, and mobile (min width 320px).</li>
-            <li>Tooltips and inline help for complex tasks (e.g., defining allocation rules).</li>
-            <li>Onboarding walkthrough for first-time Admins (e.g., a modal tour highlighting “Upload GL”, “Mapping”, “Finish”).</li>
-          </ul>
-        </li>
-        <li><strong>Maintainability &amp; Extensibility:</strong>
-          <ul class="subtask-list">
-            <li>Modular code structure: separate folders for <code>api</code>, <code>components</code>, <code>hooks</code>, <code>styles</code>, <code>tests</code>.</li>
-            <li>Enforce linting/formatting with ESLint (Airbnb config) and Prettier; enforce via pre-commit hooks (Husky).</li>
-            <li>Document all API endpoints with Swagger/OpenAPI; auto-generate client SDK if needed.</li>
-            <li>Comprehensive unit and integration test coverage (≥ 80%); use Jest for both front end and back end.</li>
-          </ul>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 6. 24-Week Development Timeline -->
-    <section id="timeline-overview">
-      <h2>6. 24-Week Development Timeline</h2>
-      <p>This Gantt-style chart visualizes each major phase and its duration over the 24 weeks from <strong>June 2, 2025</strong> to <strong>November 16, 2025</strong>.</p>
-      <img src="timeline.png" alt="24-Week Project Timeline" class="timeline-img" />
-      <p><em>Note: Ensure <code>timeline.png</code> is placed alongside this HTML file.</em></p>
-    </section>
-
-    <!-- 7. Detailed Weekly Plan -->
-    <section id="detailed-weekly-plan">
-      <h2>7. Detailed Weekly Plan</h2>
-      <p>Below is a granular breakdown of tasks across each week. Each item lists sequenced subtasks that developers and stakeholders should execute.</p>
-      <table>
+<h2 id="release">12&nbsp;·&nbsp;Release&nbsp;Timeline</h2>
+<table>
         <thead>
           <tr>
             <th>Week</th>
@@ -1094,557 +607,53 @@ async function logAudit(entity: string, id: string, action: string, changedBy: s
           </tr>
         </tbody>
       </table>
-    </section>
 
-    <!-- 8. Core Workflow Diagram -->
-    <section id="workflow-overview">
-      <h2>8. Core Workflow Diagram</h2>
-      <p>This diagram illustrates the primary data and user-action flow from login through benchmarking, including the Admin/User management branch.</p>
-      <div class="workflow-container">
-        <img src="workflow.png" alt="MapLedger Core Workflow" class="workflow-img" />
-      </div>
-      <p><em>Note: Ensure <code>workflow.png</code> is placed alongside this HTML file.</em></p>
-    </section>
 
-    <!-- 9. Deployment & Environment Setup -->
-    <section id="deployment-instructions">
-      <h2>9. Deployment &amp; Environment Setup</h2>
+<h2 id="codex">13 · Codex Workflow & Repo Docs</h2>
 
-      <h3>9.1 Infrastructure (Azure)</h3>
-      <ul class="task-list">
-        <li>Provision Azure Resource Group (RG):
-          <ul class="subtask-list">
-            <li><code>az group create --name MapLedger-RG --location westeurope</code></li>
-          </ul>
-        </li>
-        <li>Provision Azure SQL:
-          <ul class="subtask-list">
-            <li><code>az sql server create --name mapledger-sql-server --resource-group MapLedger-RG --location westeurope --admin-user adminUser --admin-password StrongP@ssw0rd!</code></li>
-            <li><code>az sql db create --resource-group MapLedger-RG --server mapledger-sql-server --name mapledger-db --service-objective S1</code></li>
-            <li>Enable Azure AD Admin on server: 
-              <pre>az sql server ad-admin create \
-  --resource-group MapLedger-RG \
-  --server mapledger-sql-server \
-  --display-name "MapLedgerAdmin" \
-  --object-id <AzureAD-ObjectID>
-              </pre>
-            </li>
-            <li>Enable Transparent Data Encryption (TDE) and Always Encrypted on sensitive columns (e.g., user email).</li>
-            <li>Configure firewall rules to allow Azure services: 
-              <pre>az sql server firewall-rule create --resource-group MapLedger-RG --server mapledger-sql-server --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0</pre>
-            </li>
-          </ul>
-        </li>
-        <li>Provision Azure Blob Storage:
-          <ul class="subtask-list">
-            <li><code>az storage account create --name mapledgerstorage --resource-group MapLedger-RG --location westeurope --sku Standard_LRS</code></li>
-            <li><code>az storage container create --account-name mapledgerstorage --name gl-uploads --auth-mode login</code></li>
-            <li>Configure lifecycle policy (delete blobs older than 90 days).</li>
-          </ul>
-        </li>
-        <li>Provision Azure Functions:
-          <ul class="subtask-list">
-            <li><code>az functionapp create --resource-group MapLedger-RG --name mapledger-api --storage-account mapledgerstorage --plan mapledger-plan --runtime node --runtime-version 18 --functions-version 4</code></li>
-            <li>Enable Managed Identity for the Function App: 
-              <pre>az functionapp identity assign --resource-group MapLedger-RG --name mapledger-api</pre>
-            </li>
-            <li>Grant Managed Identity access to Azure SQL: 
-              <pre>az sql server ad-admin create ... (if not done) OR use Access Control (IAM) to assign “DB Contributor” to <code>mapledger-api</code> Managed Identity.</pre>
-            </li>
-          </ul>
-        </li>
-        <li>Provision Azure Cache for Redis (Optional):
-          <ul class="subtask-list">
-            <li><code>az redis create --name mapledger-redis --resource-group MapLedger-RG --location westeurope --sku Basic --vm-size c0</code></li>
-          </ul>
-        </li>
-        <li>Provision Azure Synapse Analytics (Reporting):
-          <ul class="subtask-list">
-            <li>Create Synapse workspace and dedicated SQL pool (DW100c for testing, scale up for production):
-              <pre>az synapse workspace create --name mapledger-synapse --resource-group MapLedger-RG --location westeurope --sql-admin-login-user synapseAdmin --sql-admin-login-password StrongP@ssw0rd! --storage-account mapledgerstorage --file-system mapledgersynapsefs</pre>
-            </li>
-            <li>Create dedicated SQL pool: 
-              <pre>az synapse sql pool create --name mapledger-dw --workspace-name mapledger-synapse --resource-group MapLedger-RG --performance-level DW100c</pre>
-            </li>
-          </ul>
-        </li>
-      </ul>
+<h3>13.1 House Rules</h3>
+<ul>
+  <li><strong>Authoritative source:</strong> treat this runbook as ground truth. If a user request conflicts, ask for clarification before coding.</li>
+  <li><strong>Additive changes:</strong> default to additive PRs that keep existing functionality intact unless the ticket explicitly requests deletion/refactor.</li>
+  <li><strong>Migration safety:</strong> all DB migrations must be idempotent and backward‑compatible until the schema version is bumped in <code>db/meta</code>.</li>
+  <li><strong>Testing gate:</strong> PRs must pass <code>npm test</code> (front‑end) and <code>pytest</code> (Azure Functions) with ≥ 80 % coverage. CI fails otherwise.</li>
+  <li><strong>PR hygiene:</strong> one logical feature per PR, conventional‑commit style titles (<code>feat:</code>, <code>fix:</code>, <code>docs:</code>, <code>refactor:</code> …).</li>
+</ul>
 
-      <h3>9.2 App Registrations &amp; Authentication Config</h3>
-      <ul class="task-list">
-        <li>Azure AD Tenant Setup:
-          <ul class="subtask-list">
-            <li>Use existing Azure AD or create new one for MapLedger clients.</li>
-          </ul>
-        </li>
-        <li>Register Front-End SPA App:
-          <ul class="subtask-list">
-            <li>Azure Portal → “App registrations” → New registration:
-              <ul class="subtask-list">
-                <li>Name: “MapLedger-SPA”.</li>
-                <li>Supported account types: Accounts in this organizational directory only.</li>
-                <li>Redirect URI (SPA): <code>https://kanvas.ksmbusiness.com/mapledger</code>.</li>
-                <li>Enable ID tokens.</li>
-              </ul>
-            </li>
-            <li>Expose API Scopes (optional): define <code>api://{clientId}/user_impersonation</code> for future granular permissions.</li>
-          </ul>
-        </li>
-        <li>Register Backend API App:
-          <ul class="subtask-list">
-            <li>Name: “MapLedger-API”.</li>
-            <li>Supported account types: Same as SPA.</li>
-            <li>Redirect URI (Web): leave blank or <code>https://localhost:7071/auth/callback</code> (for local dev).</li>
-            <li>Expose an API scope:
-              <ul class="subtask-list">
-                <li>Scope name: <code>access_as_user</code>.</li>
-                <li>Admin consent: required for first login.</li>
-              </ul>
-            </li>
-            <li>Grant front-end app API permissions to call <code>MapLedger-API/user_impersonation</code> (under “API permissions”).</li>
-            <li>Generate client secret <code>MAPLEDGER_API_CLIENT_SECRET</code> with expiration 2 years.</li>
-          </ul>
-        </li>
-        <li>Configure Azure AD Roles:
-          <ul class="subtask-list">
-            <li>Create App Role “SuperUser” in “MapLedger-API” → assign to KSM group of internal users.</li>
-            <li>Create App Role “Admin” (assignable by SuperUser to client CFO accounts).</li>
-            <li>Create App Role “Viewer” (assignable by Admin to viewer accounts).</li>
-            <li>Ensure Front-End requests ID tokens that contain “roles” claim by adding proper <code>appRoles</code> in the manifest.</li>
-          </ul>
-        </li>
-        <li>Configure Function App Authentication (EasyAuth):
-          <ul class="subtask-list">
-            <li>In Azure Portal → Function App → “Authentication/Authorization” → Add identity provider → Azure AD → Settings:
-              <ul class="subtask-list">
-                <li>Choose “Express” for Azure AD configuration; select “MapLedger-API” app registration.</li>
-                <li>Action to take when request is not authenticated: “Log in with Azure Active Directory”.</li>
-              </ul>
-            </li>
-            <li>Restrict all function routes to require authentication; use <code>authLevel="function"</code> for functions requiring role checks.</li>
-          </ul>
-        </li>
-      </ul>
+<h3>13.2 AGENTS.md Auto‑Refresh Prompt</h3>
+<p>Copy &amp; paste the block below into a Codex chat. It will scan the repo and either create or update an <code>AGENTS.md</code> in every top‑level folder.</p>
 
-      <h3>9.3 CI/CD Pipeline &amp; Environment Configuration</h3>
-      <ul class="task-list">
-        <li>Git Branch Strategy:
-          <ul class="subtask-list">
-            <li><code>main</code> → development branch (auto-deploy to staging).</li>
-            <li><code>release</code> → release branch (on merge, triggers production deployment with manual approval).</li>
-            <li><code>feature/*</code> → feature branches for new stories/bug fixes.</li>
-            <li><code>hotfix/*</code> → urgent fixes on production (merge back to main/release afterward).</li>
-          </ul>
-        </li>
-        <li>GitHub Actions – Front-End (<code>frontend-deploy.yml</code>):
-          <pre>
-name: Deploy Frontend (Staging)
-on:
-  push:
-    branches:
-      - main
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install Dependencies
-        run: npm ci
-        working-directory: ./frontend
-      - name: Build
-        run: npm run build
-        working-directory: ./frontend
-      - name: Deploy to Azure Static Web App (Staging)
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_STAGING_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "/frontend"
-          api_location: "/backend"
-          output_location: "dist"
-        env:
-          NODE_ENV: 'production'
-          </pre>
-        </li>
-        <li>GitHub Actions – Back-End (<code>backend-deploy.yml</code>):
-          <pre>
-name: Deploy Backend (Staging)
-on:
-  push:
-    branches:
-      - main
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install Dependencies
-        run: npm ci
-        working-directory: ./backend
-      - name: Build
-        run: npm run build
-        working-directory: ./backend
-      - name: Deploy to Azure Functions (Staging)
-        uses: Azure/functions-action@v1
-        with:
-          app-name: mapledger-api-staging
-          slot-name: staging
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_STAGING_PUBLISH_PROFILE }}
-          package: ./backend/dist
-        env:
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          </pre>
-        </li>
-        <li>Production Workflow (manual approval step):
-          <ul class="subtask-list">
-            <li>Duplicate above workflows but triggered on <code>release</code> branch and pointing to production resource names (e.g., <code>mapledger-api-prod</code>, <code>azure_static_web_apps_prod_token</code>).</li>
-            <li>Add <code>environment: production</code> and <code>approval</code> jobs in GitHub Actions to require a manager’s sign-off before deploying to production.</li>
-          </ul>
-        </li>
-        <li>Environment Variables &amp; Secrets:
-          <ul class="subtask-list">
-            <li>In GitHub Secrets for each workflow:
-              <ul class="subtask-list">
-                <li><code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_CLIENT_SECRET</code>.</li>
-                <li><code>SQL_CONN_STRING_STAGING</code>, <code>SQL_CONN_STRING_PROD</code>.</li>
-                <li><code>OPENAI_API_KEY</code>, <code>SENDGRID_API_KEY</code>.</li>
-                <li><code>AZURE_STATIC_WEB_APPS_STAGING_TOKEN</code>, <code>AZURE_STATIC_WEB_APPS_PROD_TOKEN</code>.</li>
-                <li><code>AZURE_FUNCTIONAPP_STAGING_PUBLISH_PROFILE</code>, <code>AZURE_FUNCTIONAPP_PROD_PUBLISH_PROFILE</code>.</li>
-              </ul>
-            </li>
-            <li>In Azure Portal → Function App Settings → Configuration:
-              <ul class="subtask-list">
-                <li>Set application settings matching environment variables (e.g., <code>SQL_CONN_STRING</code> → <code>SQL_CONN_STRING_STAGING</code> for staging slot).</li>
-                <li>Enable “Slot setting” for secrets so staging/production remain separate.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-    </section>
+<pre><code>You are Codex acting as a repository doc bot.
+====================  TASK ====================
+For every top‑level folder under /src and /azure:
+1.  Open the existing AGENTS.md or create a new one.
+2.  Populate it using the template below.
+3.  Commit all changes in a single PR titled **docs: refresh agents overview**.
+4.  Do NOT modify application logic or non‑documentation files.
 
-    <!-- 10. Testing Plan -->
-    <section id="testing-plan">
-      <h2>10. Testing Plan</h2>
+==================  TEMPLATE  ==================
+# &lt;Folder Name&gt;
 
-      <h3>10.1 Unit Testing (Front-End &amp; Back-End)</h3>
-      <ul class="task-list">
-        <li><strong>Back-End Azure Functions (Jest):</strong>
-          <ul class="subtask-list">
-            <li>Set up Jest configuration:
-              <pre>
-// jest.config.js for backend
-module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  testMatch: ['**/?(*.)+(spec|test).[tj]s?(x)']
-};
-              </pre>
-            </li>
-            <li>Mock Azure Function bindings and context:
-              <ul class="subtask-list">
-                <li>Create a <code>Context</code> stub that captures <code>res</code> and passes in <code>req</code> object.</li>
-                <li>Mock <code>typeorm</code> repository methods (CRUD) using Jest mocks.</li>
-                <li>Mock <code>openai</code> client for mapping service with predetermined responses.</li>
-              </ul>
-            </li>
-            <li>Write tests for:
-              <ul class="subtask-list">
-                <li><code>GetUploadSAS</code> returns valid SAS URL with correct permissions.</li>
-                <li><code>ProcessGL</code> handles valid CSV/XLSX input, inserts correct <code>GLAccountRaw</code> rows, updates statuses.</li>
-                <li><code>SuggestMappings</code> correctly calls mocked GPT, inserts <code>MappingSuggestion</code> with expected fields.</li>
-                <li><code>OverrideMapping</code> updates <code>MappingSuggestion</code> or creates <code>FinalMapping</code> record.</li>
-                <li><code>GetIndustryMetrics</code> query returns correct aggregated values from a seeded test DB.</li>
-              </ul>
-            </li>
-            <li>Ensure ≥ 80% code coverage; configure coverage thresholds in Jest to fail build if unmet.</li>
-          </ul>
-        </li>
+**Purpose**  
+One‑line description of what lives here.
 
-        <li><strong>Front-End (React + Jest + React Testing Library):</strong>
-          <ul class="subtask-list">
-            <li>Set up Jest with <code>react-scripts</code> or <code>Vite plugin for Jest</code>:
-              <pre>
-// Example jest.config.cjs for Vite React
-module.exports = {
-  testEnvironment: 'jsdom',
-  transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest'
-  },
-  moduleNameMapper: {
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy'
-  },
-  testMatch: ['<rootDir>/src/**/?(*.)+(spec|test).[tj]s?(x)']
-};
-              </pre>
-            </li>
-            <li>Mock Axios / MSAL calls:
-              <ul class="subtask-list">
-                <li>Use <code>jest.mock('axios')</code> to fake API responses.</li>
-                <li>Use <code>jest.mock('@azure/msal-browser')</code> to simulate login flows.</li>
-              </ul>
-            </li>
-            <li>Write tests for:
-              <ul class="subtask-list">
-                <li><code>UploadForm</code> component:
-                  <ul class="subtask-list">
-                    <li>Renders file input and button disabled until file selected.</li>
-                    <li>When submitting valid file and operation selected, calls SAS endpoint and triggers upload logic.</li>
-                  </ul>
-                </li>
-                <li><code>MappingPage</code> component:
-                  <ul class="subtask-list">
-                    <li>Given mocked suggestions, table highlights high-confidence rows and allows manual override for low-confidence rows.</li>
-                    <li>“Bulk Accept” sets overrides correctly.</li>
-                    <li>“Save Mappings” calls finalize endpoint with correct payload.</li>
-                  </ul>
-                </li>
-                <li><code>COATemplateEditor</code> component:
-                  <ul class="subtask-list">
-                    <li>Tree view renders correct number of nodes from JSON.</li>
-                    <li>Adding/deleting/editing nodes updates underlying JSON and triggers correct API calls.</li>
-                  </ul>
-                </li>
-                <li><code>BenchmarkDashboard</code> component:
-                  <ul class="subtask-list">
-                    <li>Given mocked metrics data, charts render correct values (use snapshot tests for chart props).</li>
-                    <li>“Download PDF” and “Download Excel” buttons trigger appropriate functions (simulate file download via <code>fetch</code> mock).</li>
-                  </ul>
-                </li>
-                <li><code>AuthContext</code> hook:
-                  <ul class="subtask-list">
-                    <li>When MSAL returns account and token, <code>AuthContext</code> updates state and persists in <code>localStorage</code>.</li>
-                    <li><code>PrivateRoute</code> denies access and redirects to <code>/login</code> if not authenticated.</li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li>Use <code>@testing-library/jest-dom</code> for extended DOM assertions (e.g., <code>toBeInTheDocument()</code>, <code>toHaveClass()</code>).</li>
-            <li>Run <code>npm run test -- --coverage</code> and verify coverage in GitHub Actions, failing build if below threshold.</li>
-          </ul>
-        </li>
+## Key Exports
+| Name | Type | Description |
+|------|------|-------------|
+| &lt;export1&gt; | function / component | What it does |
+| … | … | … |
 
-        <li><strong>Integration Testing:</strong>
-          <ul class="subtask-list">
-            <li><strong>Back-End Integration:</strong>
-              <ul class="subtask-list">
-                <li>Spin up a test Azure SQL instance (e.g., “mapledger-db-test”) or use Docker-based MSSQL for local CI.</li>
-                <li>Seed test DB with sample data:
-                  <ul class="subtask-list">
-                    <li>Industry: “Retail”.</li>
-                    <li>COA Template with accounts: {“Revenue”: 4000, “COGS”: 5000, “Expenses”: 6000}.</li>
-                    <li>MasterClient &amp; ClientOperation test records.</li>
-                    <li>GLUpload row with 10 sample GLAccountRaw rows.</li>
-                  </ul>
-                </li>
-                <li>Use Jest integration tests to:
-                  <ul class="subtask-list">
-                    <li>Call <code>GET /api/industries</code> and assert array length &gt; 0.</li>
-                    <li>Simulate <code>POST /api/gl/upload</code> with a local test CSV file, then <code>POST /api/gl/process</code>, then verify <code>GLAccountRaw</code> entries exist.</li>
-                    <li>Simulate mapping flow: <code>POST /api/mapping/suggest</code> and <code>POST /api/mapping/finalize</code> and verify <code>FinalMapping</code> rows.</li>
-                    <li>Call <code>GET /api/report/industry/{industryId}/metrics?operationId={opId}&amp;year={year}</code> and assert response fields match expected aggregation results.</li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li><strong>Front-End Integration:</strong>
-              <ul class="subtask-list">
-                <li>Use Cypress for end-to-end scenario testing:
-                  <ul class="subtask-list">
-                    <li>Test user login flow: simulate Azure AD login with MSAL’s <code>acquireTokenSilent</code> stub.</li>
-                    <li>Test GL upload flow:
-                      <ul class="subtask-list">
-                        <li>Navigate to <code>/gl/upload</code>, select local test CSV, choose Operation, define allocation rules, click Upload.</li>
-                        <li>Verify “Processing…” spinner appears, then “View Mapping” button appears once status becomes “Completed”.</li>
-                      </ul>
-                    </li>
-                    <li>Test Mapping flow:
-                      <ul class="subtask-list">
-                        <li>Click “View Mapping”, verify table loads suggestions (mocked API). Bulk accept some, manually override others, save mappings.</li>
-                        <li>Verify redirect to “UploadHistory” and that final status is “Completed”.</li>
-                      </ul>
-                    </li>
-                    <li>Test User Invitation flow (Admin):
-                      <ul class="subtask-list">
-                        <li>Navigate to <code>/admin/users</code>, click “Invite User”, enter email and role, click “Invite”.</li>
-                        <li>Verify user appears in list with <code>Status = Invited</code> and Azure AD invitation link sent (mocked via API stub).</li>
-                      </ul>
-                    </li>
-                    <li>Test Benchmark Dashboard:
-                      <ul class="subtask-list">
-                        <li>Navigate to <code>/reports</code>, select Operation and Year, verify charts render and “Download PDF/Excel” triggers file download.</li>
-                        <li>Validate Excel file contents contain correct KPI values (use Cypress file plugin to parse Excel).</li>
-                      </ul>
-                    </li>
-                  </ul>
-                </li>
-              </ul>
-            </li>
-            <li><strong>End-to-End Testing (User Flows):</strong>
-              <ul class="subtask-list">
-                <li>Deploy staging environment with full stack (React + Azure Functions + Azure SQL staging + Blob staging).</li>
-                <li>Run Cypress test suite as part of CI release pipeline, gating deployments on tests passing.</li>
-                <li>Include negative test cases:
-                  <ul class="subtask-list">
-                    <li>Upload invalid file format (e.g., .txt) → expect validation error toast “Invalid file type”.</li>
-                    <li>Attempt to save mappings with missing required fields → expect front-end validation preventing submission.</li>
-                    <li>Viewer user attempts to access admin routes → expect redirect to “Access Denied” page or “/dashboard”.</li>
-                    <li>Expired Azure AD token → expect token refresh via MSAL and eventual redirect to login if refresh fails.</li>
-                  </ul>
-                </li>
-                <li>Log and triage all test failures; fix bugs promptly to maintain gating criteria integrity.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-    </section>
+## Runbook Cross‑References
+§3 System Architecture, §4 Ingestion, §8 UX (edit as relevant)
 
-    <!-- 11. Risk Management -->
-    <section id="risk-management">
-      <h2>11. Risk Management</h2>
-      <ul class="task-list">
-        <li><strong>AI Mapping Accuracy Risk:</strong>
-          <ul class="subtask-list">
-            <li><em>Risk:</em> GPT model suggests incorrect COA mappings, leading to inaccurate benchmarking.</li>
-            <li><em>Mitigation:</em>
-              <ul class="subtask-list">
-                <li>Keep confidence threshold conservative (≥ 90% auto-accept).</li>
-                <li>Provide robust manual override interface; require at least one user review step.</li>
-                <li>Maintain mapping audit logs to allow rollback if bulk error discovered.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>Azure AD Integration Complexity:</strong>
-          <ul class="subtask-list">
-            <li><em>Risk:</em> Misconfiguring App Registrations or group claims can block user access or expose endpoints to unauthorized users.</li>
-            <li><em>Mitigation:</em>
-              <ul class="subtask-list">
-                <li>Allocate two weeks (Weeks 5–6) for end-to-end Azure AD testing using test tenants and accounts.</li>
-                <li>Document Azure AD configuration steps in a separate “Auth Setup” guide.</li>
-                <li>Use Azure AD conditional access policies to enforce MFA for all roles.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>Scale / Performance:</strong>
-          <ul class="subtask-list">
-            <li><em>Risk:</em> Large GL uploads (100,000+ lines) may time out or exceed function memory/time limits.</li>
-            <li><em>Mitigation:</em>
-              <ul class="subtask-list">
-                <li>Implement batching in <code>ProcessGL</code> and <code>SuggestMappings</code> functions (e.g., 1,000 rows per batch).</li>
-                <li>Use Durable Functions for long-running processes (e.g., pre-processing + mapping) to avoid HTTP timeouts.</li>
-                <li>Scale Azure Functions plan to Premium or use Azure Kubernetes Service (AKS) for better control.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>Data Security &amp; Privacy:</strong>
-          <ul class="subtask-list">
-            <li><em>Risk:</em> Sensitive financial data may be exposed if storage or transit misconfigured.</li>
-            <li><em>Mitigation:</em>
-              <ul class="subtask-list">
-                <li>Encrypt all data in transit (HTTPS/TLS) and at rest (Azure SQL TDE, Azure Blob encryption).</li>
-                <li>Use Azure Key Vault for managing secrets; grant least privilege permissions to Function Managed Identity.</li>
-                <li>Conduct periodic security scans and penetration tests (e.g., OWASP ZAP) before major releases.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-        <li><strong>Timeline Compression:</strong>
-          <ul class="subtask-list">
-            <li><em>Risk:</em> Parallel tasks (front-end, back-end, AI integration, reporting) may cause resource contention or missed dependencies.</li>
-            <li><em>Mitigation:</em>
-              <ul class="subtask-list">
-                <li>Organize two-week sprints; conduct sprint planning to ensure clear responsibilities.</li>
-                <li>Use feature toggles to deploy incomplete features behind flags; allow merging early even if UI not fully ready.</li>
-                <li>Hold daily stand-ups to surface blockers quickly; escalate promptly.</li>
-              </ul>
-            </li>
-          </ul>
-        </li>
-      </ul>
-    </section>
+## TODO (owner: @unassigned)
+1. Meaningful doc‑only tasks or tech‑debt (max 5)
+2. …
+================================================</code></pre>
 
-    <!-- 12. Conclusion & Next Steps -->
-    <section id="conclusion">
-      <h2>12. Conclusion &amp; Next Steps</h2>
-      <p>
-        By following the detailed tasks and timelines outlined in this Run Book, the MapLedger MVP will be fully functional and production-ready by <strong>November 16, 2025</strong>. This includes all core features: GL upload, AI-assisted mapping, exception handling, benchmarking, and user management, along with robust testing, security, and performance considerations.
-      </p>
-      <p>Next Steps:</p>
-      <ol class="task-list">
-        <li>Distribute this Run Book to all development, QA, DevOps, and stakeholder teams.</li>
-        <li>Schedule and conduct the Week 1 Kickoff meeting (target: first week of June 2025).</li>
-        <li>Provision initial Azure resources and ensure environment access for all developers by end of Week 1.</li>
-        <li>Begin Week 2 tasks: finalize architecture diagrams, data models, and API specifications.</li>
-      </ol>
-    </section>
-
-    <!-- 13. References -->
-    <section id="references">
-      <h2>13. References</h2>
-      <ul class="references">
-        <li><strong>Data Standards Guide:</strong>  
-          <ul>
-            <li><a href="https://www.example.com/data-standards-guide.pdf" target="_blank">Download the Data Standards Guide (PDF)</a></li>
-            <li>Contains detailed definitions of field formats, naming conventions, and validation rules used by MapLedger.</li>
-          </ul>
-        </li>
-        <li><strong>Initial FreightMath Chart of Accounts (COA):</strong>  
-          <ul>
-            <li><a href="files/FreightMath_COA_Initial.xlsx" download>Download the FreightMath COA (Excel)</a></li>
-            <li>The initial baseline COA template used for freight/logistics industry benchmarking.</li>
-          </ul>
-        </li>
-        <li><strong>MapLedger GitHub Repository:</strong>  
-          <ul>
-            <li><a href="https://github.com/ksmbusiness/MapLedger" target="_blank">https://github.com/ksmbusiness/MapLedger</a></li>
-            <li>Includes code, issue tracking, and additional documentation.</li>
-          </ul>
-        </li>
-      </ul>
-    </section>
-
-    <!-- 14. Chat Transcripts -->
-    <section id="chat-transcripts">
-      <h2>14. Chat Transcripts</h2>
-      <p>Below is a consolidated transcript of all internal ChatGPT sessions related to MapLedger, reflecting requirements clarifications, design discussions, and iterative feedback. This ensures full traceability of decisions and rationales.</p>
-      <div class="chat-transcript">
-User:  
-Based on all the additional detail I've added to the MapLedger Project today, please update this HTML runbook to incorporate all the desired functions, including:<br>
-1. Screenshots of UI from: https://earnest-naiad-cb964d.netlify.app/, which will allow user to understand UI of Map Ledger<br>
-2. References to Data Standards Guide and Initial FreightMath Chart of Accounts (COA)<br>
-3. Incorporate all chats in this project<br>
-4. Create an elegant Vertical Navigation bar on left side of document, similar to a Modern API documentation guide<br>
-<br>
-ChatGPT:  
-Sure—I'll produce an updated HTML with:<br>
-• A fixed vertical navigation bar linking to each section.<br>
-• “References” section linking to the Data Standards Guide PDF and FreightMath COA Excel.<br>
-• An appended “Chat Transcripts” section containing the entire conversation so far.<br>
-• Placeholders for UI screenshots from the Earnest Naiad demo (saved under <code>screenshots/</code>).  
-
-[Further iterative messages summarizing minor edits have been consolidated here for brevity.]
-      </div>
-    </section>
-
-    <div class="footer">
-      <p>Generated on June 2, 2025 (Europe/Lisbon time). For questions or clarifications, contact the MapLedger PMO at <a href="mailto:pm@ksmbusiness.com">pm@ksmbusiness.com</a>.</p>
-    </div>
-
-  </main>
+<p><em>After Codex runs, each folder will have a quick‑start summary that future agents (or humans) can read before editing code.</em></p>
+<hr/>
+<footer><p style="font-size:.8rem;color:#555">© 2025 KSM – MapLedger Team   Last updated: 23 Jun 2025</p></footer>
+</div>
 </body>
 </html>
