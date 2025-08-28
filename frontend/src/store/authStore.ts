@@ -1,14 +1,28 @@
 import { create } from 'zustand';
-import { User } from '../types';
+import type { AccountInfo } from '@azure/msal-browser';
 
 interface AuthState {
-  user: User | null;
-  setUser: (user: User | null) => void;
+  account: AccountInfo | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
+  isEmployee: boolean;
+  isGuest: boolean;
+  setAccount: (
+    account: AccountInfo | null,
+    flags?: { isAdmin: boolean; isEmployee: boolean; isGuest: boolean }
+  ) => void;
 }
 
+const initialFlags = {
+  isAdmin: false,
+  isEmployee: false,
+  isGuest: true,
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
+  account: null,
   isAuthenticated: false,
-  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  ...initialFlags,
+  setAccount: (account, flags = initialFlags) =>
+    set({ account, isAuthenticated: !!account, ...flags }),
 }));
