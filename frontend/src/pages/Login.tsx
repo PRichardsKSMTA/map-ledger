@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
+import signinMicrosoft from '../assets/signin-microsoft.svg';
 import { loginRequest } from '../utils/msal';
 import { useAuthStore } from '../store/authStore';
 import { env } from '../utils/env';
@@ -49,9 +50,9 @@ export default function Login() {
           <button
             type="button"
             onClick={handleLogin}
-            className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
+            className="w-full flex justify-center p-0 border-0 bg-transparent"
           >
-            Sign in with Azure AD
+            <img src={signinMicrosoft} alt="Sign in with Microsoft" />
           </button>
         </div>
       </div>
