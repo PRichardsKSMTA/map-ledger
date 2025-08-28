@@ -4,7 +4,8 @@ module.exports = {
     '^.+\\.(ts|tsx)$': 'ts-jest'
   },
   moduleNameMapper: {
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy'
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '\\.(svg)$': '<rootDir>/src/tests/__mocks__/fileMock.ts'
   },
   testMatch: ['<rootDir>/src/**/?(*.)+(spec|test).[tj]s?(x)']
 };
