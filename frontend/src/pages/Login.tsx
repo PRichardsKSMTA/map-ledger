@@ -1,22 +1,34 @@
-import React, { useState } from 'react';
-import { useAuthStore } from '../store/authStore';
+import React, { useEffect } from 'react';
+import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
+import { loginRequest } from '../utils/msal';
+import { useAuthStore } from '../store/authStore';
+import { env } from '../utils/env';
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const setUser = useAuthStore((state) => state.setUser);
+  const { instance } = useMsal();
+  const setAccount = useAuthStore((state) => state.setAccount);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: Implement actual authentication
-    setUser({
-      id: '1',
-      email: email,
-      role: 'super',
-      firstName: 'John',
-      lastName: 'Doe'
-    });
+  useEffect(() => {
+    instance
+      .handleRedirectPromise()
+      .then((res) => {
+        const account = res?.account ?? instance.getAllAccounts()[0];
+        if (account) {
+          instance.setActiveAccount(account);
+          const groups = (res?.idTokenClaims?.groups as string[]) || [];
+          const isAdmin = groups.includes(env.AAD_ADMIN_GROUP_ID);
+          const domain = account.username.split('@')[1] || '';
+          const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
+          const isGuest = !isEmployee;
+          setAccount(account, { isAdmin, isEmployee, isGuest });
+        }
+      })
+      .catch((e) => console.error(e));
+  }, [instance, setAccount]);
+
+  const handleLogin = () => {
+    instance.loginRedirect(loginRequest);
   };
 
   return (
@@ -34,54 +46,13 @@ export default function Login() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-soft sm:rounded-xl sm:px-10">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm"
-                  placeholder="Enter your email"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent sm:text-sm"
-                  placeholder="Enter your password"
-                />
-              </div>
-            </div>
-
-            <div>
-              <button
-                type="submit"
-                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
-              >
-                Sign in
-              </button>
-            </div>
-          </form>
+          <button
+            type="button"
+            onClick={handleLogin}
+            className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors duration-200"
+          >
+            Sign in with Azure AD
+          </button>
         </div>
       </div>
     </div>
