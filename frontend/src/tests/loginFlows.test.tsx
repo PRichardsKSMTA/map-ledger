@@ -45,6 +45,7 @@ afterEach(() => {
     isAdmin: false,
     isEmployee: false,
     isGuest: true,
+    error: null,
   });
   jest.clearAllMocks();
 });
@@ -109,6 +110,7 @@ test('redirects away from login when already authenticated', async () => {
     isAdmin: false,
     isEmployee: false,
     isGuest: false,
+    error: null,
   });
   render(<App />);
   await waitFor(() => expect(window.location.pathname).toBe('/'));

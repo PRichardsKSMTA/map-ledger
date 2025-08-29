@@ -7,10 +7,12 @@ interface AuthState {
   isAdmin: boolean;
   isEmployee: boolean;
   isGuest: boolean;
+  error: string | null;
   setAccount: (
     account: AccountInfo | null,
     flags?: { isAdmin: boolean; isEmployee: boolean; isGuest: boolean }
   ) => void;
+  setError: (error: string | null) => void;
 }
 
 const initialFlags = {
@@ -23,6 +25,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   account: null,
   isAuthenticated: false,
   ...initialFlags,
+  error: null,
   setAccount: (account, flags = initialFlags) =>
     set({ account, isAuthenticated: !!account, ...flags }),
+  setError: (error) => set({ error }),
 }));
