@@ -122,9 +122,13 @@ function App() {
         <Route
           path="/login"
           element={
-            <React.Suspense fallback={<div>Loading...</div>}>
-              <Login />
-            </React.Suspense>
+            isAuthenticated ? (
+              <Navigate to="/" replace />
+            ) : (
+              <React.Suspense fallback={<div>Loading...</div>}>
+                <Login />
+              </React.Suspense>
+            )
           }
         />
         <Route

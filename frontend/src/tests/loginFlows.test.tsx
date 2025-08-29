@@ -2,10 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Login from '../pages/Login';
 import { useAuthStore } from '../store/authStore';
+import App from '../App';
 
 const mockLoginRedirect = jest.fn();
 const mockHandleRedirectPromise = jest.fn();
 const mockSetActiveAccount = jest.fn();
+const mockNavigate = jest.fn();
 
 jest.mock('@azure/msal-react', () => ({
   useMsal: () => ({
@@ -16,6 +18,11 @@ jest.mock('@azure/msal-react', () => ({
       getAllAccounts: jest.fn(() => []),
     },
   }),
+}));
+
+jest.mock('react-router-dom', () => ({
+  ...(jest.requireActual('react-router-dom') as Record<string, unknown>),
+  useNavigate: () => mockNavigate,
 }));
 
 jest.mock('../utils/env', () => ({
@@ -58,6 +65,7 @@ test('sets admin and employee flags from token', async () => {
   expect(useAuthStore.getState().isAdmin).toBe(true);
   expect(useAuthStore.getState().isEmployee).toBe(true);
   expect(useAuthStore.getState().isGuest).toBe(false);
+  expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
 });
 
 test('marks guest when domain not matched', async () => {
@@ -73,4 +81,17 @@ test('marks guest when domain not matched', async () => {
   expect(useAuthStore.getState().isAdmin).toBe(false);
   expect(useAuthStore.getState().isEmployee).toBe(false);
   expect(useAuthStore.getState().isGuest).toBe(true);
+});
+
+test('redirects away from login when already authenticated', async () => {
+  window.history.pushState({}, 'Test', '/login');
+  useAuthStore.setState({
+    account: {} as any,
+    isAuthenticated: true,
+    isAdmin: false,
+    isEmployee: false,
+    isGuest: false,
+  });
+  render(<App />);
+  await waitFor(() => expect(window.location.pathname).toBe('/'));
 });

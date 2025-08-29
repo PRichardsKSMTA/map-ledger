@@ -16,4 +16,6 @@ Routeable React pages served by the router.
 
 ## TODO (owner: @unassigned)
 1. Add screenshot references
-2. Note route guard patterns
+
+## Patterns
+- Route guards redirect authenticated users away from `/login` to the dashboard.
