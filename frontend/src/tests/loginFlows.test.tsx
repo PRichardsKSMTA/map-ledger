@@ -1,8 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { AccountInfo } from '@azure/msal-browser';
 import Login from '../pages/Login';
 import App from '../App';
 import { useAuthStore } from '../store/authStore';
+import type { GroupTokenClaims } from '../types';
 
 const mockLoginRedirect = jest.fn();
 const mockHandleRedirectPromise = jest.fn();
@@ -54,13 +56,17 @@ test('calls loginRedirect on sign in click', async () => {
 });
 
 test('sets admin and employee flags from token', async () => {
-  const account = {
+  const account: AccountInfo = {
+    homeAccountId: '',
+    environment: '',
+    tenantId: '',
     username: 'jane@example.com',
-    idTokenClaims: { groups: ['admin-group'] },
-  } as any;
+    localAccountId: '',
+    idTokenClaims: { groups: ['admin-group'] } as GroupTokenClaims,
+  };
   mockHandleRedirectPromise.mockResolvedValue({
     account,
-    idTokenClaims: { groups: ['admin-group'] },
+    idTokenClaims: { groups: ['admin-group'] } as GroupTokenClaims,
   });
   mockGetAllAccounts.mockReturnValue([account]);
 
@@ -73,13 +79,17 @@ test('sets admin and employee flags from token', async () => {
 });
 
 test('marks guest when domain not matched', async () => {
-  const account = {
+  const account: AccountInfo = {
+    homeAccountId: '',
+    environment: '',
+    tenantId: '',
     username: 'bob@external.com',
-    idTokenClaims: { groups: [] },
-  } as any;
+    localAccountId: '',
+    idTokenClaims: { groups: [] } as GroupTokenClaims,
+  };
   mockHandleRedirectPromise.mockResolvedValue({
     account,
-    idTokenClaims: { groups: [] },
+    idTokenClaims: { groups: [] } as GroupTokenClaims,
   });
   mockGetAllAccounts.mockReturnValue([account]);
 
@@ -94,7 +104,7 @@ test('marks guest when domain not matched', async () => {
 test('redirects away from login when already authenticated', async () => {
   window.history.pushState({}, 'Test', '/login');
   useAuthStore.setState({
-    account: {} as any,
+    account: {} as AccountInfo,
     isAuthenticated: true,
     isAdmin: false,
     isEmployee: false,

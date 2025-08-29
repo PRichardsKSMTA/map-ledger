@@ -1,3 +1,10 @@
+import type { IdTokenClaims as TokenClaims } from '@azure/msal-browser';
+
+export interface GroupTokenClaims extends TokenClaims {
+  groups?: string[];
+  [key: string]: unknown;
+}
+
 export type UserRole = 'super' | 'admin' | 'viewer';
 
 export interface User {
