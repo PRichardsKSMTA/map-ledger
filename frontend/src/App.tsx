@@ -10,6 +10,7 @@ import { useAuthStore } from './store/authStore';
 import { msalInstance } from './utils/msal';
 import { env } from './utils/env';
 import type { GroupTokenClaims } from './types';
+import type { AuthenticationResult } from '@azure/msal-browser';
 
 const Login = React.lazy(() => import('./pages/Login'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -121,28 +122,41 @@ function App() {
   const [checkingAuth, setCheckingAuth] = React.useState(true);
 
   React.useEffect(() => {
-    msalInstance
-      .handleRedirectPromise()
-      .then((res) => {
-        const account = res?.account ?? msalInstance.getAllAccounts()[0];
-        if (account) {
-          msalInstance.setActiveAccount(account);
-          const claims =
-            (res?.idTokenClaims as GroupTokenClaims) ??
-            (account.idTokenClaims as GroupTokenClaims);
-          const groups = claims?.groups ?? [];
-          const isAdmin = groups.includes(env.AAD_ADMIN_GROUP_ID);
-          const domain = account.username.split('@')[1] || '';
-          const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
-          const isGuest = !isEmployee;
-          useAuthStore.getState().setAccount(account, {
-            isAdmin,
-            isEmployee,
-            isGuest,
-          });
-        }
-      })
-      .finally(() => setCheckingAuth(false));
+    const initAuth = async () => {
+      let res: AuthenticationResult | null = null;
+      try {
+        res = await msalInstance.handleRedirectPromise();
+        useAuthStore.getState().setError(null);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.error('Authentication error:', message);
+        useAuthStore.getState().setError(message);
+      }
+
+      const accounts = msalInstance.getAllAccounts();
+      const account = res?.account ?? accounts[0];
+      if (account) {
+        msalInstance.setActiveAccount(account);
+        const claims =
+          (res?.idTokenClaims as GroupTokenClaims) ??
+          (account.idTokenClaims as GroupTokenClaims);
+        const groups = claims?.groups ?? [];
+        const isAdmin = groups.includes(env.AAD_ADMIN_GROUP_ID);
+        const domain = account.username.split('@')[1] || '';
+        const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
+        const isGuest = !isEmployee;
+        useAuthStore.getState().setAccount(account, {
+          isAdmin,
+          isEmployee,
+          isGuest,
+        });
+      }
+
+      setCheckingAuth(false);
+    };
+
+    initAuth();
   }, []);
 
   if (checkingAuth) {
