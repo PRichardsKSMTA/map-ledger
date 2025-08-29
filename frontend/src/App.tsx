@@ -7,6 +7,8 @@ import {
 } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useAuthStore } from './store/authStore';
+import { msalInstance } from './utils/msal';
+import { env } from './utils/env';
 
 const Login = React.lazy(() => import('./pages/Login'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -115,6 +117,36 @@ function ProtectedRoutes() {
 
 function App() {
   const { isAuthenticated } = useAuthStore();
+  const [checkingAuth, setCheckingAuth] = React.useState(true);
+
+  React.useEffect(() => {
+    msalInstance
+      .handleRedirectPromise()
+      .then((res) => {
+        const account = res?.account ?? msalInstance.getAllAccounts()[0];
+        if (account) {
+          msalInstance.setActiveAccount(account);
+          const groups =
+            (res?.idTokenClaims?.groups as string[]) ||
+            ((account as any)?.idTokenClaims?.groups as string[]) ||
+            [];
+          const isAdmin = groups.includes(env.AAD_ADMIN_GROUP_ID);
+          const domain = account.username.split('@')[1] || '';
+          const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
+          const isGuest = !isEmployee;
+          useAuthStore.getState().setAccount(account, {
+            isAdmin,
+            isEmployee,
+            isGuest,
+          });
+        }
+      })
+      .finally(() => setCheckingAuth(false));
+  }, []);
+
+  if (checkingAuth) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <Router>
