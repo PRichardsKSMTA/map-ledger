@@ -9,6 +9,7 @@ import Layout from './components/Layout';
 import { useAuthStore } from './store/authStore';
 import { msalInstance } from './utils/msal';
 import { env } from './utils/env';
+import type { GroupTokenClaims } from './types';
 
 const Login = React.lazy(() => import('./pages/Login'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
@@ -126,10 +127,10 @@ function App() {
         const account = res?.account ?? msalInstance.getAllAccounts()[0];
         if (account) {
           msalInstance.setActiveAccount(account);
-          const groups =
-            (res?.idTokenClaims?.groups as string[]) ||
-            ((account as any)?.idTokenClaims?.groups as string[]) ||
-            [];
+          const claims =
+            (res?.idTokenClaims as GroupTokenClaims) ??
+            (account.idTokenClaims as GroupTokenClaims);
+          const groups = claims?.groups ?? [];
           const isAdmin = groups.includes(env.AAD_ADMIN_GROUP_ID);
           const domain = account.username.split('@')[1] || '';
           const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
