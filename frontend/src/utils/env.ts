@@ -5,6 +5,6 @@ export const env = {
   AAD_ADMIN_GROUP_ID: import.meta.env.VITE_AAD_ADMIN_GROUP_ID || '',
   AAD_EMPLOYEE_DOMAINS: (import.meta.env.VITE_AAD_EMPLOYEE_DOMAINS || '')
     .split(',')
-    .map((d) => d.trim())
+    .map((d: string) => d.trim())
     .filter(Boolean),
 };
