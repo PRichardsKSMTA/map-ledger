@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="215" height="40" viewBox="0 0 215 40">
   <g fill="none" fill-rule="evenodd">
     <rect width="215" height="40" rx="2" fill="#ffffff" stroke="#8C8C8C"/>
-    <g transform="translate(10 10)">
-      <path d="M0 0h18v18H0z" fill="#F35325"/>
-      <path d="M19 0h18v18H19z" fill="#81BC06"/>
-      <path d="M0 19h18v18H0z" fill="#05A6F0"/>
-      <path d="M19 19h18v18H19z" fill="#FFBA08"/>
+    <g transform="translate(12 12)">
+      <path d="M0 0h16v16H0z" fill="#F35325"/>
+      <path d="M17 0h16v16H17z" fill="#81BC06"/>
+      <path d="M0 17h16v16H0z" fill="#05A6F0"/>
+      <path d="M17 17h16v16H17z" fill="#FFBA08"/>
     </g>
     <text x="65" y="25" font-family="'Segoe UI', Arial, sans-serif" font-size="14" fill="#000000">Sign in with Microsoft</text>
   </g>
