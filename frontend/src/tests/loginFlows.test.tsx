@@ -1,28 +1,29 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Login from '../pages/Login';
-import { useAuthStore } from '../store/authStore';
 import App from '../App';
+import { useAuthStore } from '../store/authStore';
 
 const mockLoginRedirect = jest.fn();
 const mockHandleRedirectPromise = jest.fn();
+const mockGetAllAccounts = jest.fn();
 const mockSetActiveAccount = jest.fn();
-const mockNavigate = jest.fn();
 
 jest.mock('@azure/msal-react', () => ({
   useMsal: () => ({
     instance: {
       loginRedirect: mockLoginRedirect,
-      handleRedirectPromise: mockHandleRedirectPromise,
-      setActiveAccount: mockSetActiveAccount,
-      getAllAccounts: jest.fn(() => []),
     },
   }),
 }));
 
-jest.mock('react-router-dom', () => ({
-  ...(jest.requireActual('react-router-dom') as Record<string, unknown>),
-  useNavigate: () => mockNavigate,
+jest.mock('../utils/msal', () => ({
+  msalInstance: {
+    handleRedirectPromise: mockHandleRedirectPromise,
+    getAllAccounts: mockGetAllAccounts,
+    setActiveAccount: mockSetActiveAccount,
+  },
+  loginRequest: { scopes: [] },
 }));
 
 jest.mock('../utils/env', () => ({
@@ -53,29 +54,36 @@ test('calls loginRedirect on sign in click', async () => {
 });
 
 test('sets admin and employee flags from token', async () => {
-  const account = { username: 'jane@example.com' } as any;
+  const account = {
+    username: 'jane@example.com',
+    idTokenClaims: { groups: ['admin-group'] },
+  } as any;
   mockHandleRedirectPromise.mockResolvedValue({
     account,
     idTokenClaims: { groups: ['admin-group'] },
   });
+  mockGetAllAccounts.mockReturnValue([account]);
 
-  render(<Login />);
+  render(<App />);
 
   await waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(true));
   expect(useAuthStore.getState().isAdmin).toBe(true);
   expect(useAuthStore.getState().isEmployee).toBe(true);
   expect(useAuthStore.getState().isGuest).toBe(false);
-  expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
 });
 
 test('marks guest when domain not matched', async () => {
-  const account = { username: 'bob@external.com' } as any;
+  const account = {
+    username: 'bob@external.com',
+    idTokenClaims: { groups: [] },
+  } as any;
   mockHandleRedirectPromise.mockResolvedValue({
     account,
     idTokenClaims: { groups: [] },
   });
+  mockGetAllAccounts.mockReturnValue([account]);
 
-  render(<Login />);
+  render(<App />);
 
   await waitFor(() => expect(useAuthStore.getState().isAuthenticated).toBe(true));
   expect(useAuthStore.getState().isAdmin).toBe(false);
@@ -95,3 +103,4 @@ test('redirects away from login when already authenticated', async () => {
   render(<App />);
   await waitFor(() => expect(window.location.pathname).toBe('/'));
 });
+
