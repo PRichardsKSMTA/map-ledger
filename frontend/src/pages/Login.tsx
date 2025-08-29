@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import signinMicrosoft from '../assets/signin-microsoft.svg';
 import { loginRequest } from '../utils/msal';
 import { useAuthStore } from '../store/authStore';
@@ -9,6 +10,7 @@ import { env } from '../utils/env';
 export default function Login() {
   const { instance } = useMsal();
   const setAccount = useAuthStore((state) => state.setAccount);
+  const navigate = useNavigate();
 
   useEffect(() => {
     instance
@@ -23,10 +25,11 @@ export default function Login() {
           const isEmployee = env.AAD_EMPLOYEE_DOMAINS.includes(domain);
           const isGuest = !isEmployee;
           setAccount(account, { isAdmin, isEmployee, isGuest });
+          navigate('/', { replace: true });
         }
       })
       .catch((e) => console.error(e));
-  }, [instance, setAccount]);
+  }, [instance, setAccount, navigate]);
 
   const handleLogin = () => {
     instance.loginRedirect(loginRequest);
