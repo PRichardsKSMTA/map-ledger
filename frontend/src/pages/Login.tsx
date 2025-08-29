@@ -1,8 +1,12 @@
 import React from 'react';
 import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
-import signinMicrosoft from '../assets/signin-microsoft.svg';
 import { loginRequest } from '../utils/msal';
+
+const MS_SIGNIN_SVG_LIGHT =
+  'https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_signin_light.svg';
+const MS_SIGNIN_SVG_DARK =
+  'https://raw.githubusercontent.com/MicrosoftDocs/entra-docs/main/docs/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_signin_dark.svg';
 
 export default function Login() {
   const { instance } = useMsal();
@@ -32,9 +36,14 @@ export default function Login() {
             className="w-full flex justify-center p-0 border-0 bg-transparent"
           >
             <img
-              src={signinMicrosoft}
+              src={MS_SIGNIN_SVG_LIGHT}
               alt="Sign in with Microsoft"
-              className="h-10 w-auto"
+              className="h-10 w-auto block dark:hidden"
+            />
+            <img
+              src={MS_SIGNIN_SVG_DARK}
+              alt="Sign in with Microsoft"
+              className="h-10 w-auto hidden dark:block"
             />
           </button>
         </div>
