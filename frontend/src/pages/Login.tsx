@@ -31,7 +31,11 @@ export default function Login() {
             onClick={handleLogin}
             className="w-full flex justify-center p-0 border-0 bg-transparent"
           >
-            <img src={signinMicrosoft} alt="Sign in with Microsoft" />
+            <img
+              src={signinMicrosoft}
+              alt="Sign in with Microsoft"
+              className="h-10 w-auto"
+            />
           </button>
         </div>
       </div>
