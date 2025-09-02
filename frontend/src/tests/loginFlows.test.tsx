@@ -56,6 +56,15 @@ test('calls loginRedirect on sign in click', async () => {
   expect(mockLoginRedirect).toHaveBeenCalled();
 });
 
+test('displays error when loginRedirect fails', async () => {
+  mockLoginRedirect.mockRejectedValue(new Error('Login failed'));
+  render(<Login />);
+  await userEvent.click(screen.getByRole('button', { name: /sign in/i }));
+  await waitFor(() =>
+    expect(screen.getByRole('alert')).toHaveTextContent('Login failed')
+  );
+});
+
 test('sets admin and employee flags from token', async () => {
   const account: AccountInfo = {
     homeAccountId: '',
@@ -114,5 +123,16 @@ test('redirects away from login when already authenticated', async () => {
   });
   render(<App />);
   await waitFor(() => expect(window.location.pathname).toBe('/'));
+});
+
+test('shows error when handleRedirectPromise fails', async () => {
+  mockHandleRedirectPromise.mockRejectedValue(new Error('redirect error'));
+  mockGetAllAccounts.mockReturnValue([]);
+
+  render(<App />);
+
+  await waitFor(() =>
+    expect(screen.getByRole('alert')).toHaveTextContent('redirect error')
+  );
 });
 
