@@ -3,6 +3,7 @@ import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
 import { loginRequest } from '../utils/msal';
 import { useAuthStore } from '../store/authStore';
+import AuthErrorAlert from '../components/AuthErrorAlert';
 
 const MS_SIGNIN_SVG_LIGHT =
   'https://learn.microsoft.com/en-us/entra/identity-platform/media/howto-add-branding-in-apps/ms-symbollockup_signin_light.svg';
@@ -11,10 +12,16 @@ const MS_SIGNIN_SVG_DARK =
 
 export default function Login() {
   const { instance } = useMsal();
-  const error = useAuthStore((s) => s.error);
+  const setError = useAuthStore((s) => s.setError);
 
-  const handleLogin = () => {
-    instance.loginRedirect(loginRequest);
+  const handleLogin = async () => {
+    try {
+      setError(null);
+      await instance.loginRedirect(loginRequest);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+    }
   };
 
   return (
@@ -32,14 +39,7 @@ export default function Login() {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-soft sm:rounded-xl sm:px-10">
-          {error && (
-            <div
-              role="alert"
-              className="mb-4 text-center text-sm text-red-600"
-            >
-              {error}
-            </div>
-          )}
+          <AuthErrorAlert />
           <button
             type="button"
             onClick={handleLogin}
