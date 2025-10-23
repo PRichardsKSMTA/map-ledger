@@ -1,0 +1,14 @@
+{
+    "navigationFallback": {
+      "rewrite": "/index.html",
+      "exclude": ["/assets/*", "/*.{png,svg,ico,txt}"]
+    },
+    "responseOverrides": {
+      "404": { "rewrite": "/index.html" }
+    },
+    "globalHeaders": {
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff"
+    }
+  }
+  

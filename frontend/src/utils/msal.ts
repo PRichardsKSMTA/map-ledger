@@ -1,4 +1,4 @@
-import { PublicClientApplication, BrowserCacheLocation, LogLevel, RedirectRequest } from "@azure/msal-browser";
+import { PublicClientApplication, BrowserCacheLocation, LogLevel, RedirectRequest, AccountInfo } from "@azure/msal-browser";
 import { env } from "../utils/env"; // you already have utils/env.ts
 
 const msalConfig = {
@@ -25,6 +25,7 @@ const msalConfig = {
 export const msalInstance = new PublicClientApplication(msalConfig);
 
 let initPromise: Promise<void> | null = null;
+
 export function initializeMsal(): Promise<void> {
   if (!initPromise) {
     initPromise = msalInstance.initialize().then(() => {
@@ -42,3 +43,20 @@ export const loginRequest: RedirectRequest = {
   scopes: ['openid', 'profile', 'email'],
 };
 
+function getCurrentAccount(): AccountInfo | null {
+  const active = msalInstance.getActiveAccount();
+  if (active) return active;
+  const all = msalInstance.getAllAccounts();
+  return all.length ? all[0] : null;
+}
+
+export async function signOut(): Promise<void> {
+  // Ensure MSAL is initialized
+  await initializeMsal();
+
+  const account = getCurrentAccount();
+  // logoutRedirect accepts undefined account, but we prefer to be explicit when we have one
+  await msalInstance.logoutRedirect(
+    account ? { account } : undefined
+  );
+}

@@ -1,8 +1,30 @@
-import { useAuthStore } from '../store/authStore';
 import { LogOut, Settings, Map } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
+import { signOut, msalInstance } from "../utils/msal";
+
+type Claims = Record<string, unknown>;
 
 export default function Navbar() {
-  const { user } = useAuthStore();
+  const { account } = useAuthStore();
+
+  const claims = (account?.idTokenClaims as Claims | undefined) ?? {};
+  const displayName =
+    (claims["name"] as string) ??
+    account?.name ??
+    (claims["given_name"] ? `${claims["given_name"]} ${claims["family_name"] ??  ""}`.trim() : "")
+    "";
+  const email =
+    (Array.isArray(claims["emails"]) && (claims["emails"] as string[]) [0]) ||
+    (claims["preferred_username"] as string) ||
+    account?.username ||
+    "";
+
+  const hasAccount = 
+    (msalInstance.getActiveAccount() ?? msalInstance.getAllAccounts()[0]) != null;
+
+  const handleSignOut = async () => {
+    await signOut(); // logoutRedirect with postLogoutRedirectUri
+  };
 
   return (
     <nav className="bg-white border-b border-gray-200 shadow-inner-top">
@@ -19,17 +41,29 @@ export default function Navbar() {
           </div>
           
           <div className="flex items-center gap-6">
-            <button className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
+            <button 
+              className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
+              title="Settings"
+              type='button'
+            >
               <Settings className="h-5 w-5" />
             </button>
             
             <div className="flex items-center gap-4">
               <div className="text-sm">
-                <p className="font-semibold text-gray-900">{user?.firstName} {user?.lastName}</p>
-                <p className="text-gray-500 text-xs">{user?.email}</p>
+                <p className="font-semibold text-gray-900">
+                  {displayName || "Guest"}
+                </p>
+                {email && <p className='text-gray-500 text-xs'>{email}</p>}
               </div>
               
-              <button className="p-2 text-gray-500 hover:text-blue-600 transition-colors">
+              <button 
+                type="button"
+                onClick={handleSignOut}
+                disabled={!hasAccount}
+                title='Sign out'
+                className="p-2 text-gray-500 hover:text-blue-600 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+              >
                 <LogOut className="h-5 w-5" />
               </button>
             </div>

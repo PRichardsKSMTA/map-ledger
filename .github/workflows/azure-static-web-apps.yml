@@ -1,0 +1,46 @@
+name: Azure Static Web Apps CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Create frontend .env from GitHub Secrets/Variables (no secrets in repo)
+      - name: Inject Vite env
+        working-directory: frontend
+        run: |
+          cat > .env <<EOF
+          VITE_AAD_CLIENT_ID=${{ secrets.VITE_AAD_CLIENT_ID }}
+          VITE_AAD_TENANT_ID=${{ secrets.VITE_AAD_TENANT_ID }}
+          VITE_AAD_REDIRECT_URI=${{ vars.VITE_AAD_REDIRECT_URI }}
+          EOF
+
+      - name: Build & Deploy App
+        uses: azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "frontend"
+          api_location: "backend"
+          output_location: "dist"
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close SWA PR environment
+        uses: azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: "close"
