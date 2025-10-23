@@ -1,21 +1,26 @@
 {
-  "name": "backend",
+  "name": "map-ledger-backend",
+  "private": true,
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "test": "tests"
-  },
   "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && func start",
     "lint": "eslint .",
-    "test": "echo \"No tests\""
+    "test": "echo \"(no backend tests configured yet)\""
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "dependencies": {
+    "@azure/functions": "^4.5.0",
+    "express": "^5.1.0",
+    "mssql": "^12.0.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.27"
+  },
   "devDependencies": {
-    "eslint": "^9.9.1",
-    "prettier": "^3.5.3"
+    "@types/express": "^5.0.3",
+    "@types/node": "^20.14.12",
+    "eslint": "^8.57.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.3"
   }
 }
