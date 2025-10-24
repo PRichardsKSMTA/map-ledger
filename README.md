@@ -48,4 +48,4 @@ npm run lint
 npm test
 ```
 
-The GitHub Actions workflows `.github/workflows/frontend.yml` and `.github/workflows/backend.yml` execute these commands on every push.
+Continuous integration and deployment is handled by `.github/workflows/azure-static-web-apps-gray-tree-0c1f9910f.yml`, which checks out the repository, installs the frontend dependencies with Node.js 20, builds the Vite app, and deploys the output through Azure Static Web Apps.
