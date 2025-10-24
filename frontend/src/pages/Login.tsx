@@ -1,3 +1,4 @@
+// src/pages/Login.tsx
 import React from 'react';
 import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
@@ -28,7 +29,7 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-custom flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="bg-white p-3 rounded-xl shadow-soft">
+          <div className="bg-white backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-none">
             <LogIn className="h-12 w-12 text-primary-600" />
           </div>
         </div>
@@ -38,7 +39,7 @@ export default function Login() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow-soft sm:rounded-xl sm:px-10">
+        <div className="bg-slate-500/70 backdrop-blur-sm py-6 px-4 border border-white/10 shadow-none sm:rounded-xl sm:px-10">
           <AuthErrorAlert />
           <button
             type="button"
