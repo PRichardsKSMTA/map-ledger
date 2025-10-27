@@ -162,26 +162,42 @@ export interface GLAccountEntityBreakdown {
   balance: number;
 }
 
+export type MappingStatus = 'unreviewed' | 'in-review' | 'approved' | 'rejected' | 'excluded';
+
+export type MappingType = 'direct' | 'percentage' | 'dynamic' | 'exclude';
+
+export type MappingPolarity = 'Debit' | 'Credit';
+
+export interface MappingSplitDefinition {
+  id: string;
+  targetId: string;
+  targetName: string;
+  allocationType: 'percentage' | 'amount';
+  allocationValue: number;
+  notes?: string;
+}
+
 export interface GLAccountMappingRow {
   id: string;
+  companyId: string;
   companyName: string;
+  entityId?: string;
   entityName?: string;
   accountId: string;
   accountName: string;
   activity: string;
-  status: 'unreviewed' | 'in-review' | 'approved' | 'rejected';
-  mappingType: 'AI Suggested' | 'Manual' | 'Preset';
+  status: MappingStatus;
+  mappingType: MappingType;
   balance: number;
   operation: string;
-  distributionMethod: string;
-  distributionValue?: number;
   suggestedCOAId?: string;
   suggestedCOADescription?: string;
-  confidenceScore: number;
+  aiConfidence?: number;
   manualCOAId?: string;
-  polarity: 'Debit' | 'Credit';
+  polarity: MappingPolarity;
   presetId?: string;
   notes?: string;
+  splitDefinitions: MappingSplitDefinition[];
   entities: GLAccountEntityBreakdown[];
 }
 
