@@ -2,7 +2,12 @@ import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Check } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
-import { useMappingStore } from '../../store/mappingStore';
+import {
+  selectAccounts,
+  selectActiveStatuses,
+  selectSearchTerm,
+  useMappingStore,
+} from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import type { GLAccountMappingRow } from '../../types';
@@ -21,7 +26,7 @@ type SortKey =
   | 'targetScoa'
   | 'polarity'
   | 'presetId'
-  | 'confidenceScore'
+  | 'aiConfidence'
   | 'notes';
 
 type SortDirection = 'asc' | 'desc';
@@ -31,6 +36,7 @@ const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
   'in-review': 'In review',
   'approved': 'Approved',
   'rejected': 'Rejected',
+  'excluded': 'Excluded',
 };
 
 const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
@@ -38,6 +44,7 @@ const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
   'in-review': 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
   'approved': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
   'rejected': 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
+  'excluded': 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
 };
 
 const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
@@ -45,6 +52,14 @@ const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
   'in-review': 1,
   'approved': 2,
   'rejected': 3,
+  'excluded': 4,
+};
+
+const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = {
+  direct: 'Direct',
+  percentage: 'Percentage',
+  dynamic: 'Dynamic',
+  exclude: 'Excluded',
 };
 
 const PRESET_OPTIONS = [
@@ -64,7 +79,7 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'targetScoa', label: 'Target SCoA' },
   { key: 'polarity', label: 'Polarity' },
   { key: 'presetId', label: 'Preset' },
-  { key: 'confidenceScore', label: 'Confidence' },
+  { key: 'aiConfidence', label: 'Confidence' },
   { key: 'notes', label: 'Notes' },
 ];
 
@@ -72,13 +87,11 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
   const { allocations } = useRatioAllocationStore();
   const { datapoints } = useTemplateStore();
   const coaOptions = datapoints['1'] || [];
-  const {
-    accounts,
-    searchTerm,
-    activeStatuses,
-    setManualMapping,
-    setPreset,
-  } = useMappingStore();
+  const accounts = useMappingStore(selectAccounts);
+  const searchTerm = useMappingStore(selectSearchTerm);
+  const activeStatuses = useMappingStore(selectActiveStatuses);
+  const updateTarget = useMappingStore(state => state.updateTarget);
+  const updatePreset = useMappingStore(state => state.updatePreset);
   const { selectedIds, toggleSelection, setSelection, clearSelection } = useMappingSelectionStore();
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -209,10 +222,11 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
             {sortedAccounts.map(account => {
               const isSelected = selectedIds.has(account.id);
-              const targetScoa = account.manualCOAId ?? account.suggestedCOAId ?? '';
-              const hasAllocation = allocations.some(
-                allocation => allocation.sourceAccount.id === account.id
-              );
+      const targetScoa = account.manualCOAId ?? account.suggestedCOAId ?? '';
+      const requiresSplit = account.mappingType === 'percentage' || account.mappingType === 'dynamic';
+      const hasAllocation =
+        account.splitDefinitions.length > 0 ||
+        allocations.some(allocation => allocation.sourceAccount.id === account.id);
               const statusLabel = STATUS_LABELS[account.status];
 
               return (
@@ -251,7 +265,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                       {statusLabel}
                     </span>
                   </td>
-                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.mappingType}</td>
+                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
                   <td className="px-3 py-4">
                     <label className="sr-only" htmlFor={`scoa-${account.id}`}>
                       Select target SCoA for {account.accountName}
@@ -259,7 +273,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                     <select
                       id={`scoa-${account.id}`}
                       value={targetScoa}
-                      onChange={event => setManualMapping(account.id, event.target.value)}
+                      onChange={event => updateTarget(account.id, event.target.value)}
                       className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     >
                       <option value="">Select target</option>
@@ -278,7 +292,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                     <select
                       id={`preset-${account.id}`}
                       value={account.presetId ?? ''}
-                      onChange={event => setPreset(account.id, event.target.value)}
+                      onChange={event => updatePreset(account.id, event.target.value)}
                       className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     >
                       <option value="">No preset</option>
@@ -291,11 +305,11 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                   </td>
                   <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">{account.confidenceScore}%</span>
+                      <span className="font-medium">{account.aiConfidence !== undefined ? `${account.aiConfidence}%` : '—'}</span>
                       <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                         <div
                           className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
-                          style={{ width: `${account.confidenceScore}%` }}
+                          style={{ width: `${Math.min(account.aiConfidence ?? 0, 100)}%` }}
                           aria-hidden="true"
                         />
                       </div>
@@ -304,12 +318,12 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                   <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
                     <div className="flex flex-col gap-1">
                       <span>{account.notes ?? '—'}</span>
-                      {account.distributionMethod !== 'single' && !hasAllocation && (
+                      {requiresSplit && !hasAllocation && (
                         <span className="text-xs text-amber-600 dark:text-amber-300">
                           Allocation details required
                         </span>
                       )}
-                      {account.distributionMethod !== 'single' && (
+                      {requiresSplit && (
                         <button
                           type="button"
                           onClick={() => onConfigureAllocation?.(account.id)}
@@ -357,8 +371,8 @@ function getSortValue(account: GLAccountMappingRow, key: SortKey): string | numb
       return account.polarity;
     case 'presetId':
       return account.presetId ?? '';
-    case 'confidenceScore':
-      return account.confidenceScore;
+    case 'aiConfidence':
+      return account.aiConfidence ?? 0;
     case 'notes':
       return account.notes ?? '';
     default:

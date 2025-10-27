@@ -1,6 +1,10 @@
 import { ChangeEvent } from 'react';
 import { Search } from 'lucide-react';
-import { useMappingStore } from '../../store/mappingStore';
+import {
+  selectActiveStatuses,
+  selectSearchTerm,
+  useMappingStore,
+} from '../../store/mappingStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import type { GLAccountMappingRow } from '../../types';
 
@@ -29,18 +33,21 @@ const STATUS_DEFINITIONS: {
     label: 'Rejected',
     className: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
   },
+  {
+    value: 'excluded',
+    label: 'Excluded',
+    className: 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
+  },
 ];
 
 export default function MappingToolbar() {
-  const {
-    searchTerm,
-    setSearchTerm,
-    activeStatuses,
-    toggleStatusFilter,
-    clearStatusFilters,
-    bulkAccept,
-    finalizeMappings,
-  } = useMappingStore();
+  const searchTerm = useMappingStore(selectSearchTerm);
+  const activeStatuses = useMappingStore(selectActiveStatuses);
+  const setSearchTerm = useMappingStore(state => state.setSearchTerm);
+  const toggleStatusFilter = useMappingStore(state => state.toggleStatusFilter);
+  const clearStatusFilters = useMappingStore(state => state.clearStatusFilters);
+  const bulkAccept = useMappingStore(state => state.bulkAccept);
+  const finalizeMappings = useMappingStore(state => state.finalizeMappings);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
   const hasSelection = selectedIds.size > 0;
   const selectedCount = selectedIds.size;

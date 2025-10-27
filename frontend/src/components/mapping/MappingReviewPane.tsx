@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
-import { useMappingStore } from '../../store/mappingStore';
+import {
+  selectSummaryMetrics,
+  useMappingStore,
+} from '../../store/mappingStore';
 
 const MappingReviewPane = () => {
-  const accounts = useMappingStore(state => state.accounts);
+  const { mappedAccounts, grossTotal, excludedTotal, netTotal } = useMappingStore(selectSummaryMetrics);
   const { results, selectedPeriod, isProcessing } = useRatioAllocationStore(state => ({
     results: state.results,
     selectedPeriod: state.selectedPeriod,
@@ -15,11 +18,6 @@ const MappingReviewPane = () => {
     [results, selectedPeriod]
   );
 
-  const totalMapped = useMemo(
-    () => accounts.filter(account => account.manualCOAId || account.suggestedCOAId).length,
-    [accounts]
-  );
-
   return (
     <div className="space-y-6">
       <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
@@ -27,16 +25,31 @@ const MappingReviewPane = () => {
         <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Confirm your mappings and allocations before publishing results to the reporting suite.
         </p>
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-md bg-gray-50 p-4 dark:bg-slate-800">
             <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Mapped GL accounts</dt>
-            <dd className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{totalMapped}</dd>
+            <dd className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">{mappedAccounts}</dd>
+          </div>
+          <div className="rounded-md bg-gray-50 p-4 dark:bg-slate-800">
+            <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Gross balance</dt>
+            <dd className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+              {grossTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+            </dd>
           </div>
           <div className="rounded-md bg-gray-50 p-4 dark:bg-slate-800">
             <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Selected reporting period</dt>
             <dd className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
               {selectedPeriod ?? 'Not selected'}
             </dd>
+          </div>
+          <div className="rounded-md bg-gray-50 p-4 dark:bg-slate-800">
+            <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Net after exclusions</dt>
+            <dd className="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
+              {netTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+            </dd>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Excluded {excludedTotal.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })}
+            </p>
           </div>
         </dl>
       </div>
