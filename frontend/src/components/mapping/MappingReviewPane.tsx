@@ -1,22 +1,63 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
+  selectAccounts,
   selectSummaryMetrics,
+  selectSplitValidationIssues,
   useMappingStore,
 } from '../../store/mappingStore';
 
 const MappingReviewPane = () => {
+  const accounts = useMappingStore(selectAccounts);
   const { mappedAccounts, grossTotal, excludedTotal, netTotal } = useMappingStore(selectSummaryMetrics);
+  const splitIssues = useMappingStore(selectSplitValidationIssues);
+  const finalizeMappings = useMappingStore(state => state.finalizeMappings);
   const { results, selectedPeriod, isProcessing } = useRatioAllocationStore(state => ({
     results: state.results,
     selectedPeriod: state.selectedPeriod,
     isProcessing: state.isProcessing,
   }));
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const periodResult = useMemo(
     () => (selectedPeriod ? results.find(result => result.periodId === selectedPeriod) : undefined),
     [results, selectedPeriod]
   );
+
+  const warnings = useMemo(() => {
+    if (splitIssues.length === 0) {
+      return [] as { accountName: string; message: string }[];
+    }
+    const accountLookup = new Map(accounts.map(account => [account.id, account]));
+    return splitIssues.map(issue => {
+      const account = accountLookup.get(issue.accountId);
+      return {
+        accountName: account ? `${account.accountId} — ${account.accountName}` : issue.accountId,
+        message: issue.message,
+      };
+    });
+  }, [accounts, splitIssues]);
+
+  const handleRunChecks = () => {
+    if (warnings.length > 0) {
+      setStatusMessage('Checks complete — resolve the warnings below before publishing.');
+    } else {
+      setStatusMessage('All validations passed. You can publish your mappings.');
+    }
+  };
+
+  const handlePublish = () => {
+    if (warnings.length > 0) {
+      setStatusMessage('Publishing blocked. Fix allocation warnings first.');
+      return;
+    }
+    const success = finalizeMappings([]);
+    if (success) {
+      setStatusMessage('Mappings published successfully.');
+    } else {
+      setStatusMessage('Publishing failed due to validation issues.');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -106,6 +147,58 @@ const MappingReviewPane = () => {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Review warnings</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Address outstanding issues before publishing final mappings.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleRunChecks}
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:text-gray-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+            >
+              Run checks
+            </button>
+            <button
+              type="button"
+              onClick={handlePublish}
+              disabled={warnings.length > 0}
+              className={`rounded-md px-3 py-2 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                warnings.length > 0
+                  ? 'cursor-not-allowed bg-slate-200 text-slate-500 focus:ring-0 dark:bg-slate-800 dark:text-slate-500'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400'
+              }`}
+            >
+              Publish
+            </button>
+          </div>
+        </div>
+        {statusMessage && (
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200" role="status">
+            {statusMessage}
+          </p>
+        )}
+        {warnings.length > 0 ? (
+          <ul className="space-y-2">
+            {warnings.map(warning => (
+              <li
+                key={`${warning.accountName}-${warning.message}`}
+                className="flex items-start gap-2 rounded-md bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-900/40 dark:text-rose-200"
+              >
+                <span className="font-medium">{warning.accountName}</span>
+                <span className="text-rose-600 dark:text-rose-200">— {warning.message}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-emerald-700 dark:text-emerald-300">No outstanding warnings.</p>
+        )}
       </div>
     </div>
   );
