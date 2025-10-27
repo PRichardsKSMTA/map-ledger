@@ -47,26 +47,27 @@ export default function Mapping() {
   };
 
   return (
-    <div className="py-6">
-      <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 md:px-8">
-        <MappingHeader glUploadId={uploadId} />
-        <SummaryCards />
-        <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          {activeStep === 'mapping' && (
-            <MappingTable
-              onConfigureAllocation={accountId => {
-                setActiveAccountId(accountId);
-                setActiveStep('distribution');
-              }}
-            />
-          )}
-          {activeStep === 'distribution' && (
-            <DistributionTable focusMappingId={activeAccountId} />
-          )}
-          {activeStep === 'review' && <ReviewPane />}
-        </div>
-      </div>
+    <div data-testid="mapping-page" className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <MappingHeader glUploadId={uploadId} />
+      <SummaryCards />
+      <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
+      <section
+        aria-label="Mapping workspace content"
+        className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+      >
+        {activeStep === 'mapping' && (
+          <MappingTable
+            onConfigureAllocation={accountId => {
+              setActiveAccountId(accountId);
+              setActiveStep('distribution');
+            }}
+          />
+        )}
+        {activeStep === 'distribution' && (
+          <DistributionTable focusMappingId={activeAccountId} />
+        )}
+        {activeStep === 'review' && <ReviewPane />}
+      </section>
     </div>
   );
 }
