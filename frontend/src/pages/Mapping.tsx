@@ -4,8 +4,8 @@ import MappingHeader from '../components/mapping/MappingHeader';
 import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
 import SummaryCards from '../components/mapping/SummaryCards';
 import MappingTable from '../components/mapping/MappingTable';
-import RatioAllocationManager from '../components/mapping/RatioAllocationManager';
-import MappingReviewPane from '../components/mapping/MappingReviewPane';
+import DistributionPane from '../components/mapping/DistributionPane';
+import ReviewPane from '../components/mapping/ReviewPane';
 
 const stepParam = (value: string | null): MappingStep => {
   if (value === 'distribution' || value === 'review') {
@@ -62,12 +62,9 @@ export default function Mapping() {
             />
           )}
           {activeStep === 'distribution' && (
-            <RatioAllocationManager
-              initialSourceAccountId={activeAccountId ?? undefined}
-              onDone={() => handleStepChange('mapping')}
-            />
+            <DistributionPane initialSourceAccountId={activeAccountId} />
           )}
-          {activeStep === 'review' && <MappingReviewPane />}
+          {activeStep === 'review' && <ReviewPane />}
         </div>
       </div>
     </div>
