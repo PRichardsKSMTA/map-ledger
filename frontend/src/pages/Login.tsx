@@ -1,5 +1,4 @@
 // src/pages/Login.tsx
-import React from 'react';
 import { useMsal } from '@azure/msal-react';
 import { LogIn } from 'lucide-react';
 import { loginRequest } from '../utils/msal';
