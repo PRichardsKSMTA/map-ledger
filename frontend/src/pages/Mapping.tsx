@@ -4,7 +4,7 @@ import MappingHeader from '../components/mapping/MappingHeader';
 import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
 import SummaryCards from '../components/mapping/SummaryCards';
 import MappingTable from '../components/mapping/MappingTable';
-import DistributionPane from '../components/mapping/DistributionPane';
+import DistributionTable from '../components/mapping/DistributionTable';
 import ReviewPane from '../components/mapping/ReviewPane';
 
 const stepParam = (value: string | null): MappingStep => {
@@ -62,7 +62,7 @@ export default function Mapping() {
             />
           )}
           {activeStep === 'distribution' && (
-            <DistributionPane initialSourceAccountId={activeAccountId} />
+            <DistributionTable focusMappingId={activeAccountId} />
           )}
           {activeStep === 'review' && <ReviewPane />}
         </div>
