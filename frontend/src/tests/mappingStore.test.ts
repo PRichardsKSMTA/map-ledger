@@ -35,7 +35,7 @@ describe('mappingStore selectors', () => {
   it('recalculates totals when accounts are excluded', () => {
     act(() => {
       useMappingStore.getState().updateMappingType('acct-2', 'exclude');
-      useMappingStore.getState().updateStatus('acct-2', 'excluded');
+      useMappingStore.getState().updateStatus('acct-2', 'Excluded');
     });
 
     const summary = selectSummaryMetrics(useMappingStore.getState());
@@ -46,11 +46,10 @@ describe('mappingStore selectors', () => {
   it('tracks status counts across all mapping rows', () => {
     const counts = selectStatusCounts(useMappingStore.getState());
     expect(counts).toEqual({
-      'unreviewed': 1,
-      'in-review': 1,
-      'approved': 1,
-      'rejected': 0,
-      'excluded': 1,
+      New: 1,
+      Unmapped: 1,
+      Mapped: 1,
+      Excluded: 1,
     });
   });
 });

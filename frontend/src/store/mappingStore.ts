@@ -9,30 +9,40 @@ import type {
 
 const baseMappings: GLAccountMappingRow[] = [
   {
-    id: 'acct-1',
-    companyId: 'comp-acme',
-    companyName: 'Acme Freight',
-    entityId: 'entity-tms',
-    entityName: 'Acme Freight TMS',
-    accountId: '4000',
-    accountName: 'Linehaul Revenue',
-    activity: 'Revenue Recognition',
-    status: 'approved',
-    mappingType: 'direct',
-    balance: 500000,
-    operation: 'Linehaul',
-    suggestedCOAId: '4100',
-    suggestedCOADescription: 'Revenue',
-    aiConfidence: 96,
-    manualCOAId: '4100',
-    polarity: 'Credit',
-    presetId: 'preset-1',
-    notes: 'Approved during March close.',
-    splitDefinitions: [],
-    entities: [
-      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
-      { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
+    id: 'acct-3',
+    companyId: 'comp-global',
+    companyName: 'Global Logistics',
+    entityId: 'entity-main',
+    entityName: 'Global Main',
+    accountId: '6100',
+    accountName: 'Fuel Expense',
+    activity: 'Fleet Operations',
+    status: 'New',
+    mappingType: 'dynamic',
+    balance: 65000,
+    operation: 'Fleet',
+    suggestedCOAId: '6100',
+    suggestedCOADescription: 'Fuel Expense',
+    aiConfidence: 70,
+    polarity: 'Debit',
+    notes: 'Needs reviewer confirmation of dynamic allocation.',
+    splitDefinitions: [
+      {
+        id: 'split-3',
+        targetId: 'dp-fuel',
+        targetName: 'Fuel Expense',
+        allocationType: 'amount',
+        allocationValue: 45000,
+      },
+      {
+        id: 'split-4',
+        targetId: 'dp-maintenance',
+        targetName: 'Maintenance Expense',
+        allocationType: 'amount',
+        allocationValue: 20000,
+      },
     ],
+    entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
   },
   {
     id: 'acct-2',
@@ -43,7 +53,7 @@ const baseMappings: GLAccountMappingRow[] = [
     accountId: '5200',
     accountName: 'Payroll Taxes',
     activity: 'Payroll Processing',
-    status: 'in-review',
+    status: 'Unmapped',
     mappingType: 'percentage',
     balance: 120000,
     operation: 'Shared Services',
@@ -77,40 +87,30 @@ const baseMappings: GLAccountMappingRow[] = [
     ],
   },
   {
-    id: 'acct-3',
-    companyId: 'comp-global',
-    companyName: 'Global Logistics',
-    entityId: 'entity-main',
-    entityName: 'Global Main',
-    accountId: '6100',
-    accountName: 'Fuel Expense',
-    activity: 'Fleet Operations',
-    status: 'unreviewed',
-    mappingType: 'dynamic',
-    balance: 65000,
-    operation: 'Fleet',
-    suggestedCOAId: '6100',
-    suggestedCOADescription: 'Fuel Expense',
-    aiConfidence: 70,
-    polarity: 'Debit',
-    notes: 'Needs reviewer confirmation of dynamic allocation.',
-    splitDefinitions: [
-      {
-        id: 'split-3',
-        targetId: 'dp-fuel',
-        targetName: 'Fuel Expense',
-        allocationType: 'amount',
-        allocationValue: 45000,
-      },
-      {
-        id: 'split-4',
-        targetId: 'dp-maintenance',
-        targetName: 'Maintenance Expense',
-        allocationType: 'amount',
-        allocationValue: 20000,
-      },
+    id: 'acct-1',
+    companyId: 'comp-acme',
+    companyName: 'Acme Freight',
+    entityId: 'entity-tms',
+    entityName: 'Acme Freight TMS',
+    accountId: '4000',
+    accountName: 'Linehaul Revenue',
+    activity: 'Revenue Recognition',
+    status: 'Mapped',
+    mappingType: 'direct',
+    balance: 500000,
+    operation: 'Linehaul',
+    suggestedCOAId: '4100',
+    suggestedCOADescription: 'Revenue',
+    aiConfidence: 96,
+    manualCOAId: '4100',
+    polarity: 'Credit',
+    presetId: 'preset-1',
+    notes: 'Approved during March close.',
+    splitDefinitions: [],
+    entities: [
+      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
+      { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
     ],
-    entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
   },
   {
     id: 'acct-4',
@@ -121,7 +121,7 @@ const baseMappings: GLAccountMappingRow[] = [
     accountId: '8999',
     accountName: 'Legacy Clearing',
     activity: 'Legacy Clean-up',
-    status: 'excluded',
+    status: 'Excluded',
     mappingType: 'exclude',
     balance: 15000,
     operation: 'Legacy',
@@ -147,7 +147,7 @@ const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
 
 const calculateExcludedTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts
-    .filter(account => account.mappingType === 'exclude' || account.status === 'excluded')
+    .filter(account => account.mappingType === 'exclude' || account.status === 'Excluded')
     .reduce((sum, account) => sum + account.balance, 0);
 
 type SummarySelector = {
@@ -193,7 +193,7 @@ interface MappingState {
   finalizeMappings: (ids: string[]) => boolean;
 }
 
-const mappingStatuses: MappingStatus[] = ['unreviewed', 'in-review', 'approved', 'rejected', 'excluded'];
+const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
 export const useMappingStore = create<MappingState>((set, get) => ({
   accounts: createInitialMappingAccounts(),
@@ -227,22 +227,27 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     })),
   updateStatus: (id, status) =>
     set(state => ({
-      accounts: state.accounts.map(account =>
-        account.id === id
-          ? {
-              ...account,
-              status,
-              mappingType:
-                status === 'excluded'
-                  ? 'exclude'
-                  : account.mappingType === 'exclude'
-                    ? 'direct'
-                    : account.mappingType,
-              splitDefinitions:
-                status === 'excluded' ? [] : account.splitDefinitions,
-            }
-          : account
-      ),
+      accounts: state.accounts.map(account => {
+        if (account.id !== id) {
+          return account;
+        }
+
+        const isExcluded = status === 'Excluded';
+        const nextMappingType = isExcluded
+          ? 'exclude'
+          : account.mappingType === 'exclude'
+            ? 'direct'
+            : account.mappingType;
+
+        return {
+          ...account,
+          status,
+          mappingType: nextMappingType,
+          manualCOAId: isExcluded ? undefined : account.manualCOAId,
+          presetId: isExcluded ? undefined : account.presetId,
+          splitDefinitions: isExcluded ? [] : account.splitDefinitions,
+        };
+      }),
     })),
   updateMappingType: (id, mappingType) =>
     set(state => ({
@@ -251,10 +256,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           ? {
               ...account,
               mappingType,
-              status: mappingType === 'exclude'
-                ? 'excluded'
-                : account.status === 'excluded'
-                    ? 'in-review'
+              status:
+                mappingType === 'exclude'
+                  ? 'Excluded'
+                  : account.status === 'Excluded'
+                    ? 'Unmapped'
                     : account.status,
               manualCOAId: mappingType === 'exclude' ? undefined : account.manualCOAId,
               splitDefinitions:
@@ -344,14 +350,22 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           next.mappingType = updates.mappingType;
           if (updates.mappingType === 'exclude') {
             next.splitDefinitions = [];
-            next.status = 'excluded';
+            next.status = 'Excluded';
             next.manualCOAId = undefined;
+            next.presetId = undefined;
+          } else if (next.status === 'Excluded') {
+            next.status = 'Unmapped';
           }
         }
         if ('presetId' in updates) {
           next.presetId = updates.presetId || undefined;
           if (updates.presetId && !updates.mappingType) {
-            next.mappingType = next.mappingType === 'exclude' ? 'percentage' : next.mappingType;
+            if (next.mappingType === 'exclude') {
+              next.mappingType = 'percentage';
+            }
+            if (next.status === 'Excluded') {
+              next.status = 'Unmapped';
+            }
           }
         }
         if (updates.polarity) {
@@ -359,10 +373,18 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
         if (updates.status) {
           next.status = updates.status;
-        } else if (updates.mappingType && updates.mappingType !== 'exclude') {
-          next.status = next.status === 'excluded' ? 'in-review' : next.status;
+          if (updates.status === 'Excluded') {
+            next.mappingType = 'exclude';
+            next.manualCOAId = undefined;
+            next.presetId = undefined;
+            next.splitDefinitions = [];
+          } else if (next.mappingType === 'exclude') {
+            next.mappingType = 'direct';
+          }
+        } else if (updates.mappingType && updates.mappingType !== 'exclude' && next.status === 'Excluded') {
+          next.status = 'Unmapped';
         }
-        if (updates.mappingType && updates.mappingType !== 'exclude' && next.splitDefinitions.length === 0) {
+        if (next.mappingType !== 'percentage' && next.mappingType !== 'dynamic') {
           next.splitDefinitions = [];
         }
         return next;
@@ -377,12 +399,12 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (!presetId) {
           return { ...account, presetId: undefined };
         }
-        const nextStatus: MappingStatus = account.status === 'excluded' ? 'in-review' : account.status;
+        const nextStatus: MappingStatus = account.status === 'Excluded' ? 'Unmapped' : account.status;
         return {
           ...account,
           mappingType: 'percentage',
           presetId,
-          status: nextStatus === 'excluded' ? 'in-review' : nextStatus,
+          status: nextStatus,
         };
       }),
     }));
@@ -397,13 +419,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           if (!ids.includes(account.id) || !account.suggestedCOAId) {
             return account;
           }
-          if (account.mappingType === 'exclude' || account.status === 'excluded') {
+          if (account.mappingType === 'exclude' || account.status === 'Excluded') {
             return account;
           }
           return {
             ...account,
             manualCOAId: account.suggestedCOAId,
-            status: 'approved',
+            status: 'Mapped',
             mappingType: account.mappingType === 'direct' ? account.mappingType : 'direct',
           };
         }),
@@ -418,7 +440,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       return false;
     }
     const payload = accounts
-      .filter(account => account.mappingType !== 'exclude' && account.status !== 'excluded')
+      .filter(account => account.mappingType !== 'exclude' && account.status !== 'Excluded')
       .map(account => ({
         glAccountRawId: account.id,
         coAAccountId: account.manualCOAId || account.suggestedCOAId,

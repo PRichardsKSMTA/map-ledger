@@ -35,27 +35,24 @@ type SortKey =
 type SortDirection = 'asc' | 'desc';
 
 const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
-  'unreviewed': 'Unreviewed',
-  'in-review': 'In review',
-  'approved': 'Approved',
-  'rejected': 'Rejected',
-  'excluded': 'Excluded',
+  New: 'New',
+  Unmapped: 'Unmapped',
+  Mapped: 'Mapped',
+  Excluded: 'Excluded',
 };
 
 const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
-  'unreviewed': 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-  'in-review': 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
-  'approved': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
-  'rejected': 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
-  'excluded': 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
+  New: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  Unmapped: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+  Mapped: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  Excluded: 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
 };
 
-const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
-  'unreviewed': 0,
-  'in-review': 1,
-  'approved': 2,
-  'rejected': 3,
-  'excluded': 4,
+export const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
+  New: 0,
+  Unmapped: 1,
+  Mapped: 2,
+  Excluded: 3,
 };
 
 const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = {
@@ -70,12 +67,12 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'activity', label: 'Activity' },
-  { key: 'status', label: 'Status' },
   { key: 'mappingType', label: 'Mapping Type' },
   { key: 'targetScoa', label: 'Target SCoA' },
   { key: 'polarity', label: 'Polarity' },
   { key: 'presetId', label: 'Preset' },
   { key: 'aiConfidence', label: 'Confidence' },
+  { key: 'status', label: 'Status' },
   { key: 'notes', label: 'Notes' },
 ];
 
@@ -286,16 +283,6 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                       <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
                     </td>
                     <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.activity}</td>
-                    <td className="px-3 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
-                        role="status"
-                        aria-label={`Status ${statusLabel}`}
-                      >
-                        <Check className="h-3 w-3" aria-hidden="true" />
-                        {statusLabel}
-                      </span>
-                    </td>
                     <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
                     <td className="px-3 py-4">
                       <label className="sr-only" htmlFor={`scoa-${account.id}`}>
@@ -348,6 +335,16 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                           />
                         </div>
                       </div>
+                    </td>
+                    <td className="px-3 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
+                        role="status"
+                        aria-label={`Status ${statusLabel}`}
+                      >
+                        <Check className="h-3 w-3" aria-hidden="true" />
+                        {statusLabel}
+                      </span>
                     </td>
                     <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
                       <div className="flex flex-col gap-1">

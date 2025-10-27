@@ -10,11 +10,10 @@ interface DistributionTableProps {
 }
 
 const STATUS_DEFINITIONS: { value: MappingStatus; label: string }[] = [
-  { value: 'unreviewed', label: 'Unreviewed' },
-  { value: 'in-review', label: 'In Review' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'excluded', label: 'Excluded' },
+  { value: 'New', label: 'New' },
+  { value: 'Unmapped', label: 'Unmapped' },
+  { value: 'Mapped', label: 'Mapped' },
+  { value: 'Excluded', label: 'Excluded' },
 ];
 
 const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
