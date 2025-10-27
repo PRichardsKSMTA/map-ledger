@@ -177,6 +177,27 @@ export interface MappingSplitDefinition {
   notes?: string;
 }
 
+export type DistributionType = 'direct' | 'percentage' | 'dynamic';
+
+export interface DistributionOperationShare {
+  id: string;
+  name: string;
+  allocation?: number;
+}
+
+export interface DistributionRow {
+  id: string;
+  mappingRowId: string;
+  accountId: string;
+  description: string;
+  activity: string;
+  type: DistributionType;
+  operations: DistributionOperationShare[];
+  presetId?: string | null;
+  notes?: string;
+  status: MappingStatus;
+}
+
 export interface GLAccountMappingRow {
   id: string;
   companyId: string;
