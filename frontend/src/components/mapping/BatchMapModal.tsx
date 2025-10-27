@@ -31,11 +31,10 @@ const mappingTypeOptions: { value: MappingType | ''; label: string }[] = [
 
 const statusOptions: { value: MappingStatus | ''; label: string }[] = [
   { value: '', label: 'Leave unchanged' },
-  { value: 'unreviewed', label: 'Unreviewed' },
-  { value: 'in-review', label: 'In review' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'rejected', label: 'Rejected' },
-  { value: 'excluded', label: 'Excluded' },
+  { value: 'New', label: 'New' },
+  { value: 'Unmapped', label: 'Unmapped' },
+  { value: 'Mapped', label: 'Mapped' },
+  { value: 'Excluded', label: 'Excluded' },
 ];
 
 const polarityOptions: (MappingPolarity | '')[] = ['', 'Debit', 'Credit'];
@@ -65,8 +64,8 @@ export default function BatchMapModal({
 
   useEffect(() => {
     if (mappingType === 'exclude') {
-      setStatus('excluded');
-    } else if (status === 'excluded') {
+      setStatus('Excluded');
+    } else if (status === 'Excluded') {
       setStatus('');
     }
   }, [mappingType, status]);

@@ -18,27 +18,22 @@ const STATUS_DEFINITIONS: {
   className: string;
 }[] = [
   {
-    value: 'unreviewed',
-    label: 'Unreviewed',
+    value: 'New',
+    label: 'New',
     className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
   },
   {
-    value: 'in-review',
-    label: 'In Review',
+    value: 'Unmapped',
+    label: 'Unmapped',
     className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
   },
   {
-    value: 'approved',
-    label: 'Approved',
+    value: 'Mapped',
+    label: 'Mapped',
     className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
   },
   {
-    value: 'rejected',
-    label: 'Rejected',
-    className: 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
-  },
-  {
-    value: 'excluded',
+    value: 'Excluded',
     label: 'Excluded',
     className: 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
   },
@@ -119,7 +114,7 @@ export default function MappingToolbar() {
     if (!selectedIds.size) {
       return;
     }
-    applyBatchMapping(Array.from(selectedIds), { mappingType: 'exclude', status: 'excluded' });
+    applyBatchMapping(Array.from(selectedIds), { mappingType: 'exclude', status: 'Excluded' });
     setBatchExcludeOpen(false);
     clearSelection();
     setFinalizeError(null);

@@ -162,7 +162,7 @@ export interface GLAccountEntityBreakdown {
   balance: number;
 }
 
-export type MappingStatus = 'unreviewed' | 'in-review' | 'approved' | 'rejected' | 'excluded';
+export type MappingStatus = 'Mapped' | 'Unmapped' | 'New' | 'Excluded';
 
 export type MappingType = 'direct' | 'percentage' | 'dynamic' | 'exclude';
 

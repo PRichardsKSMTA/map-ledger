@@ -44,7 +44,7 @@ const seedRows: DistributionRow[] = [
     ],
     presetId: 'preset-1',
     notes: 'Allocate fuel based on miles driven.',
-    status: 'in-review',
+    status: 'Unmapped',
   },
   {
     id: 'dist-2',
@@ -59,7 +59,7 @@ const seedRows: DistributionRow[] = [
     ],
     presetId: 'preset-2',
     notes: 'Split based on headcount.',
-    status: 'approved',
+    status: 'Mapped',
   },
   {
     id: 'dist-3',
@@ -71,7 +71,7 @@ const seedRows: DistributionRow[] = [
     operations: [{ id: 'ops-ded', name: 'Dedicated' }],
     presetId: null,
     notes: 'Charged entirely to dedicated operations.',
-    status: 'unreviewed',
+    status: 'New',
   },
 ];
 
