@@ -1,16 +1,19 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check } from 'lucide-react';
+import { ChangeEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpDown, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
   selectAccounts,
   selectActiveStatuses,
   selectSearchTerm,
+  selectSplitValidationIssues,
   useMappingStore,
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import type { GLAccountMappingRow } from '../../types';
+import MappingSplitRow from './MappingSplitRow';
+import { PRESET_OPTIONS } from './presets';
 
 interface MappingTableProps {
   onConfigureAllocation?: (glAccountRawId: string) => void;
@@ -62,13 +65,6 @@ const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = 
   exclude: 'Excluded',
 };
 
-const PRESET_OPTIONS = [
-  { value: 'preset-1', label: 'Revenue default' },
-  { value: 'preset-2', label: 'Payroll allocation' },
-  { value: 'preset-3', label: 'Logistics baseline' },
-  { value: 'custom', label: 'Custom' },
-];
-
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'companyName', label: 'Company / Entity' },
   { key: 'accountId', label: 'Account ID' },
@@ -91,10 +87,19 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const updateTarget = useMappingStore(state => state.updateTarget);
-  const updatePreset = useMappingStore(state => state.updatePreset);
+  const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
+  const addSplitDefinition = useMappingStore(state => state.addSplitDefinition);
+  const updateSplitDefinition = useMappingStore(state => state.updateSplitDefinition);
+  const removeSplitDefinition = useMappingStore(state => state.removeSplitDefinition);
   const { selectedIds, toggleSelection, setSelection, clearSelection } = useMappingSelectionStore();
+  const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
+
+  const splitIssueIds = useMemo(() => new Set(splitValidationIssues.map(issue => issue.accountId)), [
+    splitValidationIssues,
+  ]);
 
   useEffect(() => {
     const validIds = new Set(accounts.map(account => account.id));
@@ -103,6 +108,18 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
       setSelection(filteredSelection);
     }
   }, [accounts, selectedIds, setSelection]);
+
+  useEffect(() => {
+    setExpandedRows(previous => {
+      const next = new Set<string>();
+      previous.forEach(id => {
+        if (accounts.some(account => account.id === id)) {
+          next.add(id);
+        }
+      });
+      return next;
+    });
+  }, [accounts]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
@@ -176,6 +193,18 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
     toggleSelection(id);
   };
 
+  const toggleSplitRow = (id: string) => {
+    setExpandedRows(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const getAriaSort = (columnKey: SortKey): 'ascending' | 'descending' | 'none' => {
     if (sortConfig?.key !== columnKey) {
       return 'none';
@@ -224,117 +253,150 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
               const isSelected = selectedIds.has(account.id);
       const targetScoa = account.manualCOAId ?? account.suggestedCOAId ?? '';
       const requiresSplit = account.mappingType === 'percentage' || account.mappingType === 'dynamic';
+      const hasSplitIssue = splitIssueIds.has(account.id);
       const hasAllocation =
-        account.splitDefinitions.length > 0 ||
+        (account.splitDefinitions.length > 0 && !hasSplitIssue) ||
         allocations.some(allocation => allocation.sourceAccount.id === account.id);
               const statusLabel = STATUS_LABELS[account.status];
+              const isExpanded = expandedRows.has(account.id);
 
               return (
-                <tr
-                  key={account.id}
-                  className={isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined}
-                >
-                  <td className="px-3 py-4">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select account ${account.accountId}`}
-                      checked={isSelected}
-                      onChange={() => handleRowSelection(account.id)}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="max-w-[220px] px-3 py-4">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">{account.companyName}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">{account.entityName ?? '—'}</div>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
-                    {account.accountId}
-                  </td>
-                  <td className="px-3 py-4">
-                    <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
-                  </td>
-                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.activity}</td>
-                  <td className="px-3 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
-                      role="status"
-                      aria-label={`Status ${statusLabel}`}
-                    >
-                      <Check className="h-3 w-3" aria-hidden="true" />
-                      {statusLabel}
-                    </span>
-                  </td>
-                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
-                  <td className="px-3 py-4">
-                    <label className="sr-only" htmlFor={`scoa-${account.id}`}>
-                      Select target SCoA for {account.accountName}
-                    </label>
-                    <select
-                      id={`scoa-${account.id}`}
-                      value={targetScoa}
-                      onChange={event => updateTarget(account.id, event.target.value)}
-                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">Select target</option>
-                      {coaOptions.map(option => (
-                        <option key={option.id} value={option.coreGLAccount}>
-                          {option.accountName}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.polarity}</td>
-                  <td className="px-3 py-4">
-                    <label className="sr-only" htmlFor={`preset-${account.id}`}>
-                      Select preset for {account.accountName}
-                    </label>
-                    <select
-                      id={`preset-${account.id}`}
-                      value={account.presetId ?? ''}
-                      onChange={event => updatePreset(account.id, event.target.value)}
-                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    >
-                      <option value="">No preset</option>
-                      {PRESET_OPTIONS.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{account.aiConfidence !== undefined ? `${account.aiConfidence}%` : '—'}</span>
-                      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                        <div
-                          className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
-                          style={{ width: `${Math.min(account.aiConfidence ?? 0, 100)}%` }}
-                          aria-hidden="true"
-                        />
+                <Fragment key={account.id}>
+                  <tr
+                    className={isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined}
+                  >
+                    <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select account ${account.accountId}`}
+                        checked={isSelected}
+                        onChange={() => handleRowSelection(account.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="max-w-[220px] px-3 py-4">
+                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.companyName}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{account.entityName ?? '—'}</div>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
+                      {account.accountId}
+                    </td>
+                    <td className="px-3 py-4">
+                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
+                    </td>
+                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.activity}</td>
+                    <td className="px-3 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
+                        role="status"
+                        aria-label={`Status ${statusLabel}`}
+                      >
+                        <Check className="h-3 w-3" aria-hidden="true" />
+                        {statusLabel}
+                      </span>
+                    </td>
+                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
+                    <td className="px-3 py-4">
+                      <label className="sr-only" htmlFor={`scoa-${account.id}`}>
+                        Select target SCoA for {account.accountName}
+                      </label>
+                      <select
+                        id={`scoa-${account.id}`}
+                        value={targetScoa}
+                        onChange={event => updateTarget(account.id, event.target.value)}
+                        className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">Select target</option>
+                        {coaOptions.map(option => (
+                          <option key={option.id} value={option.coreGLAccount}>
+                            {option.accountName}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.polarity}</td>
+                    <td className="px-3 py-4">
+                      <label className="sr-only" htmlFor={`preset-${account.id}`}>
+                        Select preset for {account.accountName}
+                      </label>
+                      <select
+                        id={`preset-${account.id}`}
+                        value={account.presetId ?? ''}
+                        onChange={event => {
+                          const nextValue = event.target.value || null;
+                          applyPresetToAccounts([account.id], nextValue);
+                        }}
+                        className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        <option value="">No preset</option>
+                        {PRESET_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{account.aiConfidence !== undefined ? `${account.aiConfidence}%` : '—'}</span>
+                        <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                          <div
+                            className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
+                            style={{ width: `${Math.min(account.aiConfidence ?? 0, 100)}%` }}
+                            aria-hidden="true"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
-                    <div className="flex flex-col gap-1">
-                      <span>{account.notes ?? '—'}</span>
-                      {requiresSplit && !hasAllocation && (
-                        <span className="text-xs text-amber-600 dark:text-amber-300">
-                          Allocation details required
-                        </span>
-                      )}
-                      {requiresSplit && (
-                        <button
-                          type="button"
-                          onClick={() => onConfigureAllocation?.(account.id)}
-                          className="self-start text-xs font-medium text-blue-600 underline hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
-                        >
-                          Configure allocation
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
+                      <div className="flex flex-col gap-1">
+                        <span>{account.notes ?? '—'}</span>
+                        {requiresSplit && !hasAllocation && (
+                          <span className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}>
+                            {hasSplitIssue ? 'Allocation percentages must equal 100%' : 'Allocation details required'}
+                          </span>
+                        )}
+                        {requiresSplit && (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onConfigureAllocation?.(account.id)}
+                              className="text-xs font-medium text-blue-600 underline hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
+                            >
+                              Configure allocation
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleSplitRow(account.id)}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 underline transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                              aria-expanded={isExpanded}
+                              aria-controls={`split-panel-${account.id}`}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                              ) : (
+                                <ChevronRight className="h-3 w-3" aria-hidden="true" />
+                              )}
+                              {isExpanded ? 'Hide splits' : 'Show splits'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {requiresSplit && isExpanded && (
+                    <MappingSplitRow
+                      account={account}
+                      datapoints={coaOptions}
+                      colSpan={COLUMN_DEFINITIONS.length + 1}
+                      panelId={`split-panel-${account.id}`}
+                      onAddSplit={() => addSplitDefinition(account.id)}
+                      onUpdateSplit={(splitId, updates) => updateSplitDefinition(account.id, splitId, updates)}
+                      onRemoveSplit={splitId => removeSplitDefinition(account.id, splitId)}
+                    />
+                  )}
+                </Fragment>
               );
             })}
             {sortedAccounts.length === 0 && (

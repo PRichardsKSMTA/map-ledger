@@ -1,4 +1,4 @@
-import { ChangeEvent } from 'react';
+import { ChangeEvent, useState } from 'react';
 import { Search } from 'lucide-react';
 import {
   selectActiveStatuses,
@@ -6,7 +6,11 @@ import {
   useMappingStore,
 } from '../../store/mappingStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
+import { useTemplateStore } from '../../store/templateStore';
 import type { GLAccountMappingRow } from '../../types';
+import BatchMapModal from './BatchMapModal';
+import PresetModal from './PresetModal';
+import BatchExclude from './BatchExclude';
 
 const STATUS_DEFINITIONS: {
   value: GLAccountMappingRow['status'];
@@ -48,7 +52,15 @@ export default function MappingToolbar() {
   const clearStatusFilters = useMappingStore(state => state.clearStatusFilters);
   const bulkAccept = useMappingStore(state => state.bulkAccept);
   const finalizeMappings = useMappingStore(state => state.finalizeMappings);
+  const applyBatchMapping = useMappingStore(state => state.applyBatchMapping);
+  const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
+  const datapoints = useTemplateStore(state => state.datapoints);
+  const coaOptions = datapoints['1'] || [];
+  const [isBatchMapOpen, setBatchMapOpen] = useState(false);
+  const [isPresetOpen, setPresetOpen] = useState(false);
+  const [isBatchExcludeOpen, setBatchExcludeOpen] = useState(false);
+  const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const hasSelection = selectedIds.size > 0;
   const selectedCount = selectedIds.size;
 
@@ -59,16 +71,58 @@ export default function MappingToolbar() {
   const handleBulkAccept = () => {
     if (!selectedIds.size) return;
     bulkAccept(Array.from(selectedIds));
+    setFinalizeError(null);
   };
 
   const handleFinalize = () => {
     if (!selectedIds.size) return;
-    finalizeMappings(Array.from(selectedIds));
-    clearSelection();
+    const success = finalizeMappings(Array.from(selectedIds));
+    if (success) {
+      clearSelection();
+      setFinalizeError(null);
+    } else {
+      setFinalizeError('Resolve split allocations before publishing selected rows.');
+    }
   };
 
   const handleClearFilters = () => {
     clearStatusFilters();
+  };
+
+  const handleApplyBatchMap = (updates: {
+    target?: string | null;
+    mappingType?: GLAccountMappingRow['mappingType'];
+    presetId?: string | null;
+    polarity?: GLAccountMappingRow['polarity'];
+    status?: GLAccountMappingRow['status'];
+  }) => {
+    if (!selectedIds.size) {
+      return;
+    }
+    applyBatchMapping(Array.from(selectedIds), updates);
+    setBatchMapOpen(false);
+    clearSelection();
+    setFinalizeError(null);
+  };
+
+  const handleApplyPreset = (presetId: string) => {
+    if (!selectedIds.size) {
+      return;
+    }
+    applyPresetToAccounts(Array.from(selectedIds), presetId);
+    setPresetOpen(false);
+    clearSelection();
+    setFinalizeError(null);
+  };
+
+  const handleConfirmExclude = () => {
+    if (!selectedIds.size) {
+      return;
+    }
+    applyBatchMapping(Array.from(selectedIds), { mappingType: 'exclude', status: 'excluded' });
+    setBatchExcludeOpen(false);
+    clearSelection();
+    setFinalizeError(null);
   };
 
   return (
@@ -138,6 +192,42 @@ export default function MappingToolbar() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            onClick={() => setBatchMapOpen(true)}
+            disabled={!hasSelection}
+            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+              hasSelection
+                ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+            }`}
+          >
+            Batch map
+          </button>
+          <button
+            type="button"
+            onClick={() => setPresetOpen(true)}
+            disabled={!hasSelection}
+            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+              hasSelection
+                ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+            }`}
+          >
+            Apply preset
+          </button>
+          <button
+            type="button"
+            onClick={() => setBatchExcludeOpen(true)}
+            disabled={!hasSelection}
+            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+              hasSelection
+                ? 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus:ring-rose-500 dark:border-rose-400/60 dark:bg-slate-800 dark:text-rose-300 dark:hover:bg-rose-900/30'
+                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+            }`}
+          >
+            Exclude
+          </button>
+          <button
+            type="button"
             onClick={handleBulkAccept}
             disabled={!hasSelection}
             className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
@@ -161,7 +251,31 @@ export default function MappingToolbar() {
             Finalize selection
           </button>
         </div>
+        {finalizeError && (
+          <p className="text-sm text-rose-600 dark:text-rose-300" role="alert">
+            {finalizeError}
+          </p>
+        )}
       </div>
+      <BatchMapModal
+        open={isBatchMapOpen && hasSelection}
+        datapoints={coaOptions}
+        selectedCount={selectedCount}
+        onClose={() => setBatchMapOpen(false)}
+        onApply={handleApplyBatchMap}
+      />
+      <PresetModal
+        open={isPresetOpen && hasSelection}
+        selectedCount={selectedCount}
+        onClose={() => setPresetOpen(false)}
+        onApply={handleApplyPreset}
+      />
+      <BatchExclude
+        open={isBatchExcludeOpen && hasSelection}
+        selectedCount={selectedCount}
+        onClose={() => setBatchExcludeOpen(false)}
+        onConfirm={handleConfirmExclude}
+      />
     </div>
   );
 }
