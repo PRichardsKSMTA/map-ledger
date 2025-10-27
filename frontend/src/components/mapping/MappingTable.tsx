@@ -1,146 +1,367 @@
-import { useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpDown, Check } from 'lucide-react';
+import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
-import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useMappingStore } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
+import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
+import type { GLAccountMappingRow } from '../../types';
 
 interface MappingTableProps {
   onConfigureAllocation?: (glAccountRawId: string) => void;
 }
 
-export default function MappingTable(props: MappingTableProps) {
-  const { accounts, setManualMapping, bulkAccept, finalizeMappings } = useMappingStore();
+type SortKey =
+  | 'companyName'
+  | 'accountId'
+  | 'accountName'
+  | 'activity'
+  | 'status'
+  | 'mappingType'
+  | 'targetScoa'
+  | 'polarity'
+  | 'presetId'
+  | 'confidenceScore'
+  | 'notes';
+
+type SortDirection = 'asc' | 'desc';
+
+const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
+  'unreviewed': 'Unreviewed',
+  'in-review': 'In review',
+  'approved': 'Approved',
+  'rejected': 'Rejected',
+};
+
+const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
+  'unreviewed': 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  'in-review': 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+  'approved': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  'rejected': 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200',
+};
+
+const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
+  'unreviewed': 0,
+  'in-review': 1,
+  'approved': 2,
+  'rejected': 3,
+};
+
+const PRESET_OPTIONS = [
+  { value: 'preset-1', label: 'Revenue default' },
+  { value: 'preset-2', label: 'Payroll allocation' },
+  { value: 'preset-3', label: 'Logistics baseline' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
+  { key: 'companyName', label: 'Company / Entity' },
+  { key: 'accountId', label: 'Account ID' },
+  { key: 'accountName', label: 'Description' },
+  { key: 'activity', label: 'Activity' },
+  { key: 'status', label: 'Status' },
+  { key: 'mappingType', label: 'Mapping Type' },
+  { key: 'targetScoa', label: 'Target SCoA' },
+  { key: 'polarity', label: 'Polarity' },
+  { key: 'presetId', label: 'Preset' },
+  { key: 'confidenceScore', label: 'Confidence' },
+  { key: 'notes', label: 'Notes' },
+];
+
+export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
   const { allocations } = useRatioAllocationStore();
   const { datapoints } = useTemplateStore();
   const coaOptions = datapoints['1'] || [];
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const {
+    accounts,
+    searchTerm,
+    activeStatuses,
+    setManualMapping,
+    setPreset,
+  } = useMappingStore();
+  const { selectedIds, toggleSelection, setSelection, clearSelection } = useMappingSelectionStore();
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
-  const toggleRow = (id: string) => {
-    setExpanded(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
+  useEffect(() => {
+    const validIds = new Set(accounts.map(account => account.id));
+    const filteredSelection = Array.from(selectedIds).filter(id => validIds.has(id));
+    if (filteredSelection.length !== selectedIds.size) {
+      setSelection(filteredSelection);
+    }
+  }, [accounts, selectedIds, setSelection]);
+
+  const filteredAccounts = useMemo(() => {
+    const normalizedQuery = searchTerm.trim().toLowerCase();
+    return accounts.filter(account => {
+      const matchesSearch =
+        !normalizedQuery ||
+        [
+          account.accountId,
+          account.accountName,
+          account.companyName,
+          account.entityName ?? '',
+          account.activity,
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery);
+      const matchesStatus =
+        activeStatuses.length === 0 || activeStatuses.includes(account.status);
+      return matchesSearch && matchesStatus;
     });
+  }, [accounts, searchTerm, activeStatuses]);
+
+  const sortedAccounts = useMemo(() => {
+    if (!sortConfig) {
+      return filteredAccounts;
+    }
+    const { key, direction } = sortConfig;
+    const multiplier = direction === 'asc' ? 1 : -1;
+    const safeCompare = (a: GLAccountMappingRow, b: GLAccountMappingRow) => {
+      const valueA = getSortValue(a, key);
+      const valueB = getSortValue(b, key);
+      if (typeof valueA === 'number' && typeof valueB === 'number') {
+        return (valueA - valueB) * multiplier;
+      }
+      const textA = typeof valueA === 'number' ? valueA.toString() : valueA;
+      const textB = typeof valueB === 'number' ? valueB.toString() : valueB;
+      return textA.localeCompare(textB, undefined, { sensitivity: 'base' }) * multiplier;
+    };
+    return [...filteredAccounts].sort(safeCompare);
+  }, [filteredAccounts, sortConfig]);
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    const allIds = sortedAccounts.map(account => account.id);
+    const isAllSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+    selectAllRef.current.checked = isAllSelected;
+    selectAllRef.current.indeterminate =
+      selectedIds.size > 0 && !isAllSelected && allIds.some(id => selectedIds.has(id));
+  }, [sortedAccounts, selectedIds]);
+
+  const handleSort = (key: SortKey) => {
+    setSortConfig(previous => {
+      if (previous && previous.key === key) {
+        const nextDirection: SortDirection = previous.direction === 'asc' ? 'desc' : 'asc';
+        return { key, direction: nextDirection };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
+
+  const handleSelectAll = (event: ChangeEvent<HTMLInputElement>) => {
+    const shouldSelectAll = event.target.checked;
+    if (shouldSelectAll) {
+      setSelection(sortedAccounts.map(account => account.id));
+    } else {
+      clearSelection();
+    }
+  };
+
+  const handleRowSelection = (id: string) => {
+    toggleSelection(id);
+  };
+
+  const getAriaSort = (columnKey: SortKey): 'ascending' | 'descending' | 'none' => {
+    if (sortConfig?.key !== columnKey) {
+      return 'none';
+    }
+    return sortConfig.direction === 'asc' ? 'ascending' : 'descending';
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end space-x-2">
-        <button
-          onClick={bulkAccept}
-          className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
-        >
-          Bulk Accept
-        </button>
-        <button
-          onClick={finalizeMappings}
-          className="px-3 py-2 text-sm rounded-md bg-green-600 text-white hover:bg-green-700"
-        >
-          Save Mappings
-        </button>
-      </div>
+      <MappingToolbar />
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm border">
-          <thead className="bg-gray-50 text-left">
+        <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700" role="table">
+          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
-              <th className="p-2" />
-              <th className="p-2">Account ID</th>
-              <th className="p-2">Account Name</th>
-              <th className="p-2 text-right">Balance</th>
-              <th className="p-2">Operation</th>
-              <th className="p-2">Distribution</th>
-              <th className="p-2">Value</th>
-              <th className="p-2">Suggested COA</th>
-              <th className="p-2">Description</th>
-              <th className="p-2 text-right">Confidence</th>
-              <th className="p-2">Manual Override</th>
+              <th scope="col" className="w-12 px-3 py-3">
+                <span className="sr-only">Select all rows</span>
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  aria-label="Select all rows"
+                  onChange={handleSelectAll}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
+              {COLUMN_DEFINITIONS.map(column => (
+                <th
+                  key={column.key}
+                  scope="col"
+                  aria-sort={getAriaSort(column.key)}
+                  className="whitespace-nowrap px-3 py-3"
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort(column.key)}
+                    className="flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                  >
+                    {column.label}
+                    <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
-          <tbody>
-            {accounts.map(acc => (
-              <>
+          <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
+            {sortedAccounts.map(account => {
+              const isSelected = selectedIds.has(account.id);
+              const targetScoa = account.manualCOAId ?? account.suggestedCOAId ?? '';
+              const hasAllocation = allocations.some(
+                allocation => allocation.sourceAccount.id === account.id
+              );
+              const statusLabel = STATUS_LABELS[account.status];
+
+              return (
                 <tr
-                  key={acc.id}
-                  className={`border-t ${
-                    acc.confidenceScore >= 90
-                      ? 'bg-green-50'
-                      : !acc.suggestedCOAId || acc.confidenceScore < 90
-                        ? 'bg-red-50'
-                        : ''
-                  }`}
+                  key={account.id}
+                  className={isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined}
                 >
-                  <td className="p-2">
-                    <button onClick={() => toggleRow(acc.id)} className="p-1">
-                      {expanded.has(acc.id) ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </button>
+                  <td className="px-3 py-4">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select account ${account.accountId}`}
+                      checked={isSelected}
+                      onChange={() => handleRowSelection(account.id)}
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
                   </td>
-                  <td className="p-2">{acc.accountId}</td>
-                  <td className="p-2">{acc.accountName}</td>
-                  <td className="p-2 text-right">{acc.balance.toFixed(2)}</td>
-                  <td className="p-2">{acc.operation}</td>
-                  <td className="p-2">{acc.distributionMethod}</td>
-                  <td className="p-2">{acc.distributionValue ?? '-'}</td>
-                  <td className="p-2">{acc.suggestedCOAId}</td>
-                  <td className="p-2">{acc.suggestedCOADescription}</td>
-                  <td className="p-2 text-right">
-                    <div className="flex items-center space-x-2 justify-end">
-                      <span>{acc.confidenceScore}%</span>
-                      {acc.distributionMethod !== 'None' &&
-                        !allocations.some(a => a.sourceAccount.id === acc.id) && (
-                          <span className="inline-flex items-center rounded bg-yellow-100 px-1.5 py-0.5 text-xs font-medium text-yellow-800">
-                            Needs Allocation
-                          </span>
-                        )}
-                    </div>
+                  <td className="max-w-[220px] px-3 py-4">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{account.companyName}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">{account.entityName ?? '—'}</div>
                   </td>
-                  <td className="p-2">
-                    <select
-                      className="border rounded p-1"
-                      value={acc.manualCOAId || acc.suggestedCOAId || ''}
-                      onChange={e => setManualMapping(acc.id, e.target.value)}
+                  <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
+                    {account.accountId}
+                  </td>
+                  <td className="px-3 py-4">
+                    <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
+                  </td>
+                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.activity}</td>
+                  <td className="px-3 py-4">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
+                      role="status"
+                      aria-label={`Status ${statusLabel}`}
                     >
-                      <option value="">-- Select --</option>
-                      {coaOptions.map(opt => (
-                        <option key={opt.id} value={opt.coreGLAccount}>
-                          {opt.accountName}
+                      <Check className="h-3 w-3" aria-hidden="true" />
+                      {statusLabel}
+                    </span>
+                  </td>
+                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.mappingType}</td>
+                  <td className="px-3 py-4">
+                    <label className="sr-only" htmlFor={`scoa-${account.id}`}>
+                      Select target SCoA for {account.accountName}
+                    </label>
+                    <select
+                      id={`scoa-${account.id}`}
+                      value={targetScoa}
+                      onChange={event => setManualMapping(account.id, event.target.value)}
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">Select target</option>
+                      {coaOptions.map(option => (
+                        <option key={option.id} value={option.coreGLAccount}>
+                          {option.accountName}
                         </option>
                       ))}
                     </select>
-                    {acc.distributionMethod !== 'None' && (
-                      <div>
-                        <button
-                          onClick={() => props.onConfigureAllocation?.(acc.id)}
-                          className="text-blue-600 underline mt-1 text-xs"
-                        >
-                          Configure Allocation
-                        </button>
+                  </td>
+                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.polarity}</td>
+                  <td className="px-3 py-4">
+                    <label className="sr-only" htmlFor={`preset-${account.id}`}>
+                      Select preset for {account.accountName}
+                    </label>
+                    <select
+                      id={`preset-${account.id}`}
+                      value={account.presetId ?? ''}
+                      onChange={event => setPreset(account.id, event.target.value)}
+                      className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    >
+                      <option value="">No preset</option>
+                      {PRESET_OPTIONS.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{account.confidenceScore}%</span>
+                      <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div
+                          className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
+                          style={{ width: `${account.confidenceScore}%` }}
+                          aria-hidden="true"
+                        />
                       </div>
-                    )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
+                    <div className="flex flex-col gap-1">
+                      <span>{account.notes ?? '—'}</span>
+                      {account.distributionMethod !== 'single' && !hasAllocation && (
+                        <span className="text-xs text-amber-600 dark:text-amber-300">
+                          Allocation details required
+                        </span>
+                      )}
+                      {account.distributionMethod !== 'single' && (
+                        <button
+                          type="button"
+                          onClick={() => onConfigureAllocation?.(account.id)}
+                          className="self-start text-xs font-medium text-blue-600 underline hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
+                        >
+                          Configure allocation
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
-                {expanded.has(acc.id) && acc.entities.map(ent => (
-                  <tr key={ent.id} className="border-t bg-gray-50">
-                    <td className="p-2" />
-                    <td colSpan={2} className="p-2 pl-8">
-                      {ent.entity}
-                    </td>
-                    <td className="p-2 text-right">{ent.balance.toFixed(2)}</td>
-                    <td colSpan={7} />
-                  </tr>
-                ))}
-              </>
-            ))}
+              );
+            })}
+            {sortedAccounts.length === 0 && (
+              <tr>
+                <td colSpan={COLUMN_DEFINITIONS.length + 1} className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                  No mapping rows match your filters.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
     </div>
   );
+}
+
+function getSortValue(account: GLAccountMappingRow, key: SortKey): string | number {
+  switch (key) {
+    case 'companyName':
+      return `${account.companyName} ${account.entityName ?? ''}`.trim();
+    case 'accountId':
+      return account.accountId;
+    case 'accountName':
+      return account.accountName;
+    case 'activity':
+      return account.activity;
+    case 'status':
+      return STATUS_ORDER[account.status];
+    case 'mappingType':
+      return account.mappingType;
+    case 'targetScoa':
+      return account.manualCOAId ?? account.suggestedCOAId ?? '';
+    case 'polarity':
+      return account.polarity;
+    case 'presetId':
+      return account.presetId ?? '';
+    case 'confidenceScore':
+      return account.confidenceScore;
+    case 'notes':
+      return account.notes ?? '';
+    default:
+      return '';
+  }
 }
