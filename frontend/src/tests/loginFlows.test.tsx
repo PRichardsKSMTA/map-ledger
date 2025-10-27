@@ -41,6 +41,7 @@ jest.mock('../utils/env', () => ({
 afterEach(() => {
   useAuthStore.setState({
     account: null,
+    user: null,
     isAuthenticated: false,
     isAdmin: false,
     isEmployee: false,
@@ -115,6 +116,7 @@ test('redirects away from login when already authenticated', async () => {
   window.history.pushState({}, 'Test', '/login');
   useAuthStore.setState({
     account: {} as AccountInfo,
+    user: null,
     isAuthenticated: true,
     isAdmin: false,
     isEmployee: false,
