@@ -164,8 +164,13 @@ export interface GLAccountEntityBreakdown {
 
 export interface GLAccountMappingRow {
   id: string;
+  companyName: string;
+  entityName?: string;
   accountId: string;
   accountName: string;
+  activity: string;
+  status: 'unreviewed' | 'in-review' | 'approved' | 'rejected';
+  mappingType: 'AI Suggested' | 'Manual' | 'Preset';
   balance: number;
   operation: string;
   distributionMethod: string;
@@ -174,6 +179,9 @@ export interface GLAccountMappingRow {
   suggestedCOADescription?: string;
   confidenceScore: number;
   manualCOAId?: string;
+  polarity: 'Debit' | 'Credit';
+  presetId?: string;
+  notes?: string;
   entities: GLAccountEntityBreakdown[];
 }
 
