@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import MappingTable from '../components/mapping/MappingTable';
 import { createInitialMappingAccounts, useMappingStore } from '../store/mappingStore';
+import { COA_SEED_DATAPOINTS } from '../data/coaSeeds';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
 
 const resetMappingStore = () => {
@@ -40,8 +41,15 @@ describe('MappingTable', () => {
       .map(option => option.textContent?.trim())
       .filter((label): label is string => Boolean(label));
 
-    STANDARD_CHART_OF_ACCOUNTS.forEach(option => {
-      expect(optionLabels).toContain(option.label);
+    const expectedLabels = new Set<string>([
+      ...Object.values(COA_SEED_DATAPOINTS)
+        .flat()
+        .map(datapoint => datapoint.accountName),
+      ...STANDARD_CHART_OF_ACCOUNTS.map(option => option.label),
+    ]);
+
+    expectedLabels.forEach(name => {
+      expect(optionLabels).toContain(name);
     });
   });
 });

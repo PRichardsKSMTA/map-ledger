@@ -103,13 +103,3 @@ export const STANDARD_CHART_OF_ACCOUNTS: TargetScoaOption[] = descriptions.map((
 });
 
 export const STANDARD_CHART_OF_ACCOUNT_DESCRIPTIONS = descriptions;
-
-export const getStandardScoaOption = (label: string): TargetScoaOption => {
-  const option = STANDARD_CHART_OF_ACCOUNTS.find(candidate => candidate.label === label);
-
-  if (!option) {
-    throw new Error(`Standard Chart of Accounts option not found for label: ${label}`);
-  }
-
-  return option;
-};
