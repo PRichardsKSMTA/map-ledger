@@ -1,10 +1,13 @@
 import React, { useMemo } from 'react';
-import { AccountRow } from './ExcludeAccounts';
+
+type PreviewRow = Record<string, unknown>;
 
 interface PreviewTableProps {
-  rows: AccountRow[];
+  rows: PreviewRow[];
   sheetName?: string;
   columnOrder?: string[];
+  className?: string;
+  emptyStateMessage?: string;
 }
 
 function formatCellValue(value: unknown): string {
@@ -26,6 +29,8 @@ export default function PreviewTable({
   rows,
   sheetName,
   columnOrder = [],
+  className,
+  emptyStateMessage,
 }: PreviewTableProps) {
   const columnKeys = useMemo(() => {
     if (columnOrder.length > 0) {
@@ -73,19 +78,21 @@ export default function PreviewTable({
     </div>
   );
 
+  const containerClassName = className ?? 'mt-6';
+
   if (!hasRows) {
     return (
-      <div className="mt-6">
+      <div className={containerClassName}>
         {header}
         <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-6 text-center text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-gray-400">
-          No rows to display for this sheet after applying your filters.
+          {emptyStateMessage ?? 'No rows to display for this sheet after applying your filters.'}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="mt-6">
+    <div className={containerClassName}>
       {header}
       <div className="max-h-96 overflow-auto rounded-lg border border-gray-200 dark:border-slate-700">
         <table className="min-w-full text-sm text-gray-800 dark:text-gray-100 bg-white dark:bg-slate-900">

@@ -83,7 +83,7 @@ export default function ColumnMatcher({ sourceHeaders, destinationHeaders, onCom
   };
 
   return (
-    <div className="grid grid-cols-2 gap-8">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
       <div>
         <h3 className="font-semibold mb-2">Source Headers</h3>
         {unassigned.map(header => (

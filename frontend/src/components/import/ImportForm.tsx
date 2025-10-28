@@ -104,6 +104,28 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const [, setAvailableCompanies] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  const previewSampleRows = useMemo(() => {
+    if (uploads.length === 0) return [] as Record<string, unknown>[];
+    const sheetRows = uploads[selectedSheet]?.rows ?? [];
+    return sheetRows.slice(0, 20);
+  }, [uploads, selectedSheet]);
+
+  const previewSampleCount = previewSampleRows.length;
+
+  const previewSummaryMessage = useMemo(() => {
+    if (uploads.length === 0) return null;
+    const totalRows = uploads[selectedSheet]?.rows.length ?? 0;
+    if (totalRows === 0) {
+      return 'No rows detected in this sheet. Check that the header row and data are present.';
+    }
+
+    if (totalRows > previewSampleCount) {
+      return `Showing the first ${previewSampleCount.toLocaleString()} of ${totalRows.toLocaleString()} rows to help match your headers.`;
+    }
+
+    return `Showing all ${totalRows.toLocaleString()} rows from the uploaded sheet.`;
+  }, [uploads, selectedSheet, previewSampleCount]);
+
   const clientOptions = useMemo(() => {
     const all = companies.flatMap((company) => company.clients);
     return all.filter(
@@ -419,11 +441,30 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       )}
 
       {uploads.length > 0 && !headerMap && (
-        <ColumnMatcher
-          sourceHeaders={uploads[selectedSheet].headers}
-          destinationHeaders={templateHeaders}
-          onComplete={handleColumnMatch}
-        />
+        <div className="space-y-6">
+          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <ColumnMatcher
+              sourceHeaders={uploads[selectedSheet].headers}
+              destinationHeaders={templateHeaders}
+              onComplete={handleColumnMatch}
+            />
+
+            <div className="flex flex-col">
+              <PreviewTable
+                className="mt-0"
+                rows={previewSampleRows}
+                sheetName={uploads[selectedSheet]?.sheetName}
+                columnOrder={uploads[selectedSheet]?.headers ?? []}
+                emptyStateMessage="Your upload data will appear here once we detect rows in the selected sheet."
+              />
+              {previewSummaryMessage && (
+                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                  {previewSummaryMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {headerMap && (
