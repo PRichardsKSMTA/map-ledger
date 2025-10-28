@@ -169,15 +169,15 @@ export interface ClientRef {
   operations: OperationRef[];
 }
 
-export interface EntityRef {
+export interface CompanyRef {
   id: string;
   name: string;
   clients: ClientRef[];
 }
 
-export interface GLAccountEntityBreakdown {
+export interface GLAccountCompanyBreakdown {
   id: string;
-  entity: string;
+  company: string;
   balance: number;
 }
 
@@ -238,7 +238,7 @@ export interface GLAccountMappingRow {
   presetId?: string;
   notes?: string;
   splitDefinitions: MappingSplitDefinition[];
-  entities: GLAccountEntityBreakdown[];
+  companies: GLAccountCompanyBreakdown[];
 }
 
 export interface GLUpload {

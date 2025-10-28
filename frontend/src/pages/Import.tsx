@@ -37,7 +37,7 @@ export default function Import() {
   const handleFileImport = async (
     rows: AccountRow[],
     clientId: string,
-    _entityIds: string[],
+    _companyIds: string[],
     _headerMap: Record<string, string | null>,
     glMonth: string,
     fileName: string,

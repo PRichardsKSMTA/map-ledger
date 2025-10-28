@@ -11,17 +11,17 @@ export interface Client {
   operations: Operation[];
 }
 
-export interface Entity {
+export interface Company {
   id: string;
   name: string;
   clients: Client[];
 }
 
 interface OrganizationState {
-  entities: Entity[];
+  companies: Company[];
 }
 
-const sampleData: Entity[] = [
+const sampleData: Company[] = [
   {
     id: 'ent1',
     name: 'TMS',
@@ -66,5 +66,5 @@ const sampleData: Entity[] = [
 ];
 
 export const useOrganizationStore = create<OrganizationState>(() => ({
-  entities: sampleData,
+  companies: sampleData,
 }));

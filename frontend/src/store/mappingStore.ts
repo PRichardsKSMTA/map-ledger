@@ -50,7 +50,9 @@ const baseMappings: GLAccountMappingRow[] = [
         allocationValue: 20000,
       },
     ],
-    entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
+    companies: [
+      { id: 'entity-main', company: 'Global Main', balance: 65000 },
+    ],
   },
   {
     id: 'acct-2',
@@ -89,9 +91,9 @@ const baseMappings: GLAccountMappingRow[] = [
         notes: 'Field staff',
       },
     ],
-    entities: [
-      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 80000 },
-      { id: 'entity-ops', entity: 'Acme Freight Operations', balance: 40000 },
+    companies: [
+      { id: 'entity-tms', company: 'Acme Freight TMS', balance: 80000 },
+      { id: 'entity-ops', company: 'Acme Freight Operations', balance: 40000 },
     ],
   },
   {
@@ -115,9 +117,9 @@ const baseMappings: GLAccountMappingRow[] = [
     presetId: 'preset-1',
     notes: 'Approved during March close.',
     splitDefinitions: [],
-    entities: [
-      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
-      { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
+    companies: [
+      { id: 'entity-tms', company: 'Acme Freight TMS', balance: 400000 },
+      { id: 'entity-mx', company: 'Acme Freight Mexico', balance: 100000 },
     ],
   },
   {
@@ -137,13 +139,15 @@ const baseMappings: GLAccountMappingRow[] = [
     polarity: 'Debit',
     notes: 'Excluded from mapping per client request.',
     splitDefinitions: [],
-    entities: [{ id: 'entity-legacy', entity: 'Legacy Ops', balance: 15000 }],
+    companies: [
+      { id: 'entity-legacy', company: 'Legacy Ops', balance: 15000 },
+    ],
   },
 ];
 
 const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   ...row,
-  entities: row.entities.map(entity => ({ ...entity })),
+  companies: row.companies.map(company => ({ ...company })),
   splitDefinitions: row.splitDefinitions.map(split => ({ ...split })),
 });
 

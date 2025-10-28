@@ -366,7 +366,7 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
                 <table className="min-w-full divide-y divide-gray-200 text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-2 text-left font-medium text-gray-600">Entity</th>
+                      <th className="px-3 py-2 text-left font-medium text-gray-600">Company</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-600">Account ID</th>
                       <th className="px-3 py-2 text-left font-medium text-gray-600">Description</th>
                       <th className="px-3 py-2 text-right font-medium text-gray-600">Net Change</th>

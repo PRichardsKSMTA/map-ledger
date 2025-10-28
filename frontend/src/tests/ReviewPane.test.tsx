@@ -8,7 +8,7 @@ const initialMappingSnapshot = (() => {
   return {
     accounts: snapshot.accounts.map(account => ({
       ...account,
-      entities: account.entities.map(entity => ({ ...entity })),
+      companies: account.companies.map(company => ({ ...company })),
       splitDefinitions: account.splitDefinitions.map(split => ({ ...split })),
     })),
     searchTerm: snapshot.searchTerm,
@@ -41,7 +41,7 @@ const resetStores = () => {
   useMappingStore.setState({
     accounts: initialMappingSnapshot.accounts.map(account => ({
       ...account,
-      entities: account.entities.map(entity => ({ ...entity })),
+      companies: account.companies.map(company => ({ ...company })),
       splitDefinitions: account.splitDefinitions.map(split => ({ ...split })),
     })),
     searchTerm: initialMappingSnapshot.searchTerm,

@@ -64,7 +64,7 @@ code,pre{background:#f3f3f3;border:1px solid #e2e2e2;border-radius:4px;padding:.
 <table>
 <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
 <tbody>
-<tr><td><strong>Entity</strong></td><td>Legal ledger supplying its own Trial Balance (e.g. VAN LLC).</td></tr>
+<tr><td><strong>Company</strong></td><td>Legal ledger supplying its own Trial Balance (e.g. VAN LLC).</td></tr>
 <tr><td><strong>Operation</strong></td><td>Business line that receives allocated costs (Van, Flatbed, …).</td></tr>
 <tr><td><strong>S‑COA</strong></td><td>Canonical chart defined in §5.</td></tr>
 <tr><td><strong>Distribution Method</strong></td><td>Rule for splitting a value: <code>Direct</code>, <code>PctOfMiles</code>, <code>PctOf&lt;Metric&gt;</code>, <code>CustomRatio</code>.</td></tr>
@@ -250,7 +250,7 @@ React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
 <li>System creates <strong>Consolidated</strong> totals per period.</li>
 <li>AI suggests S‑COA mapping; user approves/overrides.</li>
 <li>Wizard allocates each mapped total to operations:<br/>
-   • <code>DirectEntity</code> auto‑links entity rows.<br/>
+   • <code>DirectCompany</code> auto‑links entity rows.<br/>
    • <code>DirectConsolidated</code> manual % on the total.<br/>
    • Ratio methods pull reference metrics (miles, headcount…).</li>
 <li>Commit writes <code>dbo.OpGLFact</code> (operation‑level facts).</li>
@@ -262,11 +262,11 @@ React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
 <thead><tr><th>Row Type</th><th>Concat ID</th><th>Description</th><th>USD</th></tr></thead>
 <tbody>
 <tr><td><strong>Consolidated</strong></td><td>10100</td><td>Accounts Receivable</td><td>501 000</td></tr>
-<tr><td>Entity Row</td><td>VAN‑10100</td><td>Accounts Receivable – VAN</td><td>500 000</td></tr>
-<tr><td>Entity Row</td><td>META‑10100</td><td>Accounts Receivable – META</td><td>  1 000</td></tr>
+<tr><td>Company Row</td><td>VAN‑10100</td><td>Accounts Receivable – VAN</td><td>500 000</td></tr>
+<tr><td>Company Row</td><td>META‑10100</td><td>Accounts Receivable – META</td><td>  1 000</td></tr>
 <tr><td><strong>Consolidated</strong></td><td>11000</td><td>Prepaid Expense</td><td>    9 500</td></tr>
-<tr><td>Entity Row</td><td>VAN‑11000</td><td>Prepaid Expense – VAN</td><td>    9 000</td></tr>
-<tr><td>Entity Row</td><td>META‑11000</td><td>Prepaid Expense – META</td><td>      500</td></tr>
+<tr><td>Company Row</td><td>VAN‑11000</td><td>Prepaid Expense – VAN</td><td>    9 000</td></tr>
+<tr><td>Company Row</td><td>META‑11000</td><td>Prepaid Expense – META</td><td>      500</td></tr>
 </tbody></table>
 </div>
 <h3>7.2 Mapping (Consolidated ➜ S‑COA)</h3>
@@ -284,8 +284,8 @@ React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
 <table>
 <thead><tr><th>S‑COA GL_ID</th><th>Operation</th><th>Method</th><th>% of Source</th><th>Allocated USD</th></tr></thead>
 <tbody>
-<tr><td>10100</td><td>VAN</td><td>DirectEntity</td><td>100 %</td><td>500 000</td></tr>
-<tr><td>10100</td><td>LOG</td><td>DirectEntity</td><td>100 %</td><td>  1 000</td></tr>
+<tr><td>10100</td><td>VAN</td><td>DirectCompany</td><td>100 %</td><td>500 000</td></tr>
+<tr><td>10100</td><td>LOG</td><td>DirectCompany</td><td>100 %</td><td>  1 000</td></tr>
 <tr><td>11000</td><td>VAN</td><td>DirectConsolidated</td><td>50 %</td><td>4 750</td></tr>
 <tr><td>11000</td><td>LOG</td><td>DirectConsolidated</td><td>50 %</td><td>4 750</td></tr>
 <tr><td>21107‑800</td><td>VAN</td><td>PctOfMiles</td><td>90 %</td><td>2 700</td></tr>
@@ -311,7 +311,7 @@ React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
 <table>
 <thead><tr><th>Method</th><th>Metric Source</th><th>Auto</th><th>Notes</th></tr></thead>
 <tbody>
-<tr><td><strong>DirectEntity</strong></td><td>Entity value</td><td>Yes</td><td>1‑to‑1.</td></tr>
+<tr><td><strong>DirectCompany</strong></td><td>Company value</td><td>Yes</td><td>1‑to‑1.</td></tr>
 <tr><td><strong>DirectConsolidated</strong></td><td>Total value</td><td>User</td><td>Manual % split.</td></tr>
 <tr><td><strong>PctOfMiles</strong></td><td>Metrics.Miles</td><td>Yes</td><td>Period miles per op.</td></tr>
 <tr><td><strong>PctOf&lt;Metric&gt;</strong></td><td>Any metric</td><td>Yes</td><td>Headcount, tractors …</td></tr>
@@ -338,7 +338,7 @@ React SPA ──► Azure Blob (SAS) ──► ProcessGL (Function)
         └───┬─────────┬─────┘
             │         │
    ┌────────┴──┐   ┌──┴────────┐
-   │  Entity   │   │ Operation │ (OpUser)
+   │  Company   │   │ Operation │ (OpUser)
    │ (no role) │   └───────────┘
    └───────────┘
 </pre>
