@@ -26,6 +26,33 @@ const templateHeaders = [
   'User Defined 3',
 ];
 
+const monthNameMap: Record<string, string> = {
+  jan: '01',
+  january: '01',
+  feb: '02',
+  february: '02',
+  mar: '03',
+  march: '03',
+  apr: '04',
+  april: '04',
+  may: '05',
+  jun: '06',
+  june: '06',
+  jul: '07',
+  july: '07',
+  aug: '08',
+  august: '08',
+  sep: '09',
+  sept: '09',
+  september: '09',
+  oct: '10',
+  october: '10',
+  nov: '11',
+  november: '11',
+  dec: '12',
+  december: '12',
+};
+
 const normalizeGlMonth = (value: string): string => {
   if (!value) return '';
 
@@ -37,10 +64,39 @@ const normalizeGlMonth = (value: string): string => {
     return `${year}-${rawMonth.padStart(2, '0')}`;
   }
 
+  const monthYearMatch = trimmed.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (monthYearMatch) {
+    const [, rawMonth, year] = monthYearMatch;
+    return `${year}-${rawMonth.padStart(2, '0')}`;
+  }
+
   const usMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (usMatch) {
     const [, rawMonth, , year] = usMatch;
     return `${year}-${rawMonth.padStart(2, '0')}`;
+  }
+
+  const textMatch = trimmed.match(/^([A-Za-z]{3,9})[\s-](\d{2,4})$/);
+  if (textMatch) {
+    const [, monthName, yearPart] = textMatch;
+    const normalizedMonthName = monthName.toLowerCase();
+    const month = monthNameMap[normalizedMonthName];
+    if (month) {
+      const numericYear = parseInt(yearPart, 10);
+      if (!Number.isNaN(numericYear)) {
+        const year =
+          yearPart.length === 2
+            ? (numericYear < 50 ? 2000 + numericYear : 1900 + numericYear)
+            : numericYear;
+        return `${year}-${month}`;
+      }
+    }
+  }
+
+  const compactMatch = trimmed.match(/^(\d{4})\s*M(\d{2})$/i);
+  if (compactMatch) {
+    const [, year, rawMonth] = compactMatch;
+    return `${year}-${rawMonth}`;
   }
 
   const parsed = new Date(trimmed);
