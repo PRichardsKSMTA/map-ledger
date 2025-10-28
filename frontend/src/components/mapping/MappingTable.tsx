@@ -43,10 +43,10 @@ const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
 };
 
 const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
-  New: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  New: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
   Unmapped: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
   Mapped: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
-  Excluded: 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
+  Excluded: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200',
 };
 
 export const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
