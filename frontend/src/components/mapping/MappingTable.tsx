@@ -23,7 +23,7 @@ type SortKey =
   | 'companyName'
   | 'accountId'
   | 'accountName'
-  | 'activity'
+  | 'netChange'
   | 'status'
   | 'mappingType'
   | 'targetScoa'
@@ -62,11 +62,21 @@ const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = 
   exclude: 'Excluded',
 };
 
+const netChangeFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  signDisplay: 'exceptZero',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+const formatNetChange = (value: number) => netChangeFormatter.format(value);
+
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'companyName', label: 'Company / Entity' },
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
-  { key: 'activity', label: 'Activity' },
+  { key: 'netChange', label: 'Activity' },
   { key: 'mappingType', label: 'Mapping Type' },
   { key: 'targetScoa', label: 'Target SCoA' },
   { key: 'polarity', label: 'Polarity' },
@@ -136,7 +146,9 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
           account.accountName,
           account.companyName,
           account.entityName ?? '',
-          formatCurrency(account.activity),
+          account.activity,
+          account.netChange.toString(),
+          formatNetChange(account.netChange),
         ]
           .join(' ')
           .toLowerCase()
@@ -288,10 +300,12 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                     </td>
                     <td className="px-3 py-4">
                       <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
                     </td>
-                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
-                      {formatCurrency(account.activity)}
+                    <td className="px-3 py-4">
+                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.activity}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {formatNetChange(account.netChange)}
+                      </div>
                     </td>
                     <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
                     <td className="px-3 py-4">
@@ -428,8 +442,8 @@ function getSortValue(account: GLAccountMappingRow, key: SortKey): string | numb
       return account.accountId;
     case 'accountName':
       return account.accountName;
-    case 'activity':
-      return account.activity;
+    case 'netChange':
+      return account.netChange;
     case 'status':
       return STATUS_ORDER[account.status];
     case 'mappingType':
