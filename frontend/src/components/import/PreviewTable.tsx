@@ -6,6 +6,7 @@ interface PreviewTableProps {
   sheetNames?: string[];
   selectedSheetIndex?: number;
   onSheetChange?: (index: number) => void;
+  columnOrder?: string[];
 }
 
 function formatCellValue(value: unknown): string {
@@ -28,8 +29,21 @@ export default function PreviewTable({
   sheetNames = [],
   selectedSheetIndex = 0,
   onSheetChange,
+  columnOrder = [],
 }: PreviewTableProps) {
   const columnKeys = useMemo(() => {
+    if (columnOrder.length > 0) {
+      const filteredOrder = columnOrder.filter((key) =>
+        rows.some((row) => Object.prototype.hasOwnProperty.call(row, key))
+      );
+
+      if (filteredOrder.length > 0) {
+        return filteredOrder;
+      }
+
+      return columnOrder;
+    }
+
     const ordered: string[] = [];
     const seen = new Set<string>();
 
@@ -43,7 +57,7 @@ export default function PreviewTable({
     });
 
     return ordered;
-  }, [rows]);
+  }, [rows, columnOrder]);
 
   const hasRows = rows.length > 0;
   const hasMultipleSheets = sheetNames.length > 1;
