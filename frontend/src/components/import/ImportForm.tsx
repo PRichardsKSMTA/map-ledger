@@ -76,6 +76,12 @@ const normalizeGlMonth = (value: string): string => {
     return `${year}-${rawMonth.padStart(2, '0')}`;
   }
 
+  const compactMatch = trimmed.match(/^(\d{4})(\d{2})$/);
+  if (compactMatch) {
+    const [, year, rawMonth] = compactMatch;
+    return `${year}-${rawMonth}`;
+  }
+
   const textMatch = trimmed.match(/^([A-Za-z]{3,9})[\s-](\d{2,4})$/);
   if (textMatch) {
     const [, monthName, yearPart] = textMatch;
@@ -93,9 +99,9 @@ const normalizeGlMonth = (value: string): string => {
     }
   }
 
-  const compactMatch = trimmed.match(/^(\d{4})\s*M(\d{2})$/i);
-  if (compactMatch) {
-    const [, year, rawMonth] = compactMatch;
+  const compactNamedMatch = trimmed.match(/^(\d{4})\s*M(\d{2})$/i);
+  if (compactNamedMatch) {
+    const [, year, rawMonth] = compactNamedMatch;
     return `${year}-${rawMonth}`;
   }
 
@@ -106,7 +112,43 @@ const normalizeGlMonth = (value: string): string => {
     return `${year}-${month}`;
   }
 
-  return trimmed;
+  return '';
+};
+
+const isValidNormalizedMonth = (value: string): boolean => /^\d{4}-\d{2}$/.test(value);
+
+const extractRowGlMonth = (row: AccountRow): string => {
+  const normalizeCandidate = (value: unknown): string => {
+    if (typeof value !== 'string' && typeof value !== 'number') {
+      return '';
+    }
+
+    const normalized = normalizeGlMonth(value.toString());
+    return isValidNormalizedMonth(normalized) ? normalized : '';
+  };
+
+  const normalizedEntries = Object.entries(row);
+
+  const keyMatches = [
+    (key: string) => key.includes('glmonth'),
+    (key: string) => key.includes('period'),
+    (key: string) => key.endsWith('month') || key === 'month',
+  ];
+
+  for (const matcher of keyMatches) {
+    for (const [key, value] of normalizedEntries) {
+      if (key === 'glMonth') continue;
+      const normalizedKey = key.replace(/[\s_-]/g, '').toLowerCase();
+      if (!matcher(normalizedKey)) continue;
+
+      const normalizedValue = normalizeCandidate(value);
+      if (normalizedValue) {
+        return normalizedValue;
+      }
+    }
+  }
+
+  return normalizeCandidate(row.glMonth);
 };
 
 const filterRowsByGlMonth = (rows: AccountRow[], month: string): AccountRow[] => {
@@ -114,18 +156,17 @@ const filterRowsByGlMonth = (rows: AccountRow[], month: string): AccountRow[] =>
 
   return rows
     .map((row) => {
-      const rowMonth = normalizeGlMonth(row.glMonth ?? '');
-      const effectiveMonth = rowMonth || normalizedMonth;
+      const detectedRowMonth = extractRowGlMonth(row);
+      const effectiveMonth = detectedRowMonth || normalizedMonth;
 
       return {
         ...row,
-        glMonth: effectiveMonth || rowMonth || row.glMonth || '',
+        glMonth: effectiveMonth,
       };
     })
     .filter((row) => {
       if (!normalizedMonth) return true;
-      const rowMonth = normalizeGlMonth(row.glMonth ?? '');
-      return !rowMonth || rowMonth === normalizedMonth;
+      return extractRowGlMonth(row) === normalizedMonth;
     });
 };
 
@@ -623,3 +664,5 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     </form>
   );
 }
+
+export { filterRowsByGlMonth, normalizeGlMonth };
