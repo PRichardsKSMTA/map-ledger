@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { DistributionRow, DistributionType, MappingStatus } from '../types';
+import { getStandardScoaOption } from '../data/standardChartOfAccounts';
 
 export interface DistributionOperationCatalogItem {
   id: string;
@@ -30,28 +31,33 @@ const operationsCatalog: DistributionOperationCatalogItem[] = [
   { id: 'ops-int', name: 'Intermodal' },
 ];
 
+const FREIGHT_REVENUE_TARGET = getStandardScoaOption('FREIGHT REVENUE LINEHAUL - COMPANY FLEET');
+const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
+  'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
+);
+const NON_DRIVER_WAGES_TARGET = getStandardScoaOption('NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS');
+const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
+const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption('MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET');
+
 const seedRows: DistributionRow[] = [
   {
     id: 'dist-1',
-    mappingRowId: 'acct-1',
-    accountId: '6100',
-    description: 'Fuel Expense',
-    activity: 65000,
-    type: 'dynamic',
-    operations: [
-      { id: 'ops-log', name: 'Logistics' },
-      { id: 'ops-otr', name: 'Over-the-Road' },
-    ],
+    mappingRowId: FREIGHT_REVENUE_TARGET.id,
+    accountId: FREIGHT_REVENUE_TARGET.id,
+    description: FREIGHT_REVENUE_TARGET.label,
+    activity: 500000,
+    type: 'direct',
+    operations: [{ id: 'ops-log', name: 'Logistics' }],
     presetId: 'preset-1',
-    notes: 'Allocate fuel based on miles driven.',
-    status: 'Unmapped',
+    notes: 'Approved during March close.',
+    status: 'Mapped',
   },
   {
     id: 'dist-2',
-    mappingRowId: 'acct-2',
-    accountId: '5200',
-    description: 'Payroll Taxes',
-    activity: 120000,
+    mappingRowId: DRIVER_BENEFITS_TARGET.id,
+    accountId: DRIVER_BENEFITS_TARGET.id,
+    description: DRIVER_BENEFITS_TARGET.label,
+    activity: 72000,
     type: 'percentage',
     operations: [
       { id: 'ops-ded', name: 'Dedicated', allocation: 60 },
@@ -63,10 +69,40 @@ const seedRows: DistributionRow[] = [
   },
   {
     id: 'dist-3',
-    mappingRowId: 'acct-3',
-    accountId: '6400',
-    description: 'Maintenance Expense',
+    mappingRowId: NON_DRIVER_WAGES_TARGET.id,
+    accountId: NON_DRIVER_WAGES_TARGET.id,
+    description: NON_DRIVER_WAGES_TARGET.label,
     activity: 48000,
+    type: 'percentage',
+    operations: [
+      { id: 'ops-ded', name: 'Dedicated', allocation: 55 },
+      { id: 'ops-log', name: 'Logistics', allocation: 45 },
+    ],
+    presetId: 'preset-2',
+    notes: 'Pending confirmation of allocation weights.',
+    status: 'Unmapped',
+  },
+  {
+    id: 'dist-4',
+    mappingRowId: FUEL_EXPENSE_TARGET.id,
+    accountId: FUEL_EXPENSE_TARGET.id,
+    description: FUEL_EXPENSE_TARGET.label,
+    activity: 45000,
+    type: 'dynamic',
+    operations: [
+      { id: 'ops-log', name: 'Logistics' },
+      { id: 'ops-otr', name: 'Over-the-Road' },
+    ],
+    presetId: 'preset-1',
+    notes: 'Allocate fuel based on miles driven.',
+    status: 'New',
+  },
+  {
+    id: 'dist-5',
+    mappingRowId: TRACTOR_MAINTENANCE_TARGET.id,
+    accountId: TRACTOR_MAINTENANCE_TARGET.id,
+    description: TRACTOR_MAINTENANCE_TARGET.label,
+    activity: 20000,
     type: 'direct',
     operations: [{ id: 'ops-ded', name: 'Dedicated' }],
     presetId: null,

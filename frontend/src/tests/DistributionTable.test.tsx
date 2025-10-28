@@ -34,18 +34,22 @@ describe('DistributionTable', () => {
     render(<DistributionTable />);
 
     expect(screen.getByText('Account ID')).toBeInTheDocument();
-    expect(screen.getByText('Fuel Expense')).toBeInTheDocument();
-    expect(screen.getByText('Payroll Taxes')).toBeInTheDocument();
+    expect(screen.getByText('FREIGHT REVENUE LINEHAUL - COMPANY FLEET')).toBeInTheDocument();
+    expect(
+      screen.getByText('DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET'),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Dynamic/)).toBeInTheDocument();
   });
 
   test('allows editing operations for percentage rows', () => {
     render(<DistributionTable />);
 
-    const payrollRow = screen.getByText('Payroll Taxes').closest('tr');
-    expect(payrollRow).not.toBeNull();
+    const driverBenefitsRow = screen
+      .getByText('DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET')
+      .closest('tr');
+    expect(driverBenefitsRow).not.toBeNull();
 
-    const editButton = within(payrollRow as HTMLTableRowElement).getByText('Edit operations');
+    const editButton = within(driverBenefitsRow as HTMLTableRowElement).getByText('Edit operations');
     fireEvent.click(editButton);
 
     const intermodalToggle = screen.getByLabelText('Intermodal');
@@ -65,7 +69,7 @@ describe('DistributionTable', () => {
   test('opens dynamic allocation builder for dynamic rows', () => {
     render(<DistributionTable />);
 
-    const fuelRow = screen.getByText('Fuel Expense').closest('tr');
+    const fuelRow = screen.getByText('FUEL EXPENSE - COMPANY FLEET').closest('tr');
     expect(fuelRow).not.toBeNull();
 
     const editButton = within(fuelRow as HTMLTableRowElement).getByText('Edit operations');
