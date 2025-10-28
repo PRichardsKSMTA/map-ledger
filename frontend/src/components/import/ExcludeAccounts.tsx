@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 export interface AccountRow {
   entity: string;
@@ -20,6 +20,10 @@ export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProp
   // toggled independently without React key warnings.
   const [excludedIds, setExcludedIds] = useState<Set<number>>(new Set());
 
+  useEffect(() => {
+    setExcludedIds(new Set());
+  }, [rows]);
+
   const toggleExclude = (id: number) => {
     setExcludedIds(prev => {
       const updated = new Set(prev);
@@ -36,46 +40,57 @@ export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProp
   const excluded = rows.filter((_, idx) => excludedIds.has(idx));
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold text-gray-800">Review and Exclude Accounts</h2>
-      <p className="text-sm text-gray-600">Check any accounts you want excluded in mapping.</p>
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Review and Exclude Accounts
+        </h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          Check any accounts you want excluded in mapping.
+        </p>
+      </div>
 
-      <table className="min-w-full text-sm border">
+      <table className="min-w-full text-sm border border-gray-200 dark:border-slate-700">
         <thead>
-          <tr className="bg-gray-50 text-left">
-            <th className="p-2">Exclude</th>
-            <th className="p-2">Entity</th>
-            <th className="p-2">Account ID</th>
-            <th className="p-2">Description</th>
-            <th className="p-2 text-right">Net Change</th>
+          <tr className="bg-gray-50 text-left dark:bg-slate-800">
+            <th className="p-2 text-gray-700 dark:text-gray-300">Exclude</th>
+            <th className="p-2 text-gray-700 dark:text-gray-300">Entity</th>
+            <th className="p-2 text-gray-700 dark:text-gray-300">Account ID</th>
+            <th className="p-2 text-gray-700 dark:text-gray-300">Description</th>
+            <th className="p-2 text-right text-gray-700 dark:text-gray-300">Net Change</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row, idx) => (
-            <tr key={`${row.accountId}-${idx}`} className="border-t hover:bg-gray-50">
-              <td className="p-2">
+            <tr
+              key={`${row.accountId}-${idx}`}
+              className="border-t border-gray-200 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              <td className="p-2 text-gray-800 dark:text-gray-100">
                 <input
                   type="checkbox"
                   checked={excludedIds.has(idx)}
                   onChange={() => toggleExclude(idx)}
                 />
               </td>
-              <td className="p-2">{row.entity}</td>
-              <td className="p-2">{row.accountId}</td>
-              <td className="p-2">{row.description}</td>
-              <td className="p-2 text-right">{row.netChange.toFixed(2)}</td>
+              <td className="p-2 text-gray-800 dark:text-gray-100">{row.entity}</td>
+              <td className="p-2 text-gray-800 dark:text-gray-100">{row.accountId}</td>
+              <td className="p-2 text-gray-800 dark:text-gray-100">{row.description}</td>
+              <td className="p-2 text-right text-gray-800 dark:text-gray-100">
+                {row.netChange.toFixed(2)}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div className="flex justify-between">
-        <div className="text-sm text-gray-600">
+      <div className="flex flex-col gap-2 text-sm text-gray-600 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           Included: {included.length} • Excluded: {excluded.length}
         </div>
         <button
           onClick={() => onConfirm(included, excluded)}
-          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+          className="self-start rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
           Confirm Exclusions
         </button>

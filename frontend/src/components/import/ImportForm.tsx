@@ -399,7 +399,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
       {uploads.length > 1 && (
         <Select
-          label="Sheet"
+          label="Sheet Selection"
           value={selectedSheet.toString()}
           onChange={(e) => {
             setSelectedSheet(Number(e.target.value));
@@ -442,9 +442,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
           </div>
           <PreviewTable
             rows={includedRows ?? []}
-            sheetNames={uploads.map((u) => u.sheetName)}
-            selectedSheetIndex={selectedSheet}
-            onSheetChange={(index) => setSelectedSheet(index)}
+            sheetName={uploads[selectedSheet]?.sheetName}
             columnOrder={uploads[selectedSheet]?.headers ?? []}
           />
           {includedRows && (
