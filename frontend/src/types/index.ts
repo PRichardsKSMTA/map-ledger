@@ -209,7 +209,7 @@ export interface GLAccountMappingRow {
   activity: string;
   status: MappingStatus;
   mappingType: MappingType;
-  balance: number;
+  netChange: number;
   operation: string;
   suggestedCOAId?: string;
   suggestedCOADescription?: string;

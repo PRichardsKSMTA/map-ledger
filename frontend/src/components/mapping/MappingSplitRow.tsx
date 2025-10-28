@@ -98,7 +98,7 @@ export default function MappingSplitRow({
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {account.mappingType === 'dynamic'
-                  ? 'Percentages determine dynamic amounts based on the current balance.'
+                  ? 'Percentages determine dynamic amounts based on the current net change.'
                   : 'Ensure 100% allocation across targets.'}
               </p>
             </div>
@@ -208,7 +208,7 @@ export default function MappingSplitRow({
             </div>
           ) : (
             <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
-              No split definitions yet. Add splits to distribute this balance.
+              No split definitions yet. Add splits to distribute this net change.
             </p>
           )}
 
