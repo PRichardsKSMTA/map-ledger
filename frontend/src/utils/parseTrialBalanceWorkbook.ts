@@ -1,4 +1,4 @@
-import * as ExcelJS from 'exceljs';
+import type { Worksheet } from 'exceljs';
 
 export interface TrialBalanceRow {
   [key: string]: string | number;
@@ -12,13 +12,24 @@ export interface ParsedUpload {
   metadata: Record<string, string>; // stores entity, glMonth, etc.
 }
 
-function getCellValue(sheet: ExcelJS.Worksheet, cellRef: string): string {
+let excelJsModulePromise: Promise<typeof import('exceljs')> | null = null;
+
+async function loadExcelJs() {
+  if (!excelJsModulePromise) {
+    excelJsModulePromise = import('exceljs');
+  }
+
+  return excelJsModulePromise;
+}
+
+function getCellValue(sheet: Worksheet, cellRef: string): string {
   const cell = sheet.getCell(cellRef);
   return (typeof cell.value === 'string' || typeof cell.value === 'number') ? cell.value.toString().trim() : '';
 }
 
 export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUpload[]> {
   const buffer = await file.arrayBuffer();
+  const ExcelJS = await loadExcelJs();
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
 
