@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 
 import { MsalProvider } from "@azure/msal-react";
+import ThemeProvider from "./components/ThemeProvider";
 import { msalInstance, initializeMsal } from "./utils/msal";
 
 const rootEl = document.getElementById("root")!;
@@ -12,7 +13,9 @@ initializeMsal().then(() => {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </MsalProvider>
     </React.StrictMode>
   );
