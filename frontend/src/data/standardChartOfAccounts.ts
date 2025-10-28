@@ -103,3 +103,15 @@ export const STANDARD_CHART_OF_ACCOUNTS: TargetScoaOption[] = descriptions.map((
 });
 
 export const STANDARD_CHART_OF_ACCOUNT_DESCRIPTIONS = descriptions;
+
+export const getStandardScoaOption = (description: string): TargetScoaOption => {
+  const match = STANDARD_CHART_OF_ACCOUNTS.find(
+    option => option.label.toLowerCase() === description.toLowerCase(),
+  );
+
+  if (!match) {
+    throw new Error(`Standard SCOA option not found for description: ${description}`);
+  }
+
+  return match;
+};
