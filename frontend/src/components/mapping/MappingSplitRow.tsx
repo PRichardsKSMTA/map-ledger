@@ -30,6 +30,66 @@ const clampPercentage = (value: number): number => {
   return Math.max(0, Math.min(100, value));
 };
 
+const distributePercentageRemainder = (
+  total: number,
+  splits: { id: string; weight: number }[],
+): Record<string, number> => {
+  if (splits.length === 0) {
+    return {};
+  }
+
+  const safeTotal = Math.max(0, Math.min(100, Math.round(total)));
+  if (safeTotal === 0) {
+    return splits.reduce<Record<string, number>>((accumulator, split) => {
+      accumulator[split.id] = 0;
+      return accumulator;
+    }, {});
+  }
+
+  const weightSum = splits.reduce((sum, split) => sum + Math.max(split.weight, 0), 0);
+
+  if (weightSum === 0) {
+    const evenShare = Math.floor(safeTotal / splits.length);
+    let remainder = safeTotal - evenShare * splits.length;
+    return splits.reduce<Record<string, number>>((accumulator, split) => {
+      const extra = remainder > 0 ? 1 : 0;
+      if (remainder > 0) {
+        remainder -= 1;
+      }
+      accumulator[split.id] = evenShare + extra;
+      return accumulator;
+    }, {});
+  }
+
+  const rawAllocations = splits.map(split => {
+    const weight = Math.max(split.weight, 0);
+    const raw = (weight / weightSum) * safeTotal;
+    const base = Math.floor(raw);
+    return {
+      id: split.id,
+      value: base,
+      fraction: raw - base,
+    };
+  });
+
+  const totalAssigned = rawAllocations.reduce((sum, allocation) => sum + allocation.value, 0);
+  let remainder = safeTotal - totalAssigned;
+
+  const sortedByFraction = [...rawAllocations].sort((a, b) => b.fraction - a.fraction);
+  for (const allocation of sortedByFraction) {
+    if (remainder <= 0) {
+      break;
+    }
+    allocation.value += 1;
+    remainder -= 1;
+  }
+
+  return rawAllocations.reduce<Record<string, number>>((accumulator, allocation) => {
+    accumulator[allocation.id] = allocation.value;
+    return accumulator;
+  }, {});
+};
+
 export default function MappingSplitRow({
   account,
   targetOptions,
@@ -52,27 +112,65 @@ export default function MappingSplitRow({
   }, [account]);
 
   const totals = useMemo(() => {
-    const percentageTotal = splitRows.reduce((sum, split) => sum + split.percentage, 0);
+    const percentageTotalRaw = splitRows.reduce((sum, split) => sum + split.percentage, 0);
     const amountTotal = splitRows.reduce((sum, split) => sum + split.amount, 0);
-    const remaining = 100 - percentageTotal;
-    const isComplete = Math.abs(percentageTotal - 100) <= 0.01;
-    return { percentageTotal, amountTotal, remaining, isComplete };
-  }, [splitRows]);
+
+    if (account.mappingType === 'percentage') {
+      const roundedTotal = Math.round(percentageTotalRaw);
+      const remaining = Math.max(0, 100 - roundedTotal);
+      return {
+        percentageTotalLabel: `${roundedTotal}%`,
+        amountTotal,
+        remainingLabel: `${remaining}%`,
+        isComplete: roundedTotal === 100,
+      };
+    }
+
+    const remainingRaw = 100 - percentageTotalRaw;
+    return {
+      percentageTotalLabel: `${percentageTotalRaw.toFixed(1)}%`,
+      amountTotal,
+      remainingLabel: `${remainingRaw.toFixed(1)}%`,
+      isComplete: Math.abs(percentageTotalRaw - 100) <= 0.01,
+    };
+  }, [account.mappingType, splitRows]);
 
   const handlePercentageChange = (splitId: string, value: string) => {
-    const numericValue = clampPercentage(Number(value));
+    const rawValue = Number(value);
+    const normalizedValue =
+      account.mappingType === 'percentage' ? Math.round(rawValue) : rawValue;
+    const numericValue = clampPercentage(normalizedValue);
+
     if (account.mappingType === 'dynamic') {
       const nextAmount = calculateSplitAmount(account, numericValue);
       onUpdateSplit(splitId, {
         allocationType: 'amount',
         allocationValue: Number.isFinite(nextAmount) ? nextAmount : 0,
       });
-    } else {
-      onUpdateSplit(splitId, {
-        allocationType: 'percentage',
-        allocationValue: numericValue,
-      });
+      return;
     }
+
+    const otherSplits = account.splitDefinitions.filter(split => split.id !== splitId);
+    const redistribution = distributePercentageRemainder(
+      Math.max(0, 100 - numericValue),
+      otherSplits.map(split => ({
+        id: split.id,
+        weight: calculateSplitPercentage(account, split),
+      })),
+    );
+
+    onUpdateSplit(splitId, {
+      allocationType: 'percentage',
+      allocationValue: numericValue,
+    });
+
+    otherSplits.forEach(split => {
+      const nextValue = redistribution[split.id] ?? 0;
+      onUpdateSplit(split.id, {
+        allocationType: 'percentage',
+        allocationValue: clampPercentage(nextValue),
+      });
+    });
   };
 
   const handleTargetChange = (splitId: string, value: string) => {
@@ -158,8 +256,12 @@ export default function MappingSplitRow({
                           type="number"
                           min={0}
                           max={100}
-                          step={0.1}
-                          value={Number.isFinite(split.percentage) ? split.percentage : 0}
+                          step={account.mappingType === 'percentage' ? 1 : 0.1}
+                          value={Number.isFinite(split.percentage)
+                            ? account.mappingType === 'percentage'
+                              ? Math.round(split.percentage)
+                              : Number(split.percentage.toFixed(1))
+                            : 0}
                           onChange={event => handlePercentageChange(split.id, event.target.value)}
                           className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                         />
@@ -198,13 +300,13 @@ export default function MappingSplitRow({
                   <tr>
                     <td className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">Total</td>
                     <td className="px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
-                      {totals.percentageTotal.toFixed(1)}%
+                      {totals.percentageTotalLabel}
                     </td>
                     <td className="px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
                       {amountFormatter.format(Math.round(totals.amountTotal))}
                     </td>
                     <td colSpan={2} className="px-3 py-2 text-right text-xs text-slate-500 dark:text-slate-400">
-                      Remaining {totals.remaining.toFixed(1)}%
+                      Remaining {totals.remainingLabel}
                     </td>
                   </tr>
                 </tfoot>
