@@ -16,6 +16,13 @@ const STATUS_DEFINITIONS: { value: MappingStatus; label: string }[] = [
   { value: 'Excluded', label: 'Excluded' },
 ];
 
+const STATUS_BADGE_CLASSES: Record<MappingStatus, string> = {
+  New: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
+  Unmapped: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+  Mapped: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  Excluded: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200',
+};
+
 const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
   { value: 'direct', label: 'Direct' },
   { value: 'percentage', label: 'Percentage' },
@@ -324,7 +331,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                       </select>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_BADGE_CLASSES[row.status]}`}
+                      >
                         {statusLabel(row.status)}
                       </span>
                     </td>
