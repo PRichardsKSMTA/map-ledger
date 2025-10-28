@@ -91,7 +91,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const { entities } = useOrganizationStore();
   const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
-  const [allRows, setAllRows] = useState<AccountRow[]>([]);
+  const [mappedRowsBySheet, setMappedRowsBySheet] = useState<AccountRow[][]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [glMonth, setGlMonth] = useState('');
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
@@ -101,7 +101,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     string | null
   > | null>(null);
   const [includedRows, setIncludedRows] = useState<AccountRow[] | null>(null);
-  const [availableEntities, setAvailableEntities] = useState<string[]>([]);
+  const [, setAvailableEntities] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const clientOptions = useMemo(() => {
@@ -145,11 +145,20 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   }, [uploads, selectedSheet]);
 
   useEffect(() => {
-    const filtered = filterRowsByGlMonth(allRows, glMonth);
+    if (!headerMap) {
+      setIncludedRows(null);
+      setAvailableEntities([]);
+      return;
+    }
+
+    const baseRows = mappedRowsBySheet[selectedSheet] ?? [];
+    const filtered = filterRowsByGlMonth(baseRows, glMonth);
     setIncludedRows(filtered);
-    const unique = Array.from(new Set(filtered.map((r) => r.entity).filter(Boolean)));
+    const unique = Array.from(
+      new Set(filtered.map((r) => r.entity).filter(Boolean))
+    );
     setAvailableEntities(unique);
-  }, [glMonth, allRows]);
+  }, [glMonth, mappedRowsBySheet, selectedSheet, headerMap]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,6 +195,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setHeaderMap(null);
       setIncludedRows(null);
       setAvailableEntities([]);
+      setMappedRowsBySheet([]);
       setGlMonth(normalizeGlMonth(parsed[0]?.metadata?.glMonth || ''));
       setError(null);
     } catch (err) {
@@ -196,7 +206,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setHeaderMap(null);
       setIncludedRows(null);
       setAvailableEntities([]);
-      setAllRows([]);
+      setMappedRowsBySheet([]);
     }
   };
 
@@ -211,25 +221,58 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       {} as Record<string, string>
     );
 
-    const sheet = uploads[selectedSheet];
-    const normalizedSheetMonth = normalizeGlMonth(
-      sheet.metadata.glMonth || glMonth
-    );
-    const rows: AccountRow[] = sheet.rows.map((row) => ({
-      accountId: row[keyMap['GL ID']]?.toString() || '',
-      description: row[keyMap['Account Description']]?.toString() || '',
-      netChange: parseCurrencyValue(row[keyMap['Net Change']]),
-      entity: row[keyMap['Entity']]?.toString() || '',
-      glMonth: normalizedSheetMonth,
-      ...row,
-    }));
+    const mappedSheets = uploads.map((sheet) => {
+      const normalizedSheetMonth = normalizeGlMonth(
+        sheet.metadata.glMonth || ''
+      );
 
-    const uniqueEntities = Array.from(
-      new Set(rows.map((r) => r.entity).filter(Boolean))
-    );
-    setAvailableEntities(uniqueEntities);
-    setAllRows(rows);
-    setIncludedRows(filterRowsByGlMonth(rows, glMonth));
+      return sheet.rows
+        .map((row) => {
+          const accountIdValue = keyMap['GL ID']
+            ? row[keyMap['GL ID']]
+            : '';
+          const descriptionValue = keyMap['Account Description']
+            ? row[keyMap['Account Description']]
+            : '';
+
+          const accountId =
+            accountIdValue !== undefined && accountIdValue !== null
+              ? accountIdValue.toString().trim()
+              : '';
+          const description =
+            descriptionValue !== undefined && descriptionValue !== null
+              ? descriptionValue.toString().trim()
+              : '';
+
+          if (!accountId || !description) {
+            return null;
+          }
+
+          const entityValue = keyMap['Entity']
+            ? row[keyMap['Entity']]
+            : '';
+          const netChangeValue = keyMap['Net Change']
+            ? row[keyMap['Net Change']]
+            : 0;
+
+          const entity =
+            entityValue !== undefined && entityValue !== null
+              ? entityValue.toString().trim()
+              : '';
+
+          return {
+            accountId,
+            description,
+            netChange: parseCurrencyValue(netChangeValue),
+            entity,
+            glMonth: normalizedSheetMonth,
+            ...row,
+          };
+        })
+        .filter((row): row is AccountRow => row !== null);
+    });
+
+    setMappedRowsBySheet(mappedSheets);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -315,7 +358,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                   setHeaderMap(null);
                   setIncludedRows(null);
                   setAvailableEntities([]);
-                  setAllRows([]);
+                  setMappedRowsBySheet([]);
                   setGlMonth('');
                   setClientId('');
                   setEntityIds(entities.length === 1 ? [entities[0].id] : []);
@@ -360,8 +403,6 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
           value={selectedSheet.toString()}
           onChange={(e) => {
             setSelectedSheet(Number(e.target.value));
-            setHeaderMap(null);
-            setIncludedRows(null);
           }}
         >
           {uploads.map((u, idx) => (
@@ -404,14 +445,23 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
               rows={includedRows}
               onConfirm={(included) => {
                 setIncludedRows(included);
+                const uniqueIncluded = Array.from(
+                  new Set(included.map((r) => r.entity).filter(Boolean))
+                );
+                setAvailableEntities(uniqueIncluded);
               }}
             />
           )}
         </div>
       )}
 
-      {includedRows && includedRows.length > 0 && (
-        <PreviewTable rows={includedRows} />
+      {headerMap && (
+        <PreviewTable
+          rows={includedRows ?? []}
+          sheetNames={uploads.map((u) => u.sheetName)}
+          selectedSheetIndex={selectedSheet}
+          onSheetChange={(index) => setSelectedSheet(index)}
+        />
       )}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
