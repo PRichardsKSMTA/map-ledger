@@ -1,5 +1,5 @@
 import { ChangeEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronRight } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
@@ -20,10 +20,6 @@ import type {
 import MappingSplitRow from './MappingSplitRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
-
-interface MappingTableProps {
-  onConfigureAllocation?: (glAccountRawId: string) => void;
-}
 
 type SortKey =
   | 'companyName'
@@ -109,7 +105,7 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 
 const formatCurrency = (value: number): string => currencyFormatter.format(value);
 
-export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
+export default function MappingTable() {
   const { allocations } = useRatioAllocationStore();
   const datapoints = useTemplateStore(state => state.datapoints);
   const coaOptions = useMemo<TargetScoaOption[]>(() => buildTargetScoaOptions(datapoints), [datapoints]);
@@ -434,23 +430,15 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => onConfigureAllocation?.(account.id)}
-                              className="text-xs font-medium text-blue-600 underline hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
-                            >
-                              Configure allocation
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => toggleSplitRow(account.id)}
                               className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 underline transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
                               aria-expanded={isExpanded}
                               aria-controls={`split-panel-${account.id}`}
                             >
-                              {isExpanded ? (
-                                <ChevronDown className="h-3 w-3" aria-hidden="true" />
-                              ) : (
-                                <ChevronRight className="h-3 w-3" aria-hidden="true" />
-                              )}
+                              <ChevronRight
+                                className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                                aria-hidden="true"
+                              />
                               {isExpanded ? 'Hide splits' : 'Show splits'}
                             </button>
                           </div>
