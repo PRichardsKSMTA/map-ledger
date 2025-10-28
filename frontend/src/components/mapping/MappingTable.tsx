@@ -86,6 +86,14 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'notes', label: 'Notes' },
 ];
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+const formatCurrency = (value: number): string => currencyFormatter.format(value);
+
 export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
   const { allocations } = useRatioAllocationStore();
   const { datapoints } = useTemplateStore();

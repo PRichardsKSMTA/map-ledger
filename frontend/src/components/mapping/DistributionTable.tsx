@@ -22,6 +22,14 @@ const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
   { value: 'dynamic', label: 'Dynamic' },
 ];
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+const formatCurrency = (value: number): string => currencyFormatter.format(value);
+
 const statusLabel = (value: MappingStatus) =>
   STATUS_DEFINITIONS.find(status => status.value === value)?.label ?? value;
 
@@ -77,7 +85,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     return rows.filter(row => {
       const matchesSearch =
         !normalizedQuery ||
-        [row.accountId, row.description, row.activity]
+        [row.accountId, row.description, formatCurrency(row.activity)]
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery);
@@ -233,7 +241,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                       {row.accountId}
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.description}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{row.activity}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      {formatCurrency(row.activity)}
+                    </td>
                     <td className="px-4 py-3">
                       <label htmlFor={`distribution-type-${row.id}`} className="sr-only">
                         Select distribution type

@@ -36,7 +36,7 @@ const seedRows: DistributionRow[] = [
     mappingRowId: 'acct-1',
     accountId: '6100',
     description: 'Fuel Expense',
-    activity: 'Fleet Operations',
+    activity: 65000,
     type: 'dynamic',
     operations: [
       { id: 'ops-log', name: 'Logistics' },
@@ -51,7 +51,7 @@ const seedRows: DistributionRow[] = [
     mappingRowId: 'acct-2',
     accountId: '5200',
     description: 'Payroll Taxes',
-    activity: 'Payroll Processing',
+    activity: 120000,
     type: 'percentage',
     operations: [
       { id: 'ops-ded', name: 'Dedicated', allocation: 60 },
@@ -66,7 +66,7 @@ const seedRows: DistributionRow[] = [
     mappingRowId: 'acct-3',
     accountId: '6400',
     description: 'Maintenance Expense',
-    activity: 'Fleet Maintenance',
+    activity: 48000,
     type: 'direct',
     operations: [{ id: 'ops-ded', name: 'Dedicated' }],
     presetId: null,

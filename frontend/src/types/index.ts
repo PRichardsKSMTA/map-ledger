@@ -190,7 +190,7 @@ export interface DistributionRow {
   mappingRowId: string;
   accountId: string;
   description: string;
-  activity: string;
+  activity: number;
   type: DistributionType;
   operations: DistributionOperationShare[];
   presetId?: string | null;
@@ -206,7 +206,7 @@ export interface GLAccountMappingRow {
   entityName?: string;
   accountId: string;
   accountName: string;
-  activity: string;
+  activity: number;
   status: MappingStatus;
   mappingType: MappingType;
   netChange: number;
