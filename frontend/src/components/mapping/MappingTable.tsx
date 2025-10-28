@@ -11,9 +11,10 @@ import {
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
-import type { GLAccountMappingRow, MappingType } from '../../types';
+import type { GLAccountMappingRow, MappingType, TargetScoaOption } from '../../types';
 import MappingSplitRow from './MappingSplitRow';
 import { PRESET_OPTIONS } from './presets';
+import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
 
 interface MappingTableProps {
   onConfigureAllocation?: (glAccountRawId: string) => void;
@@ -101,13 +102,7 @@ const formatCurrency = (value: number): string => currencyFormatter.format(value
 export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
   const { allocations } = useRatioAllocationStore();
   const datapoints = useTemplateStore(state => state.datapoints);
-  const coaOptions = useMemo(
-    () =>
-      Object.values(datapoints)
-        .flat()
-        .sort((a, b) => a.accountName.localeCompare(b.accountName)),
-    [datapoints],
-  );
+  const coaOptions = useMemo<TargetScoaOption[]>(() => buildTargetScoaOptions(datapoints), [datapoints]);
   const accounts = useMappingStore(selectAccounts);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
@@ -349,8 +344,8 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                       >
                         <option value="">Select target</option>
                         {coaOptions.map(option => (
-                          <option key={option.id} value={option.coreGLAccount}>
-                            {option.accountName}
+                          <option key={option.id} value={option.value}>
+                            {option.label}
                           </option>
                         ))}
                       </select>
@@ -438,7 +433,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                   {requiresSplit && isExpanded && (
                     <MappingSplitRow
                       account={account}
-                      datapoints={coaOptions}
+                      targetOptions={coaOptions}
                       colSpan={COLUMN_DEFINITIONS.length + 1}
                       panelId={`split-panel-${account.id}`}
                       onAddSplit={() => addSplitDefinition(account.id)}

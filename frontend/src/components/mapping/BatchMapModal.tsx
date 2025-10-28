@@ -1,15 +1,10 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type {
-  Datapoint,
-  MappingPolarity,
-  MappingStatus,
-  MappingType,
-} from '../../types';
+import type { MappingPolarity, MappingStatus, MappingType, TargetScoaOption } from '../../types';
 import { PRESET_OPTIONS } from './presets';
 
 interface BatchMapModalProps {
   open: boolean;
-  datapoints: Datapoint[];
+  targetOptions: TargetScoaOption[];
   selectedCount: number;
   onClose: () => void;
   onApply: (updates: {
@@ -41,7 +36,7 @@ const polarityOptions: (MappingPolarity | '')[] = ['', 'Debit', 'Credit'];
 
 export default function BatchMapModal({
   open,
-  datapoints,
+  targetOptions,
   selectedCount,
   onClose,
   onApply,
@@ -137,9 +132,9 @@ export default function BatchMapModal({
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
               >
                 <option value="">Leave unchanged</option>
-                {datapoints.map(option => (
-                  <option key={option.id} value={option.coreGLAccount}>
-                    {option.accountName}
+                {targetOptions.map(option => (
+                  <option key={option.id} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
