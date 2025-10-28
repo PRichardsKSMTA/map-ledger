@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import MappingHeader from '../components/mapping/MappingHeader';
 import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
@@ -17,33 +17,38 @@ const stepParam = (value: string | null): MappingStep => {
 export default function Mapping() {
   const { uploadId = 'demo' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeStep, setActiveStep] = useState<MappingStep>(() => stepParam(searchParams.get('stage')));
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
 
-  const urlStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
+  const activeStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
 
-  useEffect(() => {
-    if (urlStep !== activeStep) {
-      setActiveStep(urlStep);
-      if (urlStep !== 'distribution') {
-        setActiveAccountId(null);
+  const updateStage = useCallback(
+    (step: MappingStep) => {
+      if (searchParams.get('stage') === step) {
+        return;
       }
-    }
-  }, [urlStep, activeStep]);
+      const next = new URLSearchParams(searchParams);
+      next.set('stage', step);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   useEffect(() => {
-    const next = new URLSearchParams(searchParams);
-    if (next.get('stage') !== activeStep) {
-      next.set('stage', activeStep);
-      setSearchParams(next, { replace: true });
+    if (activeStep !== 'distribution' && activeAccountId !== null) {
+      setActiveAccountId(null);
     }
-  }, [activeStep, searchParams, setSearchParams]);
+  }, [activeStep, activeAccountId]);
 
   const handleStepChange = (step: MappingStep) => {
-    setActiveStep(step);
+    updateStage(step);
     if (step !== 'distribution') {
       setActiveAccountId(null);
     }
+  };
+
+  const handleConfigureAllocation = (accountId: string) => {
+    setActiveAccountId(accountId);
+    updateStage('distribution');
   };
 
   return (
@@ -55,14 +60,7 @@ export default function Mapping() {
         aria-label="Mapping workspace content"
         className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
-        {activeStep === 'mapping' && (
-          <MappingTable
-            onConfigureAllocation={accountId => {
-              setActiveAccountId(accountId);
-              setActiveStep('distribution');
-            }}
-          />
-        )}
+        {activeStep === 'mapping' && <MappingTable onConfigureAllocation={handleConfigureAllocation} />}
         {activeStep === 'distribution' && (
           <DistributionTable focusMappingId={activeAccountId} />
         )}
