@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import { RatioAllocation, AllocationResult, OperationalMetric } from '../types';
+import {
+  DRIVER_COMPENSATION_DATAPOINT_ID,
+  NON_DRIVER_COMPENSATION_DATAPOINT_ID,
+} from '../data/coaSeeds';
 
 const sampleMetrics: OperationalMetric[] = [
   {
@@ -47,7 +51,7 @@ const sampleAllocations: RatioAllocation[] = [
     },
     targetDatapoints: [
       {
-        datapointId: '4',
+        datapointId: DRIVER_COMPENSATION_DATAPOINT_ID,
         name: 'Driver Wages, Benefits and Payroll Taxes',
         ratioMetric: {
           id: '1',
@@ -56,7 +60,7 @@ const sampleAllocations: RatioAllocation[] = [
         }
       },
       {
-        datapointId: '10',
+        datapointId: NON_DRIVER_COMPENSATION_DATAPOINT_ID,
         name: 'Non-Driver Wages, Benefits and Payroll Taxes',
         ratioMetric: {
           id: '2',
@@ -121,7 +125,10 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       if (updatedAllocation.targetDatapoints) {
         updatedAllocation.targetDatapoints = updatedAllocation.targetDatapoints.map(target => {
           const currentPeriodMetric = periodMetrics.find(m => 
-            m.type === (target.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
+            m.type ===
+            (target.datapointId === DRIVER_COMPENSATION_DATAPOINT_ID
+              ? 'driver-headcount'
+              : 'non-driver-headcount')
           );
           
           if (currentPeriodMetric) {
@@ -161,7 +168,10 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         ...allocation,
         targetDatapoints: allocation.targetDatapoints.map(target => {
           const newMetric = periodMetrics.find(m => 
-            m.type === (target.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
+            m.type ===
+            (target.datapointId === DRIVER_COMPENSATION_DATAPOINT_ID
+              ? 'driver-headcount'
+              : 'non-driver-headcount')
           );
           
           if (newMetric) {
@@ -195,12 +205,18 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       const results = get().allocations.map(allocation => {
         const allocations = allocation.targetDatapoints.map(target => {
           const currentMetric = periodMetrics.find(m => 
-            m.type === (target.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
+            m.type ===
+            (target.datapointId === DRIVER_COMPENSATION_DATAPOINT_ID
+              ? 'driver-headcount'
+              : 'non-driver-headcount')
           );
           
           const totalMetricValue = allocation.targetDatapoints.reduce((sum, dp) => {
             const metric = periodMetrics.find(m => 
-              m.type === (dp.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
+              m.type ===
+              (dp.datapointId === DRIVER_COMPENSATION_DATAPOINT_ID
+                ? 'driver-headcount'
+                : 'non-driver-headcount')
             );
             return sum + (metric?.value || 0);
           }, 0);

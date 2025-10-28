@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import {
   selectActiveStatuses,
@@ -51,7 +51,13 @@ export default function MappingToolbar() {
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
   const datapoints = useTemplateStore(state => state.datapoints);
-  const coaOptions = datapoints['1'] || [];
+  const coaOptions = useMemo(
+    () =>
+      Object.values(datapoints)
+        .flat()
+        .sort((a, b) => a.accountName.localeCompare(b.accountName)),
+    [datapoints],
+  );
   const [isBatchMapOpen, setBatchMapOpen] = useState(false);
   const [isPresetOpen, setPresetOpen] = useState(false);
   const [isBatchExcludeOpen, setBatchExcludeOpen] = useState(false);
