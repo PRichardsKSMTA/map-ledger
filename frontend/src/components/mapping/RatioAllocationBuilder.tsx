@@ -4,6 +4,10 @@ import { Plus, GripVertical, X, Percent } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../ui/Card';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import { OperationalMetric } from '../../types';
+import {
+  DRIVER_COMPENSATION_DATAPOINT_ID,
+  NON_DRIVER_COMPENSATION_DATAPOINT_ID,
+} from '../../data/coaSeeds';
 
 export default function RatioAllocationBuilder() {
   const {
@@ -18,17 +22,38 @@ export default function RatioAllocationBuilder() {
 
   const periods = ['2024-08', '2024-09'];
 
-  const getMetricsForDatapoint = (datapointId: string, period: string): OperationalMetric[] => {
-    const metricMapping: { [key: string]: string[] } = {
-      '4': ['driver-headcount'],
-      '10': ['non-driver-headcount'],
-    };
+  const targetOptions = [
+    {
+      value: DRIVER_COMPENSATION_DATAPOINT_ID,
+      label: 'Driver Wages, Benefits and Payroll Taxes',
+      metricType: 'driver-headcount' as OperationalMetric['type'],
+    },
+    {
+      value: NON_DRIVER_COMPENSATION_DATAPOINT_ID,
+      label: 'Non-Driver Wages, Benefits and Payroll Taxes',
+      metricType: 'non-driver-headcount' as OperationalMetric['type'],
+    },
+  ];
 
-    const allowedTypes = metricMapping[datapointId] || [];
-    return metrics.filter(m => 
-      m.period === period && 
-      allowedTypes.includes(m.type.toLowerCase())
-    );
+  const datapointMetricType = targetOptions.reduce<Record<string, OperationalMetric['type']>>(
+    (accumulator, option) => {
+      accumulator[option.value] = option.metricType;
+      return accumulator;
+    },
+    {},
+  );
+
+  const targetLabelMap = targetOptions.reduce<Record<string, string>>((accumulator, option) => {
+    accumulator[option.value] = option.label;
+    return accumulator;
+  }, {});
+
+  const getMetricsForDatapoint = (datapointId: string, period: string): OperationalMetric[] => {
+    const metricType = datapointMetricType[datapointId];
+    if (!metricType) {
+      return [];
+    }
+    return metrics.filter(metric => metric.period === period && metric.type === metricType);
   };
 
   const handleDragEnd = (result: DropResult) => {
@@ -49,21 +74,30 @@ export default function RatioAllocationBuilder() {
 
   const handleAddTarget = (allocationId: string) => {
     const allocation = allocations.find(a => a.id === allocationId);
-    if (!allocation) return;
+    if (!allocation || !selectedPeriod) return;
+
+    const availableMetrics = getMetricsForDatapoint(DRIVER_COMPENSATION_DATAPOINT_ID, selectedPeriod);
+    const defaultMetric = availableMetrics[0];
 
     const newTarget = {
-      datapointId: '4', // Default to Driver datapoint
-      name: 'Driver Wages, Benefits and Payroll Taxes',
-      ratioMetric: {
-        id: metrics.find(m => m.type === 'driver-headcount' && m.period === selectedPeriod)?.id || '',
-        name: 'Driver Headcount',
-        value: 75
-      }
+      datapointId: DRIVER_COMPENSATION_DATAPOINT_ID,
+      name: targetLabelMap[DRIVER_COMPENSATION_DATAPOINT_ID],
+      ratioMetric: defaultMetric
+        ? {
+            id: defaultMetric.id,
+            name: defaultMetric.name,
+            value: defaultMetric.value,
+          }
+        : {
+            id: '',
+            name: 'Driver Headcount',
+            value: 75,
+          },
     };
 
     updateAllocation(allocationId, {
       ...allocation,
-      targetDatapoints: [...allocation.targetDatapoints, newTarget]
+      targetDatapoints: [...allocation.targetDatapoints, newTarget],
     });
   };
 
@@ -179,13 +213,17 @@ export default function RatioAllocationBuilder() {
                                           <select
                                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                                             value={target.datapointId}
-                                            onChange={(e) => {
+                                            onChange={(event) => {
                                               const allocation = allocations.find(
-                                                a => a.id === selectedAllocation
+                                                a => a.id === selectedAllocation,
                                               );
-                                              if (!allocation) return;
+                                              if (!allocation || !selectedPeriod) return;
 
-                                              const availableMetrics = getMetricsForDatapoint(e.target.value, selectedPeriod);
+                                              const nextDatapointId = event.target.value;
+                                              const availableMetrics = getMetricsForDatapoint(
+                                                nextDatapointId,
+                                                selectedPeriod,
+                                              );
                                               const defaultMetric = availableMetrics[0];
 
                                               const newTargetDatapoints = allocation.targetDatapoints.map(
@@ -193,27 +231,31 @@ export default function RatioAllocationBuilder() {
                                                   i === index
                                                     ? {
                                                         ...t,
-                                                        datapointId: e.target.value,
-                                                        name: e.target.value === '4' 
-                                                          ? 'Driver Wages, Benefits and Payroll Taxes'
-                                                          : 'Non-Driver Wages, Benefits and Payroll Taxes',
-                                                        ratioMetric: defaultMetric ? {
-                                                          id: defaultMetric.id,
-                                                          name: defaultMetric.name,
-                                                          value: defaultMetric.value
-                                                        } : t.ratioMetric
+                                                        datapointId: nextDatapointId,
+                                                        name:
+                                                          targetLabelMap[nextDatapointId] ?? t.name,
+                                                        ratioMetric: defaultMetric
+                                                          ? {
+                                                              id: defaultMetric.id,
+                                                              name: defaultMetric.name,
+                                                              value: defaultMetric.value,
+                                                            }
+                                                          : t.ratioMetric,
                                                       }
-                                                    : t
+                                                    : t,
                                               );
 
                                               updateAllocation(selectedAllocation, {
                                                 ...allocation,
-                                                targetDatapoints: newTargetDatapoints
+                                                targetDatapoints: newTargetDatapoints,
                                               });
                                             }}
                                           >
-                                            <option value="4">Driver Wages, Benefits and Payroll Taxes</option>
-                                            <option value="10">Non-Driver Wages, Benefits and Payroll Taxes</option>
+                                            {targetOptions.map(option => (
+                                              <option key={option.value} value={option.value}>
+                                                {option.label}
+                                              </option>
+                                            ))}
                                           </select>
                                         </div>
                                         <div className="col-span-5">
@@ -227,7 +269,7 @@ export default function RatioAllocationBuilder() {
                                               const allocation = allocations.find(
                                                 a => a.id === selectedAllocation
                                               );
-                                              if (!allocation) return;
+                                              if (!allocation || !selectedPeriod) return;
 
                                               const availableMetrics = getMetricsForDatapoint(target.datapointId, selectedPeriod);
                                               const selectedMetric = availableMetrics.find(m => m.id === e.target.value);
@@ -253,7 +295,7 @@ export default function RatioAllocationBuilder() {
                                               });
                                             }}
                                           >
-                                            {getMetricsForDatapoint(target.datapointId, selectedPeriod).map((metric) => (
+                                            {getMetricsForDatapoint(target.datapointId, selectedPeriod ?? '').map((metric) => (
                                               <option key={metric.id} value={metric.id}>
                                                 {metric.name}
                                               </option>
@@ -314,14 +356,12 @@ export default function RatioAllocationBuilder() {
                   if (!allocation) return null;
 
                   const periodMetrics = metrics.filter(m => m.period === selectedPeriod);
-                  const targetMetric = periodMetrics.find(m => 
-                    m.type === (target.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
-                  );
+                  const metricType = datapointMetricType[target.datapointId];
+                  const targetMetric = periodMetrics.find(m => m.type === metricType);
 
                   const totalMetricValue = allocation.targetDatapoints.reduce((sum, dp) => {
-                    const metric = periodMetrics.find(m => 
-                      m.type === (dp.datapointId === '4' ? 'driver-headcount' : 'non-driver-headcount')
-                    );
+                    const dpMetricType = datapointMetricType[dp.datapointId];
+                    const metric = periodMetrics.find(m => m.type === dpMetricType);
                     return sum + (metric?.value || 0);
                   }, 0);
 

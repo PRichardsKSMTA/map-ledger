@@ -100,8 +100,14 @@ const formatCurrency = (value: number): string => currencyFormatter.format(value
 
 export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
   const { allocations } = useRatioAllocationStore();
-  const { datapoints } = useTemplateStore();
-  const coaOptions = datapoints['1'] || [];
+  const datapoints = useTemplateStore(state => state.datapoints);
+  const coaOptions = useMemo(
+    () =>
+      Object.values(datapoints)
+        .flat()
+        .sort((a, b) => a.accountName.localeCompare(b.accountName)),
+    [datapoints],
+  );
   const accounts = useMappingStore(selectAccounts);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);

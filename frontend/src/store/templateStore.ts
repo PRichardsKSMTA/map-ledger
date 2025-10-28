@@ -2,115 +2,7 @@ import { create } from 'zustand';
 import { COATemplate, Datapoint } from '../types';
 import { parseCOATemplateFile } from '../utils/parseCOATemplateFile';
 import { buildTemplateFromRows } from '../utils/buildTemplateFromRows';
-
-// Sample template data
-const sampleTemplates: COATemplate[] = [
-  {
-    id: '1',
-    name: 'Transportation Industry Template',
-    industry: 'Transportation',
-    interval: 'Monthly',
-    functionalGroups: [
-      { id: 'fg1', name: 'Operations', code: '100' },
-      { id: 'fg2', name: 'Maintenance', code: '200' },
-      { id: 'fg3', name: 'Administration', code: '300' }
-    ],
-    operationalGroups: [
-      { id: 'og1', name: 'Fleet Management', code: '400' },
-      { id: 'og2', name: 'Driver Operations', code: '500' },
-      { id: 'og3', name: 'Logistics', code: '600' }
-    ]
-  },
-  {
-    id: '2',
-    name: 'Healthcare Standard Template',
-    industry: 'Healthcare',
-    interval: 'Quarterly',
-    functionalGroups: [
-      { id: 'fg4', name: 'Patient Care', code: '100' },
-      { id: 'fg5', name: 'Medical Services', code: '200' },
-      { id: 'fg6', name: 'Support Services', code: '300' }
-    ],
-    operationalGroups: [
-      { id: 'og4', name: 'Inpatient', code: '400' },
-      { id: 'og5', name: 'Outpatient', code: '500' },
-      { id: 'og6', name: 'Emergency', code: '600' }
-    ]
-  }
-];
-
-// Sample datapoints
-const sampleDatapoints: Record<string, Datapoint[]> = {
-  '1': [
-    {
-      id: 'dp1',
-      templateId: '1',
-      accountName: 'Fuel Expenses',
-      accountDescription: 'All fuel-related expenses for fleet operations',
-      type: 'Financial',
-      accountType: 'Expenses',
-      balanceType: 'Debit',
-      coreGLAccount: '5100',
-      functionalGroupId: 'fg1',
-      operationalGroupId: 'og1',
-      sortOrder: 0
-    },
-    {
-      id: 'dp2',
-      templateId: '1',
-      accountName: 'Vehicle Maintenance',
-      accountDescription: 'Regular maintenance and repairs',
-      type: 'Financial',
-      accountType: 'Expenses',
-      balanceType: 'Debit',
-      coreGLAccount: '5200',
-      functionalGroupId: 'fg2',
-      operationalGroupId: 'og1',
-      sortOrder: 1
-    },
-    {
-      id: 'dp3',
-      templateId: '1',
-      accountName: 'Driver Salaries',
-      accountDescription: 'Base salaries for drivers',
-      type: 'Financial',
-      accountType: 'Expenses',
-      balanceType: 'Debit',
-      coreGLAccount: '5300',
-      functionalGroupId: 'fg1',
-      operationalGroupId: 'og2',
-      sortOrder: 2
-    }
-  ],
-  '2': [
-    {
-      id: 'dp4',
-      templateId: '2',
-      accountName: 'Patient Revenue',
-      accountDescription: 'Revenue from patient services',
-      type: 'Financial',
-      accountType: 'Revenue',
-      balanceType: 'Credit',
-      coreGLAccount: '4100',
-      functionalGroupId: 'fg4',
-      operationalGroupId: 'og4',
-      sortOrder: 0
-    },
-    {
-      id: 'dp5',
-      templateId: '2',
-      accountName: 'Medical Supplies',
-      accountDescription: 'Medical supplies and equipment',
-      type: 'Financial',
-      accountType: 'Expenses',
-      balanceType: 'Debit',
-      coreGLAccount: '5100',
-      functionalGroupId: 'fg5',
-      operationalGroupId: 'og4',
-      sortOrder: 1
-    }
-  ]
-};
+import { createSeedDatapoints, createSeedTemplates } from '../data/coaSeeds';
 
 interface TemplateState {
   templates: COATemplate[];
@@ -130,8 +22,8 @@ interface TemplateState {
 
 export const useTemplateStore = create<TemplateState>((set) => ({
   // Initialize with sample data
-  templates: sampleTemplates,
-  datapoints: sampleDatapoints,
+  templates: createSeedTemplates(),
+  datapoints: createSeedDatapoints(),
   addTemplate: (template) =>
     set((state) => ({
       templates: [...state.templates, { ...template, id: crypto.randomUUID() }],
