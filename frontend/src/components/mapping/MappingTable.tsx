@@ -76,6 +76,14 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'notes', label: 'Notes' },
 ];
 
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+const formatCurrency = (value: number): string => currencyFormatter.format(value);
+
 export default function MappingTable({ onConfigureAllocation }: MappingTableProps) {
   const { allocations } = useRatioAllocationStore();
   const { datapoints } = useTemplateStore();
@@ -128,7 +136,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
           account.accountName,
           account.companyName,
           account.entityName ?? '',
-          account.activity,
+          formatCurrency(account.activity),
         ]
           .join(' ')
           .toLowerCase()
@@ -282,7 +290,9 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                       <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">Balance {account.balance.toLocaleString()}</div>
                     </td>
-                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.activity}</td>
+                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
+                      {formatCurrency(account.activity)}
+                    </td>
                     <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
                     <td className="px-3 py-4">
                       <label className="sr-only" htmlFor={`scoa-${account.id}`}>
