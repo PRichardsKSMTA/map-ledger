@@ -25,35 +25,35 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-custom flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col justify-center bg-gradient-custom py-12 transition-colors duration-300 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="bg-white backdrop-blur-sm p-3 rounded-xl border border-white/10 shadow-none">
+          <div className="rounded-xl border border-white/40 bg-white/90 p-3 backdrop-blur-sm shadow-sm transition-colors duration-300 dark:border-slate-700/60 dark:bg-slate-900/80">
             <LogIn className="h-12 w-12 text-primary-600" />
           </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-white">
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 transition-colors duration-300 dark:text-slate-100">
           Sign in to MapLedger
         </h2>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-500/70 backdrop-blur-sm py-6 px-4 border border-white/10 shadow-none sm:rounded-xl sm:px-10">
+        <div className="rounded-xl border border-white/40 bg-white/90 px-4 py-6 shadow-sm backdrop-blur-sm transition-colors duration-300 dark:border-slate-700/60 dark:bg-slate-900/85 sm:px-10">
           <AuthErrorAlert />
           <button
             type="button"
             onClick={handleLogin}
-            className="w-full flex justify-center p-0 border-0 bg-transparent"
+            className="flex w-full justify-center border-0 bg-transparent p-0"
           >
             <img
               src={MS_SIGNIN_SVG_LIGHT}
               alt="Sign in with Microsoft"
-              className="h-10 w-auto block dark:hidden"
+              className="block h-10 w-auto dark:hidden"
             />
             <img
               src={MS_SIGNIN_SVG_DARK}
               alt="Sign in with Microsoft"
-              className="h-10 w-auto hidden dark:block"
+              className="hidden h-10 w-auto dark:block"
             />
           </button>
         </div>
