@@ -83,6 +83,89 @@ const descriptions = [
   'MAINTENANCE EXPENSE - TRACTOR - TIRES - OUTSIDE VENDOR - COMPANY FLEET',
 ] as const;
 
+const glIds: readonly number[] = [
+  2990,
+  2,
+  3,
+  296,
+  102,
+  4,
+  5,
+  299,
+  105,
+  6,
+  7,
+  302,
+  108,
+  8,
+  89,
+  9,
+  351,
+  113,
+  90,
+  354,
+  10,
+  11,
+  907,
+  381,
+  382,
+  901,
+  12,
+  24,
+  25,
+  314,
+  131,
+  18,
+  22,
+  23,
+  311,
+  128,
+  14,
+  20,
+  16,
+  270,
+  91,
+  254,
+  902,
+  906,
+  26,
+  136,
+  28,
+  139,
+  30,
+  31,
+  903,
+  904,
+  908,
+  909,
+  905,
+  32,
+  33,
+  358,
+  34,
+  35,
+  363,
+  147,
+  36,
+  37,
+  368,
+  38,
+  304,
+  305,
+  378,
+  310,
+  316,
+  322,
+  323,
+  320,
+  278,
+  256,
+  290,
+  258,
+  272,
+  284,
+];
+
 const sanitize = (description: string): string =>
   description
     .toLowerCase()
@@ -91,16 +174,23 @@ const sanitize = (description: string): string =>
     .replace(/-{2,}/g, '-');
 
 export const STANDARD_CHART_OF_ACCOUNTS: TargetScoaOption[] = descriptions.map((description, index) => {
+  const glId = glIds[index];
+
+  if (glId === undefined) {
+    throw new Error(`Missing GL ID for Standard SCoA description: ${description}`);
+  }
+
   const slug = sanitize(description) || `account-${index + 1}`;
-  const paddedIndex = String(index + 1).padStart(3, '0');
-  const id = `standard-scoa-${paddedIndex}-${slug}`;
+  const id = `standard-scoa-${glId}-${slug}`;
 
   return {
     id,
-    value: id,
+    value: String(glId),
     label: description,
   };
 });
+
+export const STANDARD_CHART_OF_ACCOUNT_IDS = glIds;
 
 export const STANDARD_CHART_OF_ACCOUNT_DESCRIPTIONS = descriptions;
 
