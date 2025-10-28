@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Import } from '../../types';
 import { base64ToBlob } from '../../utils/file';
+import { formatPeriodLabel, parsePeriodString } from '../../utils/period';
 
 interface ImportHistoryProps {
   imports: Import[];
@@ -67,7 +68,8 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
             entry.fileName,
             entry.clientId,
             entry.importedBy,
-            new Date(entry.period).toLocaleDateString(),
+            entry.period,
+            formatPeriodLabel(entry.period),
             new Date(entry.timestamp).toLocaleString(),
           ]
             .join(' ')
@@ -89,8 +91,10 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
             return entry.status;
           case 'importedBy':
             return entry.importedBy.toLowerCase();
-          case 'period':
-            return new Date(entry.period);
+          case 'period': {
+            const parsedPeriod = parsePeriodString(entry.period);
+            return parsedPeriod ?? new Date(NaN);
+          }
           case 'timestamp':
           default:
             return new Date(entry.timestamp);
@@ -101,7 +105,14 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
       const bValue = getValue(b);
 
       if (aValue instanceof Date && bValue instanceof Date) {
-        return (aValue.getTime() - bValue.getTime()) * direction;
+        const aTime = aValue.getTime();
+        const bTime = bValue.getTime();
+
+        if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+          return 0;
+        }
+
+        return (aTime - bTime) * direction;
       }
 
       if (typeof aValue === 'number' && typeof bValue === 'number') {
@@ -234,10 +245,7 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
-                      {new Date(importItem.period).toLocaleDateString('default', {
-                        month: 'long',
-                        year: 'numeric',
-                      })}
+                      {formatPeriodLabel(importItem.period)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -348,12 +356,7 @@ export default function ImportHistory({ imports, onDeleteImport }: ImportHistory
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Period</p>
-                  <p className="text-sm text-gray-900">
-                    {new Date(previewImport.period).toLocaleDateString('default', {
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                  </p>
+                  <p className="text-sm text-gray-900">{formatPeriodLabel(previewImport.period)}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Status</p>
