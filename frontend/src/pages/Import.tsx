@@ -10,33 +10,42 @@ import TemplateGuide from '../components/import/TemplateGuide';
 
 export default function Import() {
   const { user } = useAuthStore();
+  const userId = user?.id ?? null;
   const [isImporting, setIsImporting] = useState(false);
-  const { imports, addImport } = useImportStore();
+  const addImport = useImportStore((state) => state.addImport);
+  const imports = useImportStore((state) =>
+    userId ? state.importsByUser[userId] ?? [] : []
+  );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const handleFileImport = async (
     rows: AccountRow[],
     clientId: string,
-    entityIds: string[],
+    _entityIds: string[],
     _headerMap: Record<string, string | null>,
-    glMonth: string
+    glMonth: string,
+    fileName: string
   ) => {
     setIsImporting(true);
     setError(null);
     setSuccess(null);
 
     try {
+      if (!user) {
+        throw new Error('You must be signed in to upload files.');
+      }
+
       const importId = crypto.randomUUID();
-      addImport({
+      addImport(user.id, {
         id: importId,
         clientId,
-        fileName: 'import',
+        fileName,
         period: glMonth,
         timestamp: new Date().toISOString(),
         status: 'completed',
         rowCount: rows.length,
-        importedBy: user?.email || '',
+        importedBy: user.email,
       });
 
       setSuccess('File imported successfully');

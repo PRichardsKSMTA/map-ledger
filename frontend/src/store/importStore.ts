@@ -1,39 +1,92 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { Import } from '../types';
 
-// Sample import data
-const sampleImports: Import[] = [
-  {
-    id: '1',
-    clientId: 'TRNS',
-    fileName: 'january_2024_tb.csv',
-    period: '2024-01-01T00:00:00.000Z',
-    timestamp: '2024-01-15T10:30:00.000Z',
-    status: 'completed',
-    rowCount: 150,
-    importedBy: 'john.doe@example.com'
-  },
-  {
-    id: '2',
-    clientId: 'HLTH',
-    fileName: 'february_2024_tb.csv',
-    period: '2024-02-01T00:00:00.000Z',
-    timestamp: '2024-02-15T14:20:00.000Z',
-    status: 'completed',
-    rowCount: 180,
-    importedBy: 'jane.smith@example.com'
-  }
-];
+export const IMPORT_STORAGE_KEY = 'map-ledger-imports';
+
+const baseImportsByUser: Record<string, Import[]> = {
+  '1': [
+    {
+      id: '1',
+      clientId: 'TRNS',
+      fileName: 'january_2024_tb.csv',
+      period: '2024-01-01T00:00:00.000Z',
+      timestamp: '2024-01-15T10:30:00.000Z',
+      status: 'completed',
+      rowCount: 150,
+      importedBy: 'john.doe@example.com',
+      userId: '1',
+    },
+  ],
+  '2': [
+    {
+      id: '2',
+      clientId: 'HLTH',
+      fileName: 'february_2024_tb.csv',
+      period: '2024-02-01T00:00:00.000Z',
+      timestamp: '2024-02-15T14:20:00.000Z',
+      status: 'completed',
+      rowCount: 180,
+      importedBy: 'jane.smith@example.com',
+      userId: '2',
+    },
+  ],
+};
+
+export const createInitialImportMap = (): Record<string, Import[]> =>
+  Object.entries(baseImportsByUser).reduce(
+    (acc, [userId, imports]) => {
+      acc[userId] = imports.map((entry) => ({ ...entry }));
+      return acc;
+    },
+    {} as Record<string, Import[]>
+  );
+
+type ImportInput = Omit<Import, 'userId'>;
 
 interface ImportState {
-  imports: Import[];
-  addImport: (importData: Import) => void;
+  importsByUser: Record<string, Import[]>;
+  addImport: (userId: string, importData: ImportInput) => void;
+  reset: () => void;
 }
 
-export const useImportStore = create<ImportState>((set) => ({
-  imports: sampleImports,
-  addImport: (importData) =>
-    set((state) => ({
-      imports: [importData, ...state.imports],
-    })),
-}));
+const storage = createJSONStorage(() => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage;
+  }
+
+  const memoryStorage: Record<string, string> = {};
+  return {
+    getItem: (name: string) => memoryStorage[name] ?? null,
+    setItem: (name: string, value: string) => {
+      memoryStorage[name] = value;
+    },
+    removeItem: (name: string) => {
+      delete memoryStorage[name];
+    },
+  };
+});
+
+export const useImportStore = create<ImportState>()(
+  persist(
+    (set) => ({
+      importsByUser: createInitialImportMap(),
+      addImport: (userId, importData) =>
+        set((state) => {
+          const entry: Import = { ...importData, userId };
+          const userImports = state.importsByUser[userId] ?? [];
+          return {
+            importsByUser: {
+              ...state.importsByUser,
+              [userId]: [entry, ...userImports],
+            },
+          };
+        }),
+      reset: () => set({ importsByUser: createInitialImportMap() }),
+    }),
+    {
+      name: IMPORT_STORAGE_KEY,
+      storage,
+    }
+  )
+);

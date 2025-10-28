@@ -33,8 +33,18 @@ export default function ImportHistory({ imports }: ImportHistoryProps) {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {imports.map((importItem) => (
-            <tr key={importItem.id} className="hover:bg-gray-50">
+          {imports.length === 0 ? (
+            <tr>
+              <td
+                colSpan={6}
+                className="px-6 py-12 text-center text-sm text-gray-500"
+              >
+                No uploads found for your account yet.
+              </td>
+            </tr>
+          ) : (
+            imports.map((importItem) => (
+              <tr key={importItem.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="flex items-center">
                   <FileSpreadsheet className="h-5 w-5 text-gray-400 mr-3" />
@@ -87,8 +97,9 @@ export default function ImportHistory({ imports }: ImportHistoryProps) {
                   <Download className="h-5 w-5" />
                 </button>
               </td>
-            </tr>
-          ))}
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
