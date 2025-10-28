@@ -19,7 +19,7 @@ const baseMappings: GLAccountMappingRow[] = [
     activity: 'Fleet Operations',
     status: 'New',
     mappingType: 'dynamic',
-    balance: 65000,
+    netChange: 65000,
     operation: 'Fleet',
     suggestedCOAId: '6100',
     suggestedCOADescription: 'Fuel Expense',
@@ -55,7 +55,7 @@ const baseMappings: GLAccountMappingRow[] = [
     activity: 'Payroll Processing',
     status: 'Unmapped',
     mappingType: 'percentage',
-    balance: 120000,
+    netChange: 120000,
     operation: 'Shared Services',
     suggestedCOAId: '5200',
     suggestedCOADescription: 'Payroll Taxes',
@@ -97,7 +97,7 @@ const baseMappings: GLAccountMappingRow[] = [
     activity: 'Revenue Recognition',
     status: 'Mapped',
     mappingType: 'direct',
-    balance: 500000,
+    netChange: 500000,
     operation: 'Linehaul',
     suggestedCOAId: '4100',
     suggestedCOADescription: 'Revenue',
@@ -123,7 +123,7 @@ const baseMappings: GLAccountMappingRow[] = [
     activity: 'Legacy Clean-up',
     status: 'Excluded',
     mappingType: 'exclude',
-    balance: 15000,
+    netChange: 15000,
     operation: 'Legacy',
     aiConfidence: 48,
     polarity: 'Debit',
@@ -143,12 +143,12 @@ export const createInitialMappingAccounts = (): GLAccountMappingRow[] =>
   baseMappings.map(cloneMappingRow);
 
 const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
-  accounts.reduce((sum, account) => sum + account.balance, 0);
+  accounts.reduce((sum, account) => sum + account.netChange, 0);
 
 const calculateExcludedTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts
     .filter(account => account.mappingType === 'exclude' || account.status === 'Excluded')
-    .reduce((sum, account) => sum + account.balance, 0);
+    .reduce((sum, account) => sum + account.netChange, 0);
 
 type SummarySelector = {
   totalAccounts: number;
@@ -464,14 +464,14 @@ const getSplitPercentage = (account: GLAccountMappingRow, split: MappingSplitDef
   if (split.allocationType === 'percentage') {
     return split.allocationValue;
   }
-  if (split.allocationType === 'amount' && account.balance !== 0) {
-    return (split.allocationValue / account.balance) * 100;
+  if (split.allocationType === 'amount' && account.netChange !== 0) {
+    return (split.allocationValue / account.netChange) * 100;
   }
   return 0;
 };
 
 const getSplitAmount = (account: GLAccountMappingRow, percentage: number): number =>
-  (account.balance * percentage) / 100;
+  (account.netChange * percentage) / 100;
 
 const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
   const issues: { accountId: string; message: string }[] = [];
@@ -495,8 +495,8 @@ const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
         const percentage = getSplitPercentage(account, split);
         return sum + getSplitAmount(account, percentage);
       }, 0);
-      if (Math.abs(totalAmount - account.balance) > Math.max(1, Math.abs(account.balance) * 0.001)) {
-        issues.push({ accountId: account.id, message: 'Dynamic allocations must reconcile to the account balance' });
+      if (Math.abs(totalAmount - account.netChange) > Math.max(1, Math.abs(account.netChange) * 0.001)) {
+        issues.push({ accountId: account.id, message: 'Dynamic allocations must reconcile to the account net change' });
       }
     }
   });
