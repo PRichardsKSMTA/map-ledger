@@ -172,7 +172,7 @@ export type MappingStatus = 'Mapped' | 'Unmapped' | 'New' | 'Excluded';
 
 export type MappingType = 'direct' | 'percentage' | 'dynamic' | 'exclude';
 
-export type MappingPolarity = 'Debit' | 'Credit';
+export type MappingPolarity = 'Debit' | 'Credit' | 'Absolute';
 
 export interface MappingSplitDefinition {
   id: string;
