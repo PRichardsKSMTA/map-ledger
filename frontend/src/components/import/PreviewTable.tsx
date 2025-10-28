@@ -3,9 +3,7 @@ import { AccountRow } from './ExcludeAccounts';
 
 interface PreviewTableProps {
   rows: AccountRow[];
-  sheetNames?: string[];
-  selectedSheetIndex?: number;
-  onSheetChange?: (index: number) => void;
+  sheetName?: string;
   columnOrder?: string[];
 }
 
@@ -26,9 +24,7 @@ function formatCellValue(value: unknown): string {
 
 export default function PreviewTable({
   rows,
-  sheetNames = [],
-  selectedSheetIndex = 0,
-  onSheetChange,
+  sheetName,
   columnOrder = [],
 }: PreviewTableProps) {
   const columnKeys = useMemo(() => {
@@ -60,36 +56,19 @@ export default function PreviewTable({
   }, [rows, columnOrder]);
 
   const hasRows = rows.length > 0;
-  const hasMultipleSheets = sheetNames.length > 1;
-
-  const handleSheetChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!onSheetChange) return;
-    onSheetChange(Number(event.target.value));
-  };
 
   const header = (
     <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-        Preview
+        Upload Preview
         {hasRows
           ? ` (${rows.length.toLocaleString()} ${rows.length === 1 ? 'row' : 'rows'})`
           : ''}
       </h3>
-      {hasMultipleSheets && (
-        <label className="flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-400">
-          <span>Sheet</span>
-          <select
-            value={selectedSheetIndex}
-            onChange={handleSheetChange}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-gray-100"
-          >
-            {sheetNames.map((name, idx) => (
-              <option key={`${name}-${idx}`} value={idx}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {sheetName && (
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          Sheet Selection: {sheetName}
+        </span>
       )}
     </div>
   );
