@@ -1,11 +1,15 @@
 import { useMemo } from 'react';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
-import type { Datapoint, GLAccountMappingRow, MappingSplitDefinition } from '../../types';
+import type {
+  GLAccountMappingRow,
+  MappingSplitDefinition,
+  TargetScoaOption,
+} from '../../types';
 import { calculateSplitAmount, calculateSplitPercentage } from '../../store/mappingStore';
 
 interface MappingSplitRowProps {
   account: GLAccountMappingRow;
-  datapoints: Datapoint[];
+  targetOptions: TargetScoaOption[];
   colSpan: number;
   panelId?: string;
   onAddSplit: () => void;
@@ -28,7 +32,7 @@ const clampPercentage = (value: number): number => {
 
 export default function MappingSplitRow({
   account,
-  datapoints,
+  targetOptions,
   colSpan,
   panelId,
   onAddSplit,
@@ -72,10 +76,10 @@ export default function MappingSplitRow({
   };
 
   const handleTargetChange = (splitId: string, value: string) => {
-    const selected = datapoints.find(option => option.id === value);
+    const selected = targetOptions.find(option => option.id === value);
     onUpdateSplit(splitId, {
       targetId: value,
-      targetName: selected?.accountName ?? value,
+      targetName: selected?.label ?? value,
     });
   };
 
@@ -138,9 +142,9 @@ export default function MappingSplitRow({
                           className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                         >
                           <option value="">Select target</option>
-                          {datapoints.map(option => (
+                          {targetOptions.map(option => (
                             <option key={option.id} value={option.id}>
-                              {option.accountName}
+                              {option.label}
                             </option>
                           ))}
                         </select>

@@ -2,7 +2,6 @@ import { create } from 'zustand';
 import { COATemplate, Datapoint } from '../types';
 import { parseCOATemplateFile } from '../utils/parseCOATemplateFile';
 import { buildTemplateFromRows } from '../utils/buildTemplateFromRows';
-import { createSeedDatapoints, createSeedTemplates } from '../data/coaSeeds';
 
 interface TemplateState {
   templates: COATemplate[];
@@ -21,9 +20,8 @@ interface TemplateState {
 }
 
 export const useTemplateStore = create<TemplateState>((set) => ({
-  // Initialize with sample data
-  templates: createSeedTemplates(),
-  datapoints: createSeedDatapoints(),
+  templates: [],
+  datapoints: {},
   addTemplate: (template) =>
     set((state) => ({
       templates: [...state.templates, { ...template, id: crypto.randomUUID() }],

@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { Plus, GripVertical, X, Percent } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../ui/Card';
-import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
-import { OperationalMetric } from '../../types';
 import {
-  DRIVER_COMPENSATION_DATAPOINT_ID,
-  NON_DRIVER_COMPENSATION_DATAPOINT_ID,
-} from '../../data/coaSeeds';
+  DRIVER_COMPENSATION_TARGET,
+  NON_DRIVER_COMPENSATION_TARGET,
+  useRatioAllocationStore,
+} from '../../store/ratioAllocationStore';
+import { OperationalMetric } from '../../types';
 
 export default function RatioAllocationBuilder() {
   const {
@@ -24,13 +24,13 @@ export default function RatioAllocationBuilder() {
 
   const targetOptions = [
     {
-      value: DRIVER_COMPENSATION_DATAPOINT_ID,
-      label: 'Driver Wages, Benefits and Payroll Taxes',
+      value: DRIVER_COMPENSATION_TARGET.id,
+      label: DRIVER_COMPENSATION_TARGET.label,
       metricType: 'driver-headcount' as OperationalMetric['type'],
     },
     {
-      value: NON_DRIVER_COMPENSATION_DATAPOINT_ID,
-      label: 'Non-Driver Wages, Benefits and Payroll Taxes',
+      value: NON_DRIVER_COMPENSATION_TARGET.id,
+      label: NON_DRIVER_COMPENSATION_TARGET.label,
       metricType: 'non-driver-headcount' as OperationalMetric['type'],
     },
   ];
@@ -76,12 +76,12 @@ export default function RatioAllocationBuilder() {
     const allocation = allocations.find(a => a.id === allocationId);
     if (!allocation || !selectedPeriod) return;
 
-    const availableMetrics = getMetricsForDatapoint(DRIVER_COMPENSATION_DATAPOINT_ID, selectedPeriod);
+    const availableMetrics = getMetricsForDatapoint(DRIVER_COMPENSATION_TARGET.id, selectedPeriod);
     const defaultMetric = availableMetrics[0];
 
     const newTarget = {
-      datapointId: DRIVER_COMPENSATION_DATAPOINT_ID,
-      name: targetLabelMap[DRIVER_COMPENSATION_DATAPOINT_ID],
+      datapointId: DRIVER_COMPENSATION_TARGET.id,
+      name: targetLabelMap[DRIVER_COMPENSATION_TARGET.id],
       ratioMetric: defaultMetric
         ? {
             id: defaultMetric.id,

@@ -8,6 +8,7 @@ import {
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import { useTemplateStore } from '../../store/templateStore';
 import type { GLAccountMappingRow } from '../../types';
+import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
 import BatchMapModal from './BatchMapModal';
 import PresetModal from './PresetModal';
 import BatchExclude from './BatchExclude';
@@ -51,13 +52,7 @@ export default function MappingToolbar() {
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
   const datapoints = useTemplateStore(state => state.datapoints);
-  const coaOptions = useMemo(
-    () =>
-      Object.values(datapoints)
-        .flat()
-        .sort((a, b) => a.accountName.localeCompare(b.accountName)),
-    [datapoints],
-  );
+  const coaOptions = useMemo(() => buildTargetScoaOptions(datapoints), [datapoints]);
   const [isBatchMapOpen, setBatchMapOpen] = useState(false);
   const [isPresetOpen, setPresetOpen] = useState(false);
   const [isBatchExcludeOpen, setBatchExcludeOpen] = useState(false);
@@ -260,7 +255,7 @@ export default function MappingToolbar() {
       </div>
       <BatchMapModal
         open={isBatchMapOpen && hasSelection}
-        datapoints={coaOptions}
+        targetOptions={coaOptions}
         selectedCount={selectedCount}
         onClose={() => setBatchMapOpen(false)}
         onApply={handleApplyBatchMap}

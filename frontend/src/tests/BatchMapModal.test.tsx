@@ -1,15 +1,16 @@
 import { render, screen, within } from '@testing-library/react';
 import BatchMapModal from '../components/mapping/BatchMapModal';
-import { listSeedDatapoints } from '../data/coaSeeds';
+import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
+import { buildTargetScoaOptions } from '../utils/targetScoaOptions';
 
 describe('BatchMapModal', () => {
   it('renders all COA options in the batch mapping selector', () => {
-    const datapoints = listSeedDatapoints();
+    const targetOptions = buildTargetScoaOptions({});
 
     render(
       <BatchMapModal
         open
-        datapoints={datapoints}
+        targetOptions={targetOptions}
         selectedCount={3}
         onClose={jest.fn()}
         onApply={jest.fn()}
@@ -22,8 +23,8 @@ describe('BatchMapModal', () => {
       .map(option => option.textContent?.trim())
       .filter((label): label is string => Boolean(label));
 
-    datapoints.forEach(datapoint => {
-      expect(optionLabels).toContain(datapoint.accountName);
+    STANDARD_CHART_OF_ACCOUNTS.forEach(option => {
+      expect(optionLabels).toContain(option.label);
     });
   });
 });

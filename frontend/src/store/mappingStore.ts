@@ -6,6 +6,14 @@ import type {
   MappingStatus,
   MappingType,
 } from '../types';
+import { getStandardScoaOption } from '../data/standardChartOfAccounts';
+
+const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
+const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption('MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET');
+const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
+  'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
+);
+const NON_DRIVER_BENEFITS_TARGET = getStandardScoaOption('NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS');
 
 const baseMappings: GLAccountMappingRow[] = [
   {
@@ -29,15 +37,15 @@ const baseMappings: GLAccountMappingRow[] = [
     splitDefinitions: [
       {
         id: 'split-3',
-        targetId: 'dp-fuel',
-        targetName: 'Fuel Expense',
+        targetId: FUEL_EXPENSE_TARGET.id,
+        targetName: FUEL_EXPENSE_TARGET.label,
         allocationType: 'amount',
         allocationValue: 45000,
       },
       {
         id: 'split-4',
-        targetId: 'dp-maintenance',
-        targetName: 'Maintenance Expense',
+        targetId: TRACTOR_MAINTENANCE_TARGET.id,
+        targetName: TRACTOR_MAINTENANCE_TARGET.label,
         allocationType: 'amount',
         allocationValue: 20000,
       },
@@ -66,16 +74,16 @@ const baseMappings: GLAccountMappingRow[] = [
     splitDefinitions: [
       {
         id: 'split-1',
-        targetId: 'dp-personnel',
-        targetName: 'Personnel Expense',
+        targetId: DRIVER_BENEFITS_TARGET.id,
+        targetName: DRIVER_BENEFITS_TARGET.label,
         allocationType: 'percentage',
         allocationValue: 60,
         notes: 'HQ employees',
       },
       {
         id: 'split-2',
-        targetId: 'dp-benefits',
-        targetName: 'Benefits Expense',
+        targetId: NON_DRIVER_BENEFITS_TARGET.id,
+        targetName: NON_DRIVER_BENEFITS_TARGET.label,
         allocationType: 'percentage',
         allocationValue: 40,
         notes: 'Field staff',
