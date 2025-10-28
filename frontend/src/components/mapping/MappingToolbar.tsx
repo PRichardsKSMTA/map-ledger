@@ -21,7 +21,7 @@ const STATUS_DEFINITIONS: {
   {
     value: 'New',
     label: 'New',
-    className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+    className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
   },
   {
     value: 'Unmapped',
@@ -36,7 +36,7 @@ const STATUS_DEFINITIONS: {
   {
     value: 'Excluded',
     label: 'Excluded',
-    className: 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-100',
+    className: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200',
   },
 ];
 
