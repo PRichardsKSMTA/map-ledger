@@ -77,6 +77,7 @@ export interface Import {
   status: 'completed' | 'failed';
   rowCount?: number;
   importedBy: string;
+  userId: string;
 }
 
 export interface SyncedAccount {

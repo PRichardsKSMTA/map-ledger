@@ -31,7 +31,8 @@ interface ImportFormProps {
     clientId: string,
     entityIds: string[],
     headerMap: Record<string, string | null>,
-    glMonth: string
+    glMonth: string,
+    fileName: string
   ) => void;
   isImporting: boolean;
 }
@@ -192,7 +193,14 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       headerMap &&
       glMonth
     ) {
-      onImport(includedRows, clientId, entityIds, headerMap, glMonth);
+      onImport(
+        includedRows,
+        clientId,
+        entityIds,
+        headerMap,
+        glMonth,
+        selectedFile?.name ?? 'uploaded-file'
+      );
     } else {
       setError(
         'Please complete all steps including column matching, GL Month, and account review.'
