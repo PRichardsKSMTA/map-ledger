@@ -62,6 +62,12 @@ export interface Datapoint {
   sortOrder: number;
 }
 
+export interface TargetScoaOption {
+  id: string;
+  value: string;
+  label: string;
+}
+
 export interface Import {
   id: string;
   clientId: string;
