@@ -11,7 +11,7 @@ import {
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
-import type { GLAccountMappingRow } from '../../types';
+import type { GLAccountMappingRow, MappingType } from '../../types';
 import MappingSplitRow from './MappingSplitRow';
 import { PRESET_OPTIONS } from './presets';
 
@@ -62,6 +62,10 @@ const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = 
   exclude: 'Excluded',
 };
 
+const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
+  Object.entries(MAPPING_TYPE_LABELS) as [MappingType, string][]
+).map(([value, label]) => ({ value, label }));
+
 const netChangeFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -102,6 +106,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const updateTarget = useMappingStore(state => state.updateTarget);
+  const updateMappingType = useMappingStore(state => state.updateMappingType);
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const addSplitDefinition = useMappingStore(state => state.addSplitDefinition);
   const updateSplitDefinition = useMappingStore(state => state.updateSplitDefinition);
@@ -307,7 +312,25 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                         {formatNetChange(account.netChange)}
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{MAPPING_TYPE_LABELS[account.mappingType]}</td>
+                    <td className="px-3 py-4">
+                      <label className="sr-only" htmlFor={`mapping-type-${account.id}`}>
+                        Select mapping type for {account.accountName}
+                      </label>
+                      <select
+                        id={`mapping-type-${account.id}`}
+                        value={account.mappingType}
+                        onChange={event =>
+                          updateMappingType(account.id, event.target.value as MappingType)
+                        }
+                        className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        {MAPPING_TYPE_OPTIONS.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-3 py-4">
                       <label className="sr-only" htmlFor={`scoa-${account.id}`}>
                         Select target SCoA for {account.accountName}
