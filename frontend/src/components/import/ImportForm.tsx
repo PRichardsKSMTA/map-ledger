@@ -440,6 +440,13 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
               className="block w-40 border rounded-md px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500"
             />
           </div>
+          <PreviewTable
+            rows={includedRows ?? []}
+            sheetNames={uploads.map((u) => u.sheetName)}
+            selectedSheetIndex={selectedSheet}
+            onSheetChange={(index) => setSelectedSheet(index)}
+            columnOrder={uploads[selectedSheet]?.headers ?? []}
+          />
           {includedRows && (
             <ExcludeAccounts
               rows={includedRows}
@@ -453,15 +460,6 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
             />
           )}
         </div>
-      )}
-
-      {headerMap && (
-        <PreviewTable
-          rows={includedRows ?? []}
-          sheetNames={uploads.map((u) => u.sheetName)}
-          selectedSheetIndex={selectedSheet}
-          onSheetChange={(index) => setSelectedSheet(index)}
-        />
       )}
 
       {error && <div className="text-sm text-red-600">{error}</div>}
