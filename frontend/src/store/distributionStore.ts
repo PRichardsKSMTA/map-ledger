@@ -43,7 +43,7 @@ const seedRows: DistributionRow[] = [
   {
     id: 'dist-1',
     mappingRowId: FREIGHT_REVENUE_TARGET.id,
-    accountId: FREIGHT_REVENUE_TARGET.id,
+    accountId: FREIGHT_REVENUE_TARGET.value,
     description: FREIGHT_REVENUE_TARGET.label,
     activity: 500000,
     type: 'direct',
@@ -55,7 +55,7 @@ const seedRows: DistributionRow[] = [
   {
     id: 'dist-2',
     mappingRowId: DRIVER_BENEFITS_TARGET.id,
-    accountId: DRIVER_BENEFITS_TARGET.id,
+    accountId: DRIVER_BENEFITS_TARGET.value,
     description: DRIVER_BENEFITS_TARGET.label,
     activity: 72000,
     type: 'percentage',
@@ -70,7 +70,7 @@ const seedRows: DistributionRow[] = [
   {
     id: 'dist-3',
     mappingRowId: NON_DRIVER_WAGES_TARGET.id,
-    accountId: NON_DRIVER_WAGES_TARGET.id,
+    accountId: NON_DRIVER_WAGES_TARGET.value,
     description: NON_DRIVER_WAGES_TARGET.label,
     activity: 48000,
     type: 'percentage',
@@ -85,7 +85,7 @@ const seedRows: DistributionRow[] = [
   {
     id: 'dist-4',
     mappingRowId: FUEL_EXPENSE_TARGET.id,
-    accountId: FUEL_EXPENSE_TARGET.id,
+    accountId: FUEL_EXPENSE_TARGET.value,
     description: FUEL_EXPENSE_TARGET.label,
     activity: 45000,
     type: 'dynamic',
@@ -100,7 +100,7 @@ const seedRows: DistributionRow[] = [
   {
     id: 'dist-5',
     mappingRowId: TRACTOR_MAINTENANCE_TARGET.id,
-    accountId: TRACTOR_MAINTENANCE_TARGET.id,
+    accountId: TRACTOR_MAINTENANCE_TARGET.value,
     description: TRACTOR_MAINTENANCE_TARGET.label,
     activity: 20000,
     type: 'direct',
