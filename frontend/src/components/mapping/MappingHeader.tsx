@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, Moon, Sun, Building2 } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { CalendarDays, Building2 } from 'lucide-react';
 import { useClientStore } from '../../store/clientStore';
 import { useMappingStore } from '../../store/mappingStore';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
@@ -22,8 +22,6 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
     })
   );
 
-  const [isDark, setIsDark] = useState(false);
-
   const activeClient = useMemo(() => {
     if (clients.length === 0) {
       return undefined;
@@ -38,20 +36,6 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
   const availablePeriods = useMemo(() => {
     return Array.from(new Set(metrics.map(metric => metric.period))).sort();
   }, [metrics]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    setIsDark(document.documentElement.classList.contains('dark'));
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    document.documentElement.classList.toggle('dark', isDark);
-  }, [isDark]);
 
   useEffect(() => {
     if (!selectedPeriod && availablePeriods.length > 0) {
@@ -117,14 +101,6 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            onClick={() => setIsDark(current => !current)}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-slate-700 dark:text-gray-200 dark:hover:bg-slate-800"
-          >
-            {isDark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-            <span>{isDark ? 'Dark theme' : 'Light theme'}</span>
-          </button>
         </div>
       </div>
     </div>
