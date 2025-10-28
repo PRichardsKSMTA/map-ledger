@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
@@ -13,6 +14,7 @@ import { ImportPreviewRow } from '../types';
 export default function Import() {
   const { user } = useAuthStore();
   const userId = user?.id ?? null;
+  const navigate = useNavigate();
   const [isImporting, setIsImporting] = useState(false);
   const addImport = useImportStore((state) => state.addImport);
   const deleteImport = useImportStore((state) => state.deleteImport);
@@ -77,6 +79,7 @@ export default function Import() {
       });
 
       setSuccess('File imported successfully');
+      navigate(`/gl/mapping/${importId}?stage=mapping`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import file');
     } finally {
