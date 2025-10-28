@@ -32,7 +32,7 @@ const statusOptions: { value: MappingStatus | ''; label: string }[] = [
   { value: 'Excluded', label: 'Excluded' },
 ];
 
-const polarityOptions: (MappingPolarity | '')[] = ['', 'Debit', 'Credit'];
+const polarityOptions: (MappingPolarity | '')[] = ['', 'Debit', 'Credit', 'Absolute'];
 
 export default function BatchMapModal({
   open,

@@ -11,7 +11,12 @@ import {
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
 import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
-import type { GLAccountMappingRow, MappingType, TargetScoaOption } from '../../types';
+import type {
+  GLAccountMappingRow,
+  MappingPolarity,
+  MappingType,
+  TargetScoaOption,
+} from '../../types';
 import MappingSplitRow from './MappingSplitRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
@@ -70,7 +75,6 @@ const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
 const netChangeFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
-  signDisplay: 'exceptZero',
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
@@ -91,6 +95,12 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'notes', label: 'Notes' },
 ];
 
+const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
+  targetScoa: 'w-48',
+};
+
+const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
+
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
@@ -108,6 +118,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const updateTarget = useMappingStore(state => state.updateTarget);
   const updateMappingType = useMappingStore(state => state.updateMappingType);
+  const updatePolarity = useMappingStore(state => state.updatePolarity);
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const addSplitDefinition = useMappingStore(state => state.addSplitDefinition);
   const updateSplitDefinition = useMappingStore(state => state.updateSplitDefinition);
@@ -257,7 +268,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                   key={column.key}
                   scope="col"
                   aria-sort={getAriaSort(column.key)}
-                  className="whitespace-nowrap px-3 py-3"
+                  className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''}`}
                 >
                   <button
                     type="button"
@@ -331,7 +342,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                         ))}
                       </select>
                     </td>
-                    <td className="px-3 py-4">
+                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.targetScoa ?? ''}`}>
                       <label className="sr-only" htmlFor={`scoa-${account.id}`}>
                         Select target SCoA for {account.accountName}
                       </label>
@@ -349,7 +360,25 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                         ))}
                       </select>
                     </td>
-                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">{account.polarity}</td>
+                    <td className="px-3 py-4">
+                      <label className="sr-only" htmlFor={`polarity-${account.id}`}>
+                        Select polarity for {account.accountName}
+                      </label>
+                      <select
+                        id={`polarity-${account.id}`}
+                        value={account.polarity}
+                        onChange={event =>
+                          updatePolarity(account.id, event.target.value as MappingPolarity)
+                        }
+                        className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        {POLARITY_OPTIONS.map(option => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-3 py-4">
                       <label className="sr-only" htmlFor={`preset-${account.id}`}>
                         Select preset for {account.accountName}
