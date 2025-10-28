@@ -7,6 +7,7 @@ import {
   parseTrialBalanceWorkbook,
   ParsedUpload,
 } from '../../utils/parseTrialBalanceWorkbook';
+import parseCurrencyValue from '../../utils/parseCurrencyValue';
 import ColumnMatcher from './ColumnMatcher';
 import ExcludeAccounts, { AccountRow } from './ExcludeAccounts';
 import {
@@ -217,7 +218,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     const rows: AccountRow[] = sheet.rows.map((row) => ({
       accountId: row[keyMap['GL ID']]?.toString() || '',
       description: row[keyMap['Account Description']]?.toString() || '',
-      netChange: Number(row[keyMap['Net Change']]) || 0,
+      netChange: parseCurrencyValue(row[keyMap['Net Change']]),
       entity: row[keyMap['Entity']]?.toString() || '',
       glMonth: normalizedSheetMonth,
       ...row,
