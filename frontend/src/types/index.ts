@@ -68,10 +68,22 @@ export interface TargetScoaOption {
   label: string;
 }
 
+export interface ImportPreviewRow {
+  entity: string;
+  accountId: string;
+  description: string;
+  netChange: number;
+  glMonth?: string;
+}
+
 export interface Import {
   id: string;
   clientId: string;
   fileName: string;
+  fileSize: number;
+  fileType: string;
+  fileData: string;
+  previewRows: ImportPreviewRow[];
   period: string;
   timestamp: string;
   status: 'completed' | 'failed';

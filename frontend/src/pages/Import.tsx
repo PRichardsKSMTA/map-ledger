@@ -7,17 +7,30 @@ import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
 import { AccountRow } from '../components/import/ExcludeAccounts';
 import TemplateGuide from '../components/import/TemplateGuide';
+import { fileToBase64 } from '../utils/file';
+import { ImportPreviewRow } from '../types';
 
 export default function Import() {
   const { user } = useAuthStore();
   const userId = user?.id ?? null;
   const [isImporting, setIsImporting] = useState(false);
   const addImport = useImportStore((state) => state.addImport);
+  const deleteImport = useImportStore((state) => state.deleteImport);
   const imports = useImportStore((state) =>
     userId ? state.importsByUser[userId] ?? [] : []
   );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const handleDeleteImport = (importId: string) => {
+    if (!userId) {
+      return;
+    }
+
+    deleteImport(userId, importId);
+    setError(null);
+    setSuccess('Import removed from history');
+  };
 
   const handleFileImport = async (
     rows: AccountRow[],
@@ -25,7 +38,8 @@ export default function Import() {
     _entityIds: string[],
     _headerMap: Record<string, string | null>,
     glMonth: string,
-    fileName: string
+    fileName: string,
+    file: File
   ) => {
     setIsImporting(true);
     setError(null);
@@ -37,10 +51,24 @@ export default function Import() {
       }
 
       const importId = crypto.randomUUID();
+      const previewRows: ImportPreviewRow[] = rows.slice(0, 10).map((row) => ({
+        accountId: row.accountId,
+        description: row.description,
+        entity: row.entity,
+        netChange: row.netChange,
+        glMonth: row.glMonth,
+      }));
+      const fileData = await fileToBase64(file);
+      const fileType = file.type || 'application/octet-stream';
+
       addImport(user.id, {
         id: importId,
         clientId,
         fileName,
+        fileSize: file.size,
+        fileType,
+        fileData,
+        previewRows,
         period: glMonth,
         timestamp: new Date().toISOString(),
         status: 'completed',
@@ -144,7 +172,7 @@ export default function Import() {
         <CardHeader>
           <h2 className="text-lg font-medium text-gray-900">Import History</h2>
         </CardHeader>
-        <ImportHistory imports={imports} />
+        <ImportHistory imports={imports} onDeleteImport={handleDeleteImport} />
       </Card>
     </div>
   );

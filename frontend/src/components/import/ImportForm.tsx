@@ -32,8 +32,9 @@ interface ImportFormProps {
     entityIds: string[],
     headerMap: Record<string, string | null>,
     glMonth: string,
-    fileName: string
-  ) => void;
+    fileName: string,
+    file: File
+  ) => void | Promise<void>;
   isImporting: boolean;
 }
 
@@ -183,7 +184,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (
       selectedFile &&
@@ -193,13 +194,14 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       headerMap &&
       glMonth
     ) {
-      onImport(
+      await onImport(
         includedRows,
         clientId,
         entityIds,
         headerMap,
         glMonth,
-        selectedFile?.name ?? 'uploaded-file'
+        selectedFile.name,
+        selectedFile
       );
     } else {
       setError(
