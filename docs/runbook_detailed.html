@@ -191,7 +191,7 @@ CREATE TABLE dbo.ClientOperation (
         </li>
         <li>Data Access Layer (TypeScript in Azure Functions) with TypeORM (configured for Azure SQL):
           <ul class="subtask-list">
-            <li>Define Entity classes: <code>Industry</code>, <code>MasterClient</code>, <code>ClientOperation</code>.</li>
+            <li>Define Company classes: <code>Industry</code>, <code>MasterClient</code>, <code>ClientOperation</code>.</li>
             <li>Implement Repository interfaces for CRUD operations.</li>
             <li>Seed initial industries (e.g., “Retail”, “Manufacturing”, “Services”) via migration scripts.</li>
           </ul>
@@ -253,7 +253,7 @@ CREATE TABLE dbo.COAAccount (
 );
           </pre>
         </li>
-        <li>Entity &amp; Repository (TypeORM):
+        <li>Company &amp; Repository (TypeORM):
           <ul class="subtask-list">
             <li>Define <code>COATemplate</code> entity (fields: COATemplateID, IndustryID, JSONContent, etc.).</li>
             <li>Define <code>COAAccount</code> entity (fields: COAAccountID, COATemplateID, AccountCode, AccountName, ParentAccountID, Level).</li>
@@ -583,8 +583,8 @@ Prompt example (JSON):
 -- Table: AuditLog
 CREATE TABLE dbo.AuditLog (
     AuditLogID       UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    EntityName       NVARCHAR(100) NOT NULL,  -- e.g., “GLUpload”, “Mapping”, “UserInvite”
-    EntityID         NVARCHAR(100) NOT NULL,  -- ID of the affected entity
+    CompanyName       NVARCHAR(100) NOT NULL,  -- e.g., “GLUpload”, “Mapping”, “UserInvite”
+    CompanyID         NVARCHAR(100) NOT NULL,  -- ID of the affected entity
     Action           NVARCHAR(50) NOT NULL,   -- “Create”, “Update”, “Delete”
     ChangedBy        NVARCHAR(100) NOT NULL,  -- Azure AD username
     ChangedDate      DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -599,13 +599,13 @@ CREATE TABLE dbo.AuditLog (
 -- Example in TypeScript (pseudo-code)
 async function logAudit(entity: string, id: string, action: string, changedBy: string, details: any) {
   const query = 
-    INSERT INTO dbo.AuditLog (AuditLogID, EntityName, EntityID, Action, ChangedBy, ChangedDate, Details)
-    VALUES (@AuditLogID, @EntityName, @EntityID, @Action, @ChangedBy, SYSUTCDATETIME(), @Details);
+    INSERT INTO dbo.AuditLog (AuditLogID, CompanyName, CompanyID, Action, ChangedBy, ChangedDate, Details)
+    VALUES (@AuditLogID, @CompanyName, @CompanyID, @Action, @ChangedBy, SYSUTCDATETIME(), @Details);
   ;
   await sql.query(query, {
     AuditLogID: uuidv4(),
-    EntityName: entity,
-    EntityID: id,
+    CompanyName: entity,
+    CompanyID: id,
     Action: action,
     ChangedBy: changedBy,
     Details: JSON.stringify(details)

@@ -78,7 +78,7 @@ const netChangeFormatter = new Intl.NumberFormat('en-US', {
 const formatNetChange = (value: number) => netChangeFormatter.format(value);
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
-  { key: 'companyName', label: 'Company / Entity' },
+  { key: 'companyName', label: 'Company / Company' },
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'netChange', label: 'Activity' },

@@ -1,7 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import { Entity as Company, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { GLUpload } from './GLUpload';
 
-@Entity()
+@Company()
 export class GLAccountRaw {
   @PrimaryGeneratedColumn()
   id!: number;

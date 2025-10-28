@@ -15,7 +15,7 @@ import ConnectionStatus from '../../components/integrations/ConnectionStatus';
 import { Card, CardHeader, CardContent } from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 
-interface SageEntity {
+interface SageCompany {
   id: string;
   name: string;
   code: string;
@@ -33,7 +33,7 @@ export default function SageIntacct() {
   const [isConnected, setIsConnected] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [selectedEntity, setSelectedEntity] = useState<string>('');
+  const [selectedCompany, setSelectedCompany] = useState<string>('');
   const [credentials, setCredentials] = useState<SageCredentials>({
     companyId: '',
     userId: '',
@@ -43,14 +43,14 @@ export default function SageIntacct() {
   const [syncSettings, setSyncSettings] = useState({
     frequency: 'daily',
     historicalData: '3',
-    syncAllEntities: true,
+    syncAllCompanies: true,
     syncDimensions: true,
     autoMapDimensions: true,
-    consolidateEntities: true,
+    consolidateCompanies: true,
     emailNotifications: true
   });
 
-  const [entities, setEntities] = useState<SageEntity[]>([
+  const [companies, setCompanies] = useState<SageCompany[]>([
     {
       id: '1',
       name: 'Main Operations',
@@ -90,19 +90,19 @@ export default function SageIntacct() {
     // Simulate sync process
     await new Promise(resolve => setTimeout(resolve, 2000));
     setIsSyncing(false);
-    // Update last sync time for the selected entity
-    setEntities(prev => prev.map(entity => 
-      entity.code === selectedEntity 
-        ? { ...entity, lastSync: new Date().toISOString() }
-        : entity
+    // Update last sync time for the selected company
+    setCompanies(prev => prev.map(company =>
+      company.code === selectedCompany
+        ? { ...company, lastSync: new Date().toISOString() }
+        : company
     ));
   };
 
-  const handleToggleEntity = (entityId: string) => {
-    setEntities(prev => prev.map(entity =>
-      entity.id === entityId
-        ? { ...entity, enabled: !entity.enabled }
-        : entity
+  const handleToggleCompany = (companyId: string) => {
+    setCompanies(prev => prev.map(company =>
+      company.id === companyId
+        ? { ...company, enabled: !company.enabled }
+        : company
     ));
   };
 
@@ -114,7 +114,7 @@ export default function SageIntacct() {
         }, 500);
       },
       'Import Configuration': () => {
-        const confirmed = window.confirm('This will override existing entity configurations. Continue? (Demo only)');
+        const confirmed = window.confirm('This will override existing company configurations. Continue? (Demo only)');
         if (confirmed) {
           setTimeout(() => {
             alert('Configuration imported successfully! (Demo only)');
@@ -122,7 +122,7 @@ export default function SageIntacct() {
         }
       },
       'Advanced Settings': () => {
-        alert('Advanced entity settings will be available in a future update. (Demo only)');
+        alert('Advanced company settings will be available in a future update. (Demo only)');
       }
     };
 
@@ -145,7 +145,7 @@ export default function SageIntacct() {
             Connect and sync your Sage Intacct account with MapLedger
           </p>
         </div>
-        {isConnected && selectedEntity && (
+        {isConnected && selectedCompany && (
           <button
             onClick={handleSync}
             disabled={isSyncing}
@@ -159,7 +159,7 @@ export default function SageIntacct() {
             ) : (
               <>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Sync Entity
+                Sync Company
               </>
             )}
           </button>
@@ -225,9 +225,9 @@ export default function SageIntacct() {
                     <span className="text-sm font-medium text-white">2</span>
                   </div>
                   <div className="ml-4">
-                    <h3 className="text-sm font-medium text-gray-900">Configure entities</h3>
+                    <h3 className="text-sm font-medium text-gray-900">Configure companies</h3>
                     <p className="mt-1 text-sm text-gray-500">
-                      Select which entities to sync and configure their settings.
+                      Select which companies to sync and configure their settings.
                     </p>
                   </div>
                 </div>
@@ -253,24 +253,24 @@ export default function SageIntacct() {
             <>
               <Card>
                 <CardHeader>
-                  <h2 className="text-lg font-medium text-gray-900">Entity Management</h2>
+                  <h2 className="text-lg font-medium text-gray-900">Company Management</h2>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 gap-4">
-                      {entities.map(entity => (
+                      {companies.map(company => (
                         <div
-                          key={entity.id}
+                          key={company.id}
                           className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
                         >
                           <div className="flex items-center space-x-4">
                             <Building2 className="h-5 w-5 text-gray-400" />
                             <div>
-                              <h3 className="text-sm font-medium text-gray-900">{entity.name}</h3>
-                              <p className="text-xs text-gray-500">Code: {entity.code}</p>
-                              {entity.lastSync && (
+                              <h3 className="text-sm font-medium text-gray-900">{company.name}</h3>
+                              <p className="text-xs text-gray-500">Code: {company.code}</p>
+                              {company.lastSync && (
                                 <p className="text-xs text-gray-500">
-                                  Last synced: {new Date(entity.lastSync).toLocaleString()}
+                                  Last synced: {new Date(company.lastSync).toLocaleString()}
                                 </p>
                               )}
                             </div>
@@ -281,16 +281,16 @@ export default function SageIntacct() {
                                 <input
                                   type="checkbox"
                                   className="sr-only peer"
-                                  checked={entity.enabled}
-                                  onChange={() => handleToggleEntity(entity.id)}
+                                  checked={company.enabled}
+                                  onChange={() => handleToggleCompany(company.id)}
                                 />
                                 <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                               </label>
                             </div>
                             <button
-                              onClick={() => setSelectedEntity(entity.code)}
+                              onClick={() => setSelectedCompany(company.code)}
                               className={`px-3 py-1 rounded-md text-sm font-medium ${
-                                selectedEntity === entity.code
+                                selectedCompany === company.code
                                   ? 'bg-blue-100 text-blue-700'
                                   : 'text-gray-700 hover:bg-gray-100'
                               }`}
@@ -343,24 +343,24 @@ export default function SageIntacct() {
                     </div>
 
                     <div className="border-t border-gray-200 pt-6">
-                      <h3 className="text-sm font-medium text-gray-900 mb-4">Entity Options</h3>
+                      <h3 className="text-sm font-medium text-gray-900 mb-4">Company Options</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <label className="relative flex items-start">
                           <div className="flex items-center h-5">
                             <input
                               type="checkbox"
-                              checked={syncSettings.syncAllEntities}
-                              onChange={(e) => setSyncSettings(prev => ({ 
-                                ...prev, 
-                                syncAllEntities: e.target.checked 
+                              checked={syncSettings.syncAllCompanies}
+                              onChange={(e) => setSyncSettings(prev => ({
+                                ...prev,
+                                syncAllCompanies: e.target.checked
                               }))}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                           </div>
                           <div className="ml-3 text-sm">
-                            <span className="font-medium text-gray-900">Sync all entities</span>
-                            <p className="text-gray-500">Keep all entities in sync</p>
-                            </div>
+                            <span className="font-medium text-gray-900">Sync all companies</span>
+                            <p className="text-gray-500">Keep all companies in sync</p>
+                          </div>
                         </label>
 
                         <label className="relative flex items-start">
@@ -403,16 +403,16 @@ export default function SageIntacct() {
                           <div className="flex items-center h-5">
                             <input
                               type="checkbox"
-                              checked={syncSettings.consolidateEntities}
-                              onChange={(e) => setSyncSettings(prev => ({ 
-                                ...prev, 
-                                consolidateEntities: e.target.checked 
+                              checked={syncSettings.consolidateCompanies}
+                              onChange={(e) => setSyncSettings(prev => ({
+                                ...prev,
+                                consolidateCompanies: e.target.checked
                               }))}
                               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                           </div>
                           <div className="ml-3 text-sm">
-                            <span className="font-medium text-gray-900">Consolidate entities</span>
+                            <span className="font-medium text-gray-900">Consolidate companies</span>
                             <p className="text-gray-500">Enable consolidated reporting</p>
                           </div>
                         </label>
@@ -451,21 +451,21 @@ export default function SageIntacct() {
                       className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 w-full transition-colors duration-200"
                     >
                       <Download className="h-4 w-4 mr-2" />
-                      Export Entity Configuration
+                      Export Company Configuration
                     </button>
                     <button 
                       onClick={() => handleAction('Import Configuration')}
                       className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 w-full transition-colors duration-200"
                     >
                       <Upload className="h-4 w-4 mr-2" />
-                      Import Entity Configuration
+                      Import Company Configuration
                     </button>
                     <button 
                       onClick={() => handleAction('Advanced Settings')}
                       className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 w-full transition-colors duration-200"
                     >
                       <Settings className="h-4 w-4 mr-2" />
-                      Advanced Entity Settings
+                      Advanced Company Settings
                     </button>
                   </div>
                 </CardContent>

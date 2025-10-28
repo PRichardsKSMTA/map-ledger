@@ -1,6 +1,6 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity as Company, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity()
+@Company()
 export class GLUpload {
   @PrimaryGeneratedColumn()
   id!: number;

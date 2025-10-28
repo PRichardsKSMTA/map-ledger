@@ -29,7 +29,7 @@ jest.mock('../components/import/ImportForm', () => ({
       glMonth?: string;
     }>,
     clientId: string,
-    entityIds: string[],
+    companyIds: string[],
     headerMap: Record<string, string | null>,
     glMonth: string,
     fileName: string,
@@ -51,7 +51,7 @@ jest.mock('../components/import/ImportForm', () => ({
       'GL ID': 'accountId',
       'Account Description': 'description',
       'Net Change': 'netChange',
-      Entity: 'entity',
+      Company: 'entity',
     };
     const mockFile = {
       name: 'trial_balance.csv',
@@ -62,7 +62,7 @@ jest.mock('../components/import/ImportForm', () => ({
     onImport(
       rows,
       'client-123',
-      ['entity-1'],
+      ['company-1'],
       headerMap,
       '2024-01',
       'trial_balance.csv',
