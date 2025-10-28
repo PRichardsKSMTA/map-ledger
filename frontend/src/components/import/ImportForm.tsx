@@ -25,6 +25,53 @@ const templateHeaders = [
   'User Defined 3',
 ];
 
+const normalizeGlMonth = (value: string): string => {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+
+  const isoMatch = trimmed.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$/);
+  if (isoMatch) {
+    const [, year, rawMonth] = isoMatch;
+    return `${year}-${rawMonth.padStart(2, '0')}`;
+  }
+
+  const usMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (usMatch) {
+    const [, rawMonth, , year] = usMatch;
+    return `${year}-${rawMonth.padStart(2, '0')}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    const year = parsed.getFullYear();
+    const month = (parsed.getMonth() + 1).toString().padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  return trimmed;
+};
+
+const filterRowsByGlMonth = (rows: AccountRow[], month: string): AccountRow[] => {
+  const normalizedMonth = normalizeGlMonth(month);
+
+  return rows
+    .map((row) => {
+      const rowMonth = normalizeGlMonth(row.glMonth ?? '');
+      const effectiveMonth = rowMonth || normalizedMonth;
+
+      return {
+        ...row,
+        glMonth: effectiveMonth || rowMonth || row.glMonth || '',
+      };
+    })
+    .filter((row) => {
+      if (!normalizedMonth) return true;
+      const rowMonth = normalizeGlMonth(row.glMonth ?? '');
+      return !rowMonth || rowMonth === normalizedMonth;
+    });
+};
+
 interface ImportFormProps {
   onImport: (
     uploads: AccountRow[],
@@ -91,14 +138,13 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   useEffect(() => {
     if (uploads.length > 0) {
-      setGlMonth(uploads[selectedSheet]?.metadata?.glMonth || '');
+      const metadataMonth = uploads[selectedSheet]?.metadata?.glMonth ?? '';
+      setGlMonth(normalizeGlMonth(metadataMonth));
     }
   }, [uploads, selectedSheet]);
 
   useEffect(() => {
-    const filtered = allRows.filter(
-      (r) => !glMonth || r.glMonth === glMonth
-    );
+    const filtered = filterRowsByGlMonth(allRows, glMonth);
     setIncludedRows(filtered);
     const unique = Array.from(new Set(filtered.map((r) => r.entity).filter(Boolean)));
     setAvailableEntities(unique);
@@ -139,7 +185,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setHeaderMap(null);
       setIncludedRows(null);
       setAvailableEntities([]);
-      setGlMonth(parsed[0]?.metadata?.glMonth || '');
+      setGlMonth(normalizeGlMonth(parsed[0]?.metadata?.glMonth || ''));
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -165,12 +211,15 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     );
 
     const sheet = uploads[selectedSheet];
+    const normalizedSheetMonth = normalizeGlMonth(
+      sheet.metadata.glMonth || glMonth
+    );
     const rows: AccountRow[] = sheet.rows.map((row) => ({
       accountId: row[keyMap['GL ID']]?.toString() || '',
       description: row[keyMap['Account Description']]?.toString() || '',
       netChange: Number(row[keyMap['Net Change']]) || 0,
       entity: row[keyMap['Entity']]?.toString() || '',
-      glMonth: sheet.metadata.glMonth,
+      glMonth: normalizedSheetMonth,
       ...row,
     }));
 
@@ -179,9 +228,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     );
     setAvailableEntities(uniqueEntities);
     setAllRows(rows);
-    setIncludedRows(
-      rows.filter((r) => !glMonth || r.glMonth === glMonth)
-    );
+    setIncludedRows(filterRowsByGlMonth(rows, glMonth));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
