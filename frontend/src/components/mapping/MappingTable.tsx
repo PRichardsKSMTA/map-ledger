@@ -308,8 +308,7 @@ export default function MappingTable({ onConfigureAllocation }: MappingTableProp
                       <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
                     </td>
                     <td className="px-3 py-4">
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.activity}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                      <div className="font-medium text-slate-900 dark:text-slate-100">
                         {formatNetChange(account.netChange)}
                       </div>
                     </td>
