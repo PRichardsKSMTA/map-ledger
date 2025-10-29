@@ -307,7 +307,7 @@ export default function MappingTable() {
                           aria-label={`${isExpanded ? 'Hide' : 'Show'} split details for ${account.accountName}`}
                         >
                           <ChevronRight
-                            className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            className={`h-6 w-6 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                             aria-hidden="true"
                           />
                         </button>
