@@ -33,7 +33,6 @@ const initialRatioSnapshot = (() => {
     })),
     basisAccounts: snapshot.basisAccounts.map(account => ({ ...account })),
     sourceAccounts: snapshot.sourceAccounts.map(account => ({ ...account })),
-    presets: snapshot.presets.map(preset => ({ ...preset })),
     availablePeriods: snapshot.availablePeriods.slice(),
     selectedPeriod: snapshot.selectedPeriod,
     results: snapshot.results.map(result => ({
@@ -83,7 +82,6 @@ const resetStores = () => {
     })),
     basisAccounts: initialRatioSnapshot.basisAccounts.map(account => ({ ...account })),
     sourceAccounts: initialRatioSnapshot.sourceAccounts.map(account => ({ ...account })),
-    presets: initialRatioSnapshot.presets.map(preset => ({ ...preset })),
     availablePeriods: initialRatioSnapshot.availablePeriods.slice(),
     selectedPeriod: initialRatioSnapshot.selectedPeriod,
     results: initialRatioSnapshot.results.map(result => ({

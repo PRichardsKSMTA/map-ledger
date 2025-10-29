@@ -12,6 +12,7 @@ import {
   getStandardScoaOption,
 } from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
+import { useRatioAllocationStore } from './ratioAllocationStore';
 
 const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
@@ -219,6 +220,58 @@ const applyDerivedStatus = (account: GLAccountMappingRow): GLAccountMappingRow =
 
 export const createInitialMappingAccounts = (): GLAccountMappingRow[] =>
   baseMappings.map(row => applyDerivedStatus(cloneMappingRow(row)));
+
+const syncDynamicAllocationState = (
+  accounts: GLAccountMappingRow[],
+  rows: TrialBalanceRow[] = [],
+  requestedPeriod?: string | null,
+) => {
+  const basisAccounts = accounts.map(account => ({
+    id: account.id,
+    name: `${account.accountId} — ${account.accountName}`,
+    description: account.accountName,
+    value: Math.abs(account.netChange),
+    mappedTargetId: account.manualCOAId ?? account.suggestedCOAId ?? '',
+  }));
+
+  const sourceAccounts = accounts.map(account => ({
+    id: account.id,
+    name: account.accountName,
+    number: account.accountId,
+    description: account.accountName,
+    value: account.netChange,
+  }));
+
+  const periodSet = new Set<string>();
+  rows.forEach(row => {
+    const glMonth = typeof row.glMonth === 'string' ? row.glMonth.trim() : '';
+    if (glMonth) {
+      periodSet.add(glMonth);
+    }
+  });
+
+  if (requestedPeriod && requestedPeriod.trim().length > 0) {
+    periodSet.add(requestedPeriod.trim());
+  }
+
+  const availablePeriods = Array.from(periodSet).sort();
+  const normalizedRequested = requestedPeriod?.trim() ?? null;
+  const selectedPeriod = normalizedRequested && availablePeriods.includes(normalizedRequested)
+    ? normalizedRequested
+    : availablePeriods[0] ?? null;
+
+  const hydratePayload = {
+    basisAccounts,
+    sourceAccounts,
+    groups: [],
+    allocations: [],
+    availablePeriods,
+    selectedPeriod,
+  } as const;
+
+  useRatioAllocationStore.getState().hydrate(hydratePayload);
+  useRatioAllocationStore.setState({ results: [], validationErrors: [], auditLog: [] });
+};
 
 const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts.reduce((sum, account) => sum + account.netChange, 0);
@@ -549,6 +602,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   },
   loadImportedAccounts: ({ uploadId, clientId, companyIds, period, rows }) => {
     const normalizedClientId = clientId && clientId.trim().length > 0 ? clientId : null;
+    const normalizedPeriod = period && period.trim().length > 0 ? period : null;
     const accounts = buildMappingRowsFromImport(rows, {
       uploadId,
       clientId: normalizedClientId,
@@ -561,10 +615,14 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       activeUploadId: uploadId,
       activeClientId: normalizedClientId,
       activeCompanyIds: companyIds ?? [],
-      activePeriod: period && period.trim().length > 0 ? period : null,
+      activePeriod: normalizedPeriod,
     });
+
+    syncDynamicAllocationState(accounts, rows, normalizedPeriod);
   },
 }));
+
+syncDynamicAllocationState(useMappingStore.getState().accounts);
 
 const createId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
