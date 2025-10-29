@@ -10,7 +10,10 @@ import {
   RatioAllocation,
   RatioAllocationTargetDatapoint,
 } from '../types';
-import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
+import {
+  STANDARD_CHART_OF_ACCOUNTS,
+  getStandardScoaOption,
+} from '../data/standardChartOfAccounts';
 import {
   allocateDynamic,
   getBasisValue,
@@ -26,6 +29,7 @@ const createId = (): string => {
   }
   return Math.random().toString(36).slice(2, 10);
 };
+
 
 const getTargetNameById = (targetId: string): string => {
   const option = STANDARD_CHART_OF_ACCOUNTS.find(item => item.id === targetId);
@@ -80,6 +84,130 @@ const synchronizeAllocationTargets = (
   }),
 });
 
+const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
+const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption(
+  'MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET',
+);
+
+const INITIAL_AVAILABLE_PERIODS = ['2024-Q1', '2024-Q2', '2024-Q3'];
+
+const INITIAL_BASIS_ACCOUNTS: DynamicBasisAccount[] = [
+  {
+    id: 'basis-fleet-miles',
+    name: 'Company fleet miles',
+    description: 'Logged company fleet miles across operations.',
+    value: 1156000,
+    mappedTargetId: FUEL_EXPENSE_TARGET.id,
+    valuesByPeriod: {
+      '2024-Q1': 382000,
+      '2024-Q2': 388500,
+      '2024-Q3': 384500,
+    },
+  },
+  {
+    id: 'basis-engine-hours',
+    name: 'Engine hours',
+    description: 'Total engine hours recorded across the fleet.',
+    value: 139000,
+    mappedTargetId: FUEL_EXPENSE_TARGET.id,
+    valuesByPeriod: {
+      '2024-Q1': 46200,
+      '2024-Q2': 46750,
+      '2024-Q3': 46050,
+    },
+  },
+  {
+    id: 'basis-maintenance-orders',
+    name: 'Maintenance work orders',
+    description: 'Closed work orders for company equipment.',
+    value: 564000,
+    mappedTargetId: TRACTOR_MAINTENANCE_TARGET.id,
+    valuesByPeriod: {
+      '2024-Q1': 186000,
+      '2024-Q2': 189500,
+      '2024-Q3': 188500,
+    },
+  },
+];
+
+const INITIAL_GROUP_TEMPLATES: DynamicDatapointGroup[] = [
+  {
+    id: 'group-fleet-utilization',
+    label: 'Fleet utilization',
+    targetId: FUEL_EXPENSE_TARGET.id,
+    targetName: FUEL_EXPENSE_TARGET.label,
+    notes: 'Combines mileage and engine hours to apportion fleet fuel costs.',
+    members: [
+      { accountId: 'basis-fleet-miles', accountName: 'Company fleet miles' },
+      { accountId: 'basis-engine-hours', accountName: 'Engine hours' },
+    ],
+  },
+  {
+    id: 'group-maintenance-activity',
+    label: 'Maintenance activity',
+    targetId: TRACTOR_MAINTENANCE_TARGET.id,
+    targetName: TRACTOR_MAINTENANCE_TARGET.label,
+    notes: 'Uses shop work orders to allocate maintenance-related expenses.',
+    members: [
+      {
+        accountId: 'basis-maintenance-orders',
+        accountName: 'Maintenance work orders',
+      },
+    ],
+  },
+];
+
+const INITIAL_SOURCE_ACCOUNTS: DynamicSourceAccount[] = [
+  {
+    id: 'acct-3',
+    name: 'Fuel Expense',
+    number: '6100',
+    description: 'Fuel Expense',
+    value: 65000,
+    valuesByPeriod: {
+      '2024-Q1': 61250,
+      '2024-Q2': 66875,
+      '2024-Q3': 65500,
+    },
+  },
+];
+
+const INITIAL_PRESETS: DynamicMappingPreset[] = [
+  {
+    id: 'preset-dynamic-fuel',
+    name: 'Fleet fuel allocation',
+    description:
+      'Allocate fuel expense according to fleet utilization and maintenance workload.',
+    sourceAccountId: 'acct-3',
+    targetGroupIds: ['group-fleet-utilization', 'group-maintenance-activity'],
+  },
+];
+
+const INITIAL_SELECTED_PERIOD = INITIAL_AVAILABLE_PERIODS[0] ?? null;
+
+const NORMALIZED_INITIAL_GROUPS = INITIAL_GROUP_TEMPLATES.map(group =>
+  normalizeGroup(group, INITIAL_BASIS_ACCOUNTS),
+);
+
+const INITIAL_ALLOCATIONS: RatioAllocation[] = INITIAL_SELECTED_PERIOD
+  ? [
+      {
+        id: 'allocation-acct-3',
+        name: 'Fuel Expense allocation',
+        sourceAccount: {
+          id: 'acct-3',
+          number: '6100',
+          description: 'Fuel Expense',
+        },
+        targetDatapoints: NORMALIZED_INITIAL_GROUPS.map(group =>
+          buildTargetDatapoint(group, INITIAL_BASIS_ACCOUNTS, INITIAL_SELECTED_PERIOD),
+        ),
+        effectiveDate: '2024-01-01T00:00:00.000Z',
+        status: 'active',
+      },
+    ]
+  : [];
+
 type ResolvedTargetDetail = {
   target: RatioAllocationTargetDatapoint;
   basisValue: number;
@@ -129,14 +257,14 @@ type RatioAllocationState = {
 };
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
-  allocations: [],
-  basisAccounts: [],
-  groups: [],
-  sourceAccounts: [],
-  presets: [],
-  availablePeriods: [],
+  allocations: INITIAL_ALLOCATIONS,
+  basisAccounts: INITIAL_BASIS_ACCOUNTS,
+  groups: NORMALIZED_INITIAL_GROUPS,
+  sourceAccounts: INITIAL_SOURCE_ACCOUNTS,
+  presets: INITIAL_PRESETS,
+  availablePeriods: INITIAL_AVAILABLE_PERIODS,
   isProcessing: false,
-  selectedPeriod: null,
+  selectedPeriod: INITIAL_SELECTED_PERIOD,
   results: [],
   validationErrors: [],
   auditLog: [],

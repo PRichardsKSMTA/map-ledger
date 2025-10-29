@@ -123,15 +123,6 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
 
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
 
-const currencyFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
-const formatCurrency = (value: number): string =>
-  currencyFormatter.format(value);
-
 export default function MappingTable() {
   const { allocations, validationErrors, selectedPeriod } = useRatioAllocationStore(
     (state) => ({
