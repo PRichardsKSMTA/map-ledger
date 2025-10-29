@@ -18,7 +18,7 @@ const SummaryCards = () => {
     selectedPeriod: state.selectedPeriod,
   }));
 
-  const { pendingAllocations, periodResult } = useMemo(() => {
+  const { pendingAllocations, executedRules, totalTargets } = useMemo(() => {
     const needsAllocation = accounts.filter(account => {
       if (account.mappingType === 'direct' || account.mappingType === 'exclude') {
         return false;
@@ -29,13 +29,18 @@ const SummaryCards = () => {
       );
       return !hasDefinedSplit && !hasCalculatedAllocation;
     }).length;
-    const activePeriodResult = selectedPeriod
-      ? results.find(result => result.periodId === selectedPeriod)
-      : undefined;
+    const relevantResults = selectedPeriod
+      ? results.filter(result => result.periodId === selectedPeriod)
+      : [];
+    const totalTargetsForPeriod = relevantResults.reduce(
+      (sum, result) => sum + result.allocations.length,
+      0
+    );
 
     return {
       pendingAllocations: needsAllocation,
-      periodResult: activePeriodResult,
+      executedRules: relevantResults.length,
+      totalTargets: totalTargetsForPeriod,
     };
   }, [accounts, allocations, results, selectedPeriod]);
 
@@ -62,10 +67,12 @@ const SummaryCards = () => {
       <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <p className="text-sm text-gray-500 dark:text-gray-400">Current period allocations</p>
         <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-          {periodResult ? `${periodResult.allocations.length}` : '—'}
+          {selectedPeriod ? totalTargets.toLocaleString() : '—'}
         </p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {selectedPeriod ? `Period ${selectedPeriod}` : 'Select a reporting period'}
+          {selectedPeriod
+            ? `${executedRules} dynamic ${executedRules === 1 ? 'rule' : 'rules'} processed`
+            : 'Select a reporting period'}
         </p>
       </div>
     </div>

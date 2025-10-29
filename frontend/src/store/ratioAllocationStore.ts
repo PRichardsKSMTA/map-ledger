@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import {
   AllocationResult,
+  DynamicAllocationAuditRecord,
+  DynamicAllocationValidationIssue,
   DynamicBasisAccount,
   DynamicDatapointGroup,
   DynamicMappingPreset,
@@ -9,6 +11,14 @@ import {
   RatioAllocationTargetDatapoint,
 } from '../types';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
+import {
+  allocateDynamic,
+  getBasisValue,
+  GroupMemberValue,
+  getGroupMembersWithValues,
+  getGroupTotal,
+  getSourceValue,
+} from '../utils/dynamicAllocation';
 
 const createId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -21,39 +31,6 @@ const getTargetNameById = (targetId: string): string => {
   const option = STANDARD_CHART_OF_ACCOUNTS.find(item => item.id === targetId);
   return option?.label ?? targetId;
 };
-
-const getBasisValue = (account: DynamicBasisAccount, periodId?: string | null): number => {
-  if (periodId && account.valuesByPeriod && periodId in account.valuesByPeriod) {
-    const value = account.valuesByPeriod[periodId];
-    if (typeof value === 'number') {
-      return value;
-    }
-  }
-  return account.value ?? 0;
-};
-
-const getSourceValue = (account: DynamicSourceAccount, periodId?: string | null): number => {
-  if (periodId && account.valuesByPeriod && periodId in account.valuesByPeriod) {
-    const value = account.valuesByPeriod[periodId];
-    if (typeof value === 'number') {
-      return value;
-    }
-  }
-  return account.value ?? 0;
-};
-
-const getGroupTotal = (
-  group: DynamicDatapointGroup,
-  basisAccounts: DynamicBasisAccount[],
-  periodId?: string | null,
-): number =>
-  group.members.reduce((sum, member) => {
-    const basisAccount = basisAccounts.find(account => account.id === member.accountId);
-    if (!basisAccount) {
-      return sum;
-    }
-    return sum + getBasisValue(basisAccount, periodId);
-  }, 0);
 
 const buildTargetDatapoint = (
   group: DynamicDatapointGroup,
@@ -103,6 +80,13 @@ const synchronizeAllocationTargets = (
   }),
 });
 
+type ResolvedTargetDetail = {
+  target: RatioAllocationTargetDatapoint;
+  basisValue: number;
+  members: GroupMemberValue[];
+  error?: string;
+};
+
 type RatioAllocationHydrationPayload = {
   basisAccounts?: DynamicBasisAccount[];
   sourceAccounts?: DynamicSourceAccount[];
@@ -123,6 +107,8 @@ type RatioAllocationState = {
   isProcessing: boolean;
   selectedPeriod: string | null;
   results: AllocationResult[];
+  validationErrors: DynamicAllocationValidationIssue[];
+  auditLog: DynamicAllocationAuditRecord[];
   hydrate: (payload: RatioAllocationHydrationPayload) => void;
   getOrCreateAllocation: (sourceAccountId: string) => RatioAllocation;
   addAllocation: (allocation: Omit<RatioAllocation, 'id'>) => void;
@@ -152,6 +138,8 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   isProcessing: false,
   selectedPeriod: null,
   results: [],
+  validationErrors: [],
+  auditLog: [],
 
   hydrate: payload => {
     set(state => {
@@ -271,36 +259,259 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   calculateAllocations: async periodId => {
     set({ isProcessing: true });
     try {
-      const { allocations, groups, basisAccounts, sourceAccounts } = get();
-      const results = allocations.map(allocation => {
+      const {
+        allocations,
+        groups,
+        basisAccounts,
+        sourceAccounts,
+        presets,
+        results: existingResults,
+        validationErrors: existingValidationErrors,
+        auditLog: existingAuditLog,
+      } = get();
+
+      const filteredResults = existingResults.filter(result => result.periodId !== periodId);
+      const filteredValidationErrors = existingValidationErrors.filter(issue => issue.periodId !== periodId);
+
+      const newResults: AllocationResult[] = [];
+      const newValidationErrors: DynamicAllocationValidationIssue[] = [];
+      const newAuditRecords: DynamicAllocationAuditRecord[] = [];
+      const runTimestamp = new Date().toISOString();
+
+      allocations.forEach(allocation => {
         const sourceAccount = sourceAccounts.find(account => account.id === allocation.sourceAccount.id);
-        const sourceValue = sourceAccount ? getSourceValue(sourceAccount, periodId) : 0;
-        const totalBasis = allocation.targetDatapoints.reduce((sum, target) => {
+        if (!sourceAccount) {
+          newValidationErrors.push({
+            id: createId(),
+            allocationId: allocation.id,
+            periodId,
+            sourceAccountId: allocation.sourceAccount.id,
+            sourceAccountName: allocation.sourceAccount.description,
+            message: `Source account ${allocation.sourceAccount.id} is unavailable for allocation.`,
+          });
+          return;
+        }
+
+        if (allocation.targetDatapoints.length < 2) {
+          newValidationErrors.push({
+            id: createId(),
+            allocationId: allocation.id,
+            periodId,
+            sourceAccountId: sourceAccount.id,
+            sourceAccountName: sourceAccount.description,
+            message: 'Dynamic allocations require at least two targets.',
+          });
+          return;
+        }
+
+        const targetDetails: ResolvedTargetDetail[] = allocation.targetDatapoints.map(target => {
           if (target.groupId) {
             const group = groups.find(item => item.id === target.groupId);
-            return sum + (group ? getGroupTotal(group, basisAccounts, periodId) : 0);
+            if (!group) {
+              return {
+                target,
+                basisValue: 0,
+                members: [],
+                error: `Dynamic datapoint group ${target.name} is missing.`,
+              };
+            }
+            const members = getGroupMembersWithValues(group, basisAccounts, periodId);
+            return {
+              target,
+              basisValue: members.reduce((sum, member) => sum + member.value, 0),
+              members,
+            };
           }
-          return sum + target.ratioMetric.value;
-        }, 0);
 
-        const allocationsForTarget = allocation.targetDatapoints.map(target => {
-          const basisGroup = target.groupId ? groups.find(item => item.id === target.groupId) : undefined;
-          const basisValue = basisGroup ? getGroupTotal(basisGroup, basisAccounts, periodId) : target.ratioMetric.value;
-          const percentage = totalBasis > 0 ? basisValue / totalBasis : 0;
+          const basisAccount = basisAccounts.find(item => item.id === target.ratioMetric.id);
+          if (basisAccount) {
+            const value = getBasisValue(basisAccount, periodId);
+            return {
+              target,
+              basisValue: value,
+              members: [
+                {
+                  accountId: basisAccount.id,
+                  accountName: basisAccount.name,
+                  value,
+                },
+              ],
+            };
+          }
+
+          const metricValue = typeof target.ratioMetric.value === 'number' ? target.ratioMetric.value : 0;
+          if (!Number.isFinite(metricValue)) {
+            return {
+              target,
+              basisValue: 0,
+              members: [],
+              error: `Basis datapoint ${target.ratioMetric.name} is missing a numeric value.`,
+            };
+          }
+
           return {
-            datapointId: target.datapointId,
-            value: sourceValue * percentage,
-            percentage: percentage * 100,
+            target,
+            basisValue: metricValue,
+            members: [
+              {
+                accountId: target.ratioMetric.id,
+                accountName: target.ratioMetric.name,
+                value: metricValue,
+              },
+            ],
           };
         });
 
-        return {
+        const localIssues: { message: string; targets?: string[] }[] = [];
+
+        targetDetails.forEach(detail => {
+          if (detail.error) {
+            localIssues.push({ message: detail.error });
+          }
+          if (detail.basisValue < 0) {
+            localIssues.push({
+              message: `Basis value for ${detail.target.name} must be non-negative.`,
+              targets: [detail.target.datapointId],
+            });
+          }
+        });
+
+        const basisTotal = targetDetails.reduce((sum, detail) => sum + detail.basisValue, 0);
+        if (basisTotal <= 0) {
+          localIssues.push({ message: 'Basis total is zero; provide nonzero datapoints.' });
+        }
+
+        const circularTargets = targetDetails
+          .filter(detail => detail.members.some(member => member.accountId === sourceAccount.id))
+          .map(detail => detail.target.datapointId);
+        if (circularTargets.length > 0) {
+          localIssues.push({
+            message: `Basis datapoints reference source account ${sourceAccount.number}. Remove the circular dependency.`,
+            targets: circularTargets,
+          });
+        }
+
+        if (localIssues.length > 0) {
+          localIssues.forEach(issue => {
+            newValidationErrors.push({
+              id: createId(),
+              allocationId: allocation.id,
+              periodId,
+              sourceAccountId: sourceAccount.id,
+              sourceAccountName: sourceAccount.description,
+              message: issue.message,
+              targetIds: issue.targets,
+            });
+          });
+          return;
+        }
+
+        if (targetDetails.length === 0) {
+          newValidationErrors.push({
+            id: createId(),
+            allocationId: allocation.id,
+            periodId,
+            sourceAccountId: sourceAccount.id,
+            sourceAccountName: sourceAccount.description,
+            message: 'Add at least one target datapoint before running a dynamic allocation.',
+          });
+          return;
+        }
+
+        const sourceValue = getSourceValue(sourceAccount, periodId);
+        const basisValues = targetDetails.map(detail => detail.basisValue);
+
+        let computed;
+        try {
+          computed = allocateDynamic(sourceValue, basisValues);
+        } catch (error) {
+          newValidationErrors.push({
+            id: createId(),
+            allocationId: allocation.id,
+            periodId,
+            sourceAccountId: sourceAccount.id,
+            sourceAccountName: sourceAccount.description,
+            message:
+              error instanceof Error ? error.message : 'Unable to allocate using provided basis.',
+          });
+          return;
+        }
+
+        const targetAllocations = targetDetails.map((detail, index) => {
+          const ratio = basisTotal > 0 ? detail.basisValue / basisTotal : 0;
+          return {
+            datapointId: detail.target.datapointId,
+            targetId: detail.target.datapointId,
+            targetName: detail.target.name,
+            basisValue: detail.basisValue,
+            value: computed.allocations[index] ?? 0,
+            percentage: ratio * 100,
+            ratio,
+          };
+        });
+
+        const adjustment =
+          computed.adjustmentIndex !== null
+            ? {
+                targetId: allocation.targetDatapoints[computed.adjustmentIndex].datapointId,
+                amount: computed.adjustmentAmount,
+              }
+            : undefined;
+
+        newResults.push({
+          allocationId: allocation.id,
+          allocationName: allocation.name,
           periodId,
+          sourceAccountId: sourceAccount.id,
+          sourceAccountName: sourceAccount.description,
           sourceValue,
-          allocations: allocationsForTarget,
-        };
+          basisTotal,
+          runAt: runTimestamp,
+          adjustment,
+          allocations: targetAllocations,
+        });
+
+        const preset = presets.find(
+          presetItem =>
+            presetItem.sourceAccountId === allocation.sourceAccount.id &&
+            presetItem.targetGroupIds.every(groupId =>
+              allocation.targetDatapoints.some(target => target.groupId === groupId),
+            ),
+        );
+
+        newAuditRecords.push({
+          id: createId(),
+          allocationId: allocation.id,
+          allocationName: allocation.name,
+          periodId,
+          runAt: runTimestamp,
+          sourceAccount: {
+            id: sourceAccount.id,
+            number: sourceAccount.number,
+            description: sourceAccount.description,
+          },
+          sourceAmount: sourceValue,
+          basisTotal,
+          adjustment,
+          presetId: preset?.id ?? null,
+          userId: null,
+          targets: targetAllocations.map((targetAllocation, index) => ({
+            targetId: targetAllocation.targetId,
+            targetName: targetAllocation.targetName,
+            basisValue: targetAllocation.basisValue,
+            ratio: targetAllocation.ratio,
+            allocation: targetAllocation.value,
+            basisMembers: targetDetails[index].members,
+          })),
+        });
       });
-      set({ results, isProcessing: false });
+
+      set({
+        results: [...filteredResults, ...newResults],
+        validationErrors: [...filteredValidationErrors, ...newValidationErrors],
+        auditLog: [...existingAuditLog, ...newAuditRecords],
+        isProcessing: false,
+      });
     } catch (error) {
       set({ isProcessing: false });
       throw error;

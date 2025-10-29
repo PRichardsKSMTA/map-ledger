@@ -41,6 +41,19 @@ const initialRatioSnapshot = (() => {
       allocations: result.allocations.map(allocation => ({ ...allocation })),
     })),
     isProcessing: snapshot.isProcessing,
+    validationErrors: snapshot.validationErrors.map(issue => ({
+      ...issue,
+      targetIds: issue.targetIds ? [...issue.targetIds] : undefined,
+    })),
+    auditLog: snapshot.auditLog.map(entry => ({
+      ...entry,
+      sourceAccount: { ...entry.sourceAccount },
+      adjustment: entry.adjustment ? { ...entry.adjustment } : undefined,
+      targets: entry.targets.map(target => ({
+        ...target,
+        basisMembers: target.basisMembers.map(member => ({ ...member })),
+      })),
+    })),
   };
 })();
 
@@ -78,6 +91,19 @@ const resetStores = () => {
       allocations: result.allocations.map(allocation => ({ ...allocation })),
     })),
     isProcessing: false,
+    validationErrors: initialRatioSnapshot.validationErrors.map(issue => ({
+      ...issue,
+      targetIds: issue.targetIds ? [...issue.targetIds] : undefined,
+    })),
+    auditLog: initialRatioSnapshot.auditLog.map(entry => ({
+      ...entry,
+      sourceAccount: { ...entry.sourceAccount },
+      adjustment: entry.adjustment ? { ...entry.adjustment } : undefined,
+      targets: entry.targets.map(target => ({
+        ...target,
+        basisMembers: target.basisMembers.map(member => ({ ...member })),
+      })),
+    })),
   });
 };
 
