@@ -29,11 +29,11 @@ describe('MappingTable status filters and sorting', () => {
   it('filters rows when a renamed status is toggled', () => {
     useMappingStore.getState().toggleStatusFilter('Mapped');
 
-    expect(filterStatuses()).toEqual(['Mapped']);
+    expect(filterStatuses()).toEqual(['Mapped', 'Mapped']);
 
     useMappingStore.getState().toggleStatusFilter('Mapped');
 
-    expect(filterStatuses()).toEqual(['New', 'Unmapped', 'Mapped', 'Excluded']);
+    expect(filterStatuses()).toEqual(['Mapped', 'Mapped', 'New', 'Excluded']);
   });
 
   it('sorts statuses according to the updated status order', () => {

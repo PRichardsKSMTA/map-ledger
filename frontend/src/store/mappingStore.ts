@@ -7,7 +7,10 @@ import type {
   MappingType,
   TrialBalanceRow,
 } from '../types';
-import { getStandardScoaOption } from '../data/standardChartOfAccounts';
+import {
+  STANDARD_CHART_OF_ACCOUNTS,
+  getStandardScoaOption,
+} from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 
 const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
@@ -16,6 +19,14 @@ const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
 );
 const NON_DRIVER_BENEFITS_TARGET = getStandardScoaOption('NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS');
+
+const STANDARD_SCOA_VALUE_SET = new Set(
+  STANDARD_CHART_OF_ACCOUNTS.map(option => option.value),
+);
+
+const STANDARD_SCOA_TARGET_ID_SET = new Set(
+  STANDARD_CHART_OF_ACCOUNTS.map(option => option.id),
+);
 
 const baseMappings: GLAccountMappingRow[] = [
   {
@@ -153,8 +164,76 @@ const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   splitDefinitions: row.splitDefinitions.map(split => ({ ...split })),
 });
 
+const getSplitPercentage = (
+  account: GLAccountMappingRow,
+  split: MappingSplitDefinition,
+): number => {
+  if (split.allocationType === 'percentage') {
+    return split.allocationValue;
+  }
+  if (split.allocationType === 'amount' && account.netChange !== 0) {
+    return (split.allocationValue / account.netChange) * 100;
+  }
+  return 0;
+};
+
+const getSplitAmount = (
+  account: GLAccountMappingRow,
+  percentage: number,
+): number => (account.netChange * percentage) / 100;
+
+const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
+  if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+    return 'Excluded';
+  }
+
+  if (account.mappingType === 'percentage' || account.mappingType === 'dynamic') {
+    if (account.splitDefinitions.length === 0) {
+      return 'Unmapped';
+    }
+
+    const allSplitsMapped = account.splitDefinitions.every(split =>
+      STANDARD_SCOA_TARGET_ID_SET.has(split.targetId),
+    );
+
+    if (!allSplitsMapped) {
+      return 'Unmapped';
+    }
+
+    if (account.mappingType === 'percentage') {
+      const totalPercentage = account.splitDefinitions.reduce(
+        (sum, split) => sum + getSplitPercentage(account, split),
+        0,
+      );
+
+      if (Math.abs(totalPercentage - 100) > 0.01) {
+        return 'Unmapped';
+      }
+    }
+
+    return 'Mapped';
+  }
+
+  const manualTarget = account.manualCOAId?.trim();
+
+  if (!manualTarget) {
+    return 'Unmapped';
+  }
+
+  if (STANDARD_SCOA_VALUE_SET.has(manualTarget)) {
+    return 'Mapped';
+  }
+
+  return 'New';
+};
+
+const applyDerivedStatus = (account: GLAccountMappingRow): GLAccountMappingRow => ({
+  ...account,
+  status: deriveMappingStatus(account),
+});
+
 export const createInitialMappingAccounts = (): GLAccountMappingRow[] =>
-  baseMappings.map(cloneMappingRow);
+  baseMappings.map(row => applyDerivedStatus(cloneMappingRow(row)));
 
 const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts.reduce((sum, account) => sum + account.netChange, 0);
@@ -242,7 +321,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     set(state => ({
       accounts: state.accounts.map(account =>
         account.id === id
-          ? { ...account, manualCOAId: coaId || undefined }
+          ? applyDerivedStatus({ ...account, manualCOAId: coaId || undefined })
           : account
       ),
     })),
@@ -250,7 +329,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     set(state => ({
       accounts: state.accounts.map(account =>
         account.id === id
-          ? { ...account, presetId: presetId || undefined }
+          ? applyDerivedStatus({ ...account, presetId: presetId || undefined })
           : account
       ),
     })),
@@ -268,21 +347,21 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             ? 'direct'
             : account.mappingType;
 
-        return {
+        return applyDerivedStatus({
           ...account,
           status,
           mappingType: nextMappingType,
           manualCOAId: isExcluded ? undefined : account.manualCOAId,
           presetId: isExcluded ? undefined : account.presetId,
           splitDefinitions: isExcluded ? [] : account.splitDefinitions,
-        };
+        });
       }),
     })),
   updateMappingType: (id, mappingType) =>
     set(state => ({
       accounts: state.accounts.map(account =>
         account.id === id
-          ? {
+          ? applyDerivedStatus({
               ...account,
               mappingType,
               status:
@@ -296,7 +375,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                 mappingType === 'percentage' || mappingType === 'dynamic'
                   ? account.splitDefinitions
                   : [],
-            }
+            })
           : account
       ),
     })),
@@ -326,10 +405,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           allocationValue: 0,
           notes: '',
         };
-        return {
+        return applyDerivedStatus({
           ...account,
           splitDefinitions: [...account.splitDefinitions, nextSplit],
-        };
+        });
       }),
     })),
   updateSplitDefinition: (accountId, splitId, updates) =>
@@ -338,7 +417,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (account.id !== accountId) {
           return account;
         }
-        return {
+        return applyDerivedStatus({
           ...account,
           splitDefinitions: account.splitDefinitions.map(split =>
             split.id === splitId
@@ -348,7 +427,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                 }
               : split
           ),
-        };
+        });
       }),
     })),
   removeSplitDefinition: (accountId, splitId) =>
@@ -357,10 +436,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (account.id !== accountId) {
           return account;
         }
-        return {
+        return applyDerivedStatus({
           ...account,
           splitDefinitions: account.splitDefinitions.filter(split => split.id !== splitId),
-        };
+        });
       }),
     })),
   applyBatchMapping: (ids, updates) =>
@@ -416,7 +495,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (next.mappingType !== 'percentage' && next.mappingType !== 'dynamic') {
           next.splitDefinitions = [];
         }
-        return next;
+        return applyDerivedStatus(next);
       }),
     })),
   applyPresetToAccounts: (ids, presetId) => {
@@ -426,15 +505,15 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           return account;
         }
         if (!presetId) {
-          return { ...account, presetId: undefined };
+          return applyDerivedStatus({ ...account, presetId: undefined });
         }
         const nextStatus: MappingStatus = account.status === 'Excluded' ? 'Unmapped' : account.status;
-        return {
+        return applyDerivedStatus({
           ...account,
           mappingType: 'percentage',
           presetId,
           status: nextStatus,
-        };
+        });
       }),
     }));
   },
@@ -451,12 +530,12 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           if (account.mappingType === 'exclude' || account.status === 'Excluded') {
             return account;
           }
-          return {
+          return applyDerivedStatus({
             ...account,
             manualCOAId: account.suggestedCOAId,
             status: 'Mapped',
             mappingType: account.mappingType === 'direct' ? account.mappingType : 'direct',
-          };
+          });
         }),
       };
     }),
@@ -485,7 +564,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     const accounts = buildMappingRowsFromImport(rows, {
       uploadId,
       clientId: normalizedClientId,
-    });
+    }).map(applyDerivedStatus);
 
     set({
       accounts,
@@ -505,19 +584,6 @@ const createId = (): string => {
   }
   return Math.random().toString(36).slice(2, 10);
 };
-
-const getSplitPercentage = (account: GLAccountMappingRow, split: MappingSplitDefinition): number => {
-  if (split.allocationType === 'percentage') {
-    return split.allocationValue;
-  }
-  if (split.allocationType === 'amount' && account.netChange !== 0) {
-    return (split.allocationValue / account.netChange) * 100;
-  }
-  return 0;
-};
-
-const getSplitAmount = (account: GLAccountMappingRow, percentage: number): number =>
-  (account.netChange * percentage) / 100;
 
 const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
   const issues: { accountId: string; message: string }[] = [];
