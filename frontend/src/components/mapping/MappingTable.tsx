@@ -442,24 +442,39 @@ export default function MappingTable() {
                     <td
                       className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.targetScoa ?? ''}`}
                     >
-                      <label className="sr-only" htmlFor={`scoa-${account.id}`}>
-                        Select target SCoA for {account.accountName}
-                      </label>
-                      <select
-                        id={`scoa-${account.id}`}
-                        value={targetScoa}
-                        onChange={(event) =>
-                          updateTarget(account.id, event.target.value)
-                        }
-                        className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                      >
-                        <option value="">Select target</option>
-                        {coaOptions.map((option) => (
-                          <option key={option.id} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                      {requiresSplit ? (
+                        <span className="text-slate-500 dark:text-slate-400">
+                          <span aria-hidden="true">—</span>
+                          <span className="sr-only">
+                            Target SCoA selections are managed within allocation
+                            details for percentage and dynamic mappings.
+                          </span>
+                        </span>
+                      ) : (
+                        <>
+                          <label
+                            className="sr-only"
+                            htmlFor={`scoa-${account.id}`}
+                          >
+                            Select target SCoA for {account.accountName}
+                          </label>
+                          <select
+                            id={`scoa-${account.id}`}
+                            value={targetScoa}
+                            onChange={(event) =>
+                              updateTarget(account.id, event.target.value)
+                            }
+                            className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          >
+                            <option value="">Select target</option>
+                            {coaOptions.map((option) => (
+                              <option key={option.id} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </>
+                      )}
                     </td>
                     <td className="px-3 py-4">
                       <label
