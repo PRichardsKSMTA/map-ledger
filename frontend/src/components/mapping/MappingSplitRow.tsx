@@ -200,7 +200,7 @@ export default function MappingSplitRow({
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {account.mappingType === 'dynamic'
-                  ? 'Percentages determine dynamic amounts based on the current net change.'
+                  ? 'Dynamic allocation amounts are determined by the relationships between chosen datapoints.'
                   : 'Ensure 100% allocation across targets.'}
               </p>
             </div>
