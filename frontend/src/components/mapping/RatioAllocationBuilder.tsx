@@ -14,7 +14,11 @@ import {
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
-const RatioAllocationBuilder = () => {
+interface RatioAllocationBuilderProps {
+  initialSourceAccountId?: string | null;
+}
+
+const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuilderProps) => {
   const {
     allocations,
     groups,
@@ -41,11 +45,40 @@ const RatioAllocationBuilder = () => {
   } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const allocationIdForInitialSource = useMemo(() => {
+    if (!initialSourceAccountId) {
+      return null;
+    }
+    const match = allocations.find(
+      allocation => allocation.sourceAccount.id === initialSourceAccountId,
+    );
+    return match?.id ?? null;
+  }, [allocations, initialSourceAccountId]);
+
   useEffect(() => {
+    if (initialSourceAccountId) {
+      if (allocationIdForInitialSource) {
+        if (selectedAllocationId !== allocationIdForInitialSource) {
+          setSelectedAllocationId(allocationIdForInitialSource);
+        }
+      } else if (selectedAllocationId) {
+        setSelectedAllocationId(null);
+      }
+      return;
+    }
+
     if (!selectedAllocationId && allocations.length > 0) {
       setSelectedAllocationId(allocations[0].id);
     }
-  }, [allocations, selectedAllocationId]);
+    if (allocations.length === 0 && selectedAllocationId) {
+      setSelectedAllocationId(null);
+    }
+  }, [
+    allocationIdForInitialSource,
+    allocations,
+    initialSourceAccountId,
+    selectedAllocationId,
+  ]);
 
   const targetOptions = useMemo(() => {
     const optionMap = new Map<string, string>();
@@ -84,11 +117,17 @@ const RatioAllocationBuilder = () => {
   }, [basisAccounts.length]);
 
   const selectedAllocation = useMemo(() => {
-    if (!selectedAllocationId) {
-      return allocations[0] ?? null;
+    if (selectedAllocationId) {
+      return allocations.find(allocation => allocation.id === selectedAllocationId) ?? null;
     }
-    return allocations.find(allocation => allocation.id === selectedAllocationId) ?? null;
-  }, [allocations, selectedAllocationId]);
+    if (initialSourceAccountId) {
+      const match = allocations.find(
+        allocation => allocation.sourceAccount.id === initialSourceAccountId,
+      );
+      return match ?? null;
+    }
+    return allocations[0] ?? null;
+  }, [allocations, initialSourceAccountId, selectedAllocationId]);
 
   const selectedGroupIds = useMemo(() => {
     if (!selectedAllocation) {

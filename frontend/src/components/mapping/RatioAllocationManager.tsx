@@ -57,7 +57,11 @@ const RatioAllocationManager = ({ initialSourceAccountId, onDone }: RatioAllocat
         </div>
       </div>
 
-      {activeView === 'builder' ? <RatioAllocationBuilder /> : <RatioAllocationList />}
+      {activeView === 'builder' ? (
+        <RatioAllocationBuilder initialSourceAccountId={initialSourceAccountId} />
+      ) : (
+        <RatioAllocationList />
+      )}
 
       {onDone && (
         <div className="flex justify-end">
