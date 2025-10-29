@@ -52,5 +52,18 @@ describe('MappingTable', () => {
       expect(optionLabels).toContain(name);
     });
   });
+
+  test('shows only the company name in the company column', () => {
+    render(<MappingTable />);
+
+    expect(
+      screen.getByRole('columnheader', { name: /Company/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Company / Company')).not.toBeInTheDocument();
+
+    const companyCells = screen.getAllByText('Acme Freight');
+    expect(companyCells.length).toBeGreaterThan(0);
+    expect(screen.queryByText('Acme Freight Operations')).not.toBeInTheDocument();
+  });
 });
 
