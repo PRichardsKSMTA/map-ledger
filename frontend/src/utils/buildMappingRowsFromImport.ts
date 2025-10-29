@@ -61,18 +61,22 @@ export const buildMappingRowsFromImport = (
     const fallbackEntityId = `${options.uploadId}-entity-${index}`;
     const fallbackName = options.clientId ? `Client ${options.clientId}` : 'Imported Entity';
     const normalized = normalizeEntity(row.entity, fallbackEntityId, fallbackName);
+    const rawAccountId = (row.accountId ?? '').toString().trim();
+    const accountId = rawAccountId.length > 0 ? rawAccountId : `account-${index + 1}`;
+    const compositeKey = `${normalized.id}__${accountId}`;
+    const rowId = options.uploadId ? `${options.uploadId}-${compositeKey}` : compositeKey;
     const rawNetChange = Number(row.netChange ?? 0);
     const netChange = Number.isFinite(rawNetChange) ? rawNetChange : 0;
     const polarity = determinePolarity(netChange);
     const operation = resolveOperation(row, 'Imported');
 
     return {
-      id: `${options.uploadId}-${row.accountId}-${index}`,
+      id: rowId,
       companyId: normalized.id,
       companyName: normalized.name,
       entityId: normalized.id,
       entityName: normalized.name,
-      accountId: row.accountId,
+      accountId,
       accountName: row.description,
       activity: netChange,
       status: 'Unmapped',

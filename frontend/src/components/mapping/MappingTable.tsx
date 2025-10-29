@@ -102,7 +102,7 @@ const netChangeFormatter = new Intl.NumberFormat('en-US', {
 const formatNetChange = (value: number) => netChangeFormatter.format(value);
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
-  { key: 'companyName', label: 'Company / Company' },
+  { key: 'companyName', label: 'Company' },
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'netChange', label: 'Activity' },
@@ -202,7 +202,6 @@ export default function MappingTable() {
           account.accountId,
           account.accountName,
           account.companyName,
-          account.entityName ?? '',
           account.activity,
           account.netChange.toString(),
           formatNetChange(account.netChange),
@@ -396,9 +395,6 @@ export default function MappingTable() {
                     <td className="max-w-[220px] px-3 py-4">
                       <div className="font-medium text-slate-900 dark:text-slate-100">
                         {account.companyName}
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        {account.entityName ?? '—'}
                       </div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
@@ -606,7 +602,7 @@ function getSortValue(
 ): string | number {
   switch (key) {
     case 'companyName':
-      return `${account.companyName} ${account.entityName ?? ''}`.trim();
+      return account.companyName;
     case 'accountId':
       return account.accountId;
     case 'accountName':
