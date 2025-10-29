@@ -247,6 +247,9 @@ export default function MappingTable() {
         <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700" role="table">
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
+              <th scope="col" className="w-10 px-3 py-3">
+                <span className="sr-only">Toggle split details</span>
+              </th>
               <th scope="col" className="w-12 px-3 py-3">
                 <span className="sr-only">Select all rows</span>
                 <input
@@ -293,6 +296,25 @@ export default function MappingTable() {
                   <tr
                     className={isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined}
                   >
+                    <td className="px-3 py-4">
+                      {requiresSplit ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSplitRow(account.id)}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-slate-500 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                          aria-expanded={isExpanded}
+                          aria-controls={`split-panel-${account.id}`}
+                          aria-label={`${isExpanded ? 'Hide' : 'Show'} split details for ${account.accountName}`}
+                        >
+                          <ChevronRight
+                            className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      ) : (
+                        <span className="inline-flex h-6 w-6 items-center justify-center" aria-hidden="true" />
+                      )}
+                    </td>
                     <td className="px-3 py-4">
                       <input
                         type="checkbox"
@@ -421,23 +443,6 @@ export default function MappingTable() {
                             {hasSplitIssue ? 'Allocation percentages must equal 100%' : 'Allocation details required'}
                           </span>
                         )}
-                        {requiresSplit && (
-                          <div>
-                            <button
-                              type="button"
-                              onClick={() => toggleSplitRow(account.id)}
-                              className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 underline transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
-                              aria-expanded={isExpanded}
-                              aria-controls={`split-panel-${account.id}`}
-                            >
-                              <ChevronRight
-                                className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                                aria-hidden="true"
-                              />
-                              {isExpanded ? 'Hide splits' : 'Show splits'}
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -445,7 +450,7 @@ export default function MappingTable() {
                     <MappingSplitRow
                       account={account}
                       targetOptions={coaOptions}
-                      colSpan={COLUMN_DEFINITIONS.length + 1}
+                      colSpan={COLUMN_DEFINITIONS.length + 2}
                       panelId={`split-panel-${account.id}`}
                       onAddSplit={() => addSplitDefinition(account.id)}
                       onUpdateSplit={(splitId, updates) => updateSplitDefinition(account.id, splitId, updates)}
@@ -457,7 +462,7 @@ export default function MappingTable() {
             })}
             {sortedAccounts.length === 0 && (
               <tr>
-                <td colSpan={COLUMN_DEFINITIONS.length + 1} className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                <td colSpan={COLUMN_DEFINITIONS.length + 2} className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
                   No mapping rows match your filters.
                 </td>
               </tr>
