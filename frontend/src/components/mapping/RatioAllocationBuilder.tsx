@@ -117,20 +117,6 @@ const RatioAllocationBuilder = () => {
     [targetDetails],
   );
 
-  const previewComputation = useMemo(() => {
-    if (targetDetails.length === 0 || basisTotal <= 0) {
-      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
-    }
-    try {
-      return allocateDynamic(
-        sourceBalance,
-        targetDetails.map(detail => detail.basisValue),
-      );
-    } catch {
-      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
-    }
-  }, [basisTotal, sourceBalance, targetDetails]);
-
   const allocationIssues = useMemo(() => {
     if (!selectedAllocation) {
       return [];
@@ -159,6 +145,20 @@ const RatioAllocationBuilder = () => {
     }
     return selectedSourceAccount.value ?? 0;
   }, [selectedSourceAccount, selectedPeriod]);
+
+  const previewComputation = useMemo(() => {
+    if (targetDetails.length === 0 || basisTotal <= 0) {
+      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
+    }
+    try {
+      return allocateDynamic(
+        sourceBalance,
+        targetDetails.map(detail => detail.basisValue),
+      );
+    } catch {
+      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
+    }
+  }, [basisTotal, sourceBalance, targetDetails]);
 
   const handlePresetApply = () => {
     if (!selectedPresetId) {
