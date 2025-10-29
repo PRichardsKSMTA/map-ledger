@@ -31,8 +31,7 @@ type SortKey =
   | 'targetScoa'
   | 'polarity'
   | 'presetId'
-  | 'aiConfidence'
-  | 'notes';
+  | 'aiConfidence';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -88,7 +87,6 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'presetId', label: 'Preset' },
   { key: 'aiConfidence', label: 'Confidence' },
   { key: 'status', label: 'Status' },
-  { key: 'notes', label: 'Notes' },
 ];
 
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
@@ -409,25 +407,22 @@ export default function MappingTable() {
                       </div>
                     </td>
                     <td className="px-3 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
-                        role="status"
-                        aria-label={`Status ${statusLabel}`}
-                      >
-                        <Check className="h-3 w-3" aria-hidden="true" />
-                        {statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-3 py-4 text-sm text-slate-700 dark:text-slate-200">
-                      <div className="flex flex-col gap-1">
-                        <span>{account.notes ?? '—'}</span>
+                      <div className="flex flex-col gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
+                          role="status"
+                          aria-label={`Status ${statusLabel}`}
+                        >
+                          <Check className="h-3 w-3" aria-hidden="true" />
+                          {statusLabel}
+                        </span>
                         {requiresSplit && !hasAllocation && (
                           <span className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}>
                             {hasSplitIssue ? 'Allocation percentages must equal 100%' : 'Allocation details required'}
                           </span>
                         )}
                         {requiresSplit && (
-                          <div className="flex flex-wrap gap-2">
+                          <div>
                             <button
                               type="button"
                               onClick={() => toggleSplitRow(account.id)}
@@ -496,8 +491,6 @@ function getSortValue(account: GLAccountMappingRow, key: SortKey): string | numb
       return account.presetId ?? '';
     case 'aiConfidence':
       return account.aiConfidence ?? 0;
-    case 'notes':
-      return account.notes ?? '';
     default:
       return '';
   }
