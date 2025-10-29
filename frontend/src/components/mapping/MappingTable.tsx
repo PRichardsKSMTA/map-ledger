@@ -13,6 +13,7 @@ import {
   ChevronRight,
   HelpCircle,
   Sparkles,
+  X,
   XCircle,
 } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
@@ -33,8 +34,10 @@ import type {
   TargetScoaOption,
 } from '../../types';
 import MappingSplitRow from './MappingSplitRow';
+import DynamicAllocationRow from './DynamicAllocationRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
+import RatioAllocationManager from './RatioAllocationManager';
 
 type SortKey =
   | 'companyName'
@@ -130,7 +133,13 @@ const formatCurrency = (value: number): string =>
   currencyFormatter.format(value);
 
 export default function MappingTable() {
-  const { allocations } = useRatioAllocationStore();
+  const { allocations, validationErrors, selectedPeriod } = useRatioAllocationStore(
+    (state) => ({
+      allocations: state.allocations,
+      validationErrors: state.validationErrors,
+      selectedPeriod: state.selectedPeriod,
+    })
+  );
   const datapoints = useTemplateStore((state) => state.datapoints);
   const coaOptions = useMemo<TargetScoaOption[]>(
     () => buildTargetScoaOptions(datapoints),
@@ -165,11 +174,21 @@ export default function MappingTable() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     () => new Set()
   );
+  const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(
+    null
+  );
 
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
     [splitValidationIssues]
   );
+
+  const dynamicIssueIds = useMemo(() => {
+    const relevantIssues = selectedPeriod
+      ? validationErrors.filter((issue) => issue.periodId === selectedPeriod)
+      : validationErrors;
+    return new Set(relevantIssues.map((issue) => issue.sourceAccountId));
+  }, [selectedPeriod, validationErrors]);
 
   useEffect(() => {
     const validIds = new Set(accounts.map((account) => account.id));
@@ -345,11 +364,13 @@ export default function MappingTable() {
                 account.mappingType === 'percentage' ||
                 account.mappingType === 'dynamic';
               const hasSplitIssue = splitIssueIds.has(account.id);
+              const hasDynamicIssue = dynamicIssueIds.has(account.id);
               const hasAllocation =
-                (account.splitDefinitions.length > 0 && !hasSplitIssue) ||
-                allocations.some(
-                  (allocation) => allocation.sourceAccount.id === account.id
-                );
+                account.mappingType === 'dynamic'
+                  ? allocations.some(
+                      (allocation) => allocation.sourceAccount.id === account.id
+                    )
+                  : account.splitDefinitions.length > 0 && !hasSplitIssue;
               const statusLabel = STATUS_LABELS[account.status];
               const StatusIcon = STATUS_ICONS[account.status];
               const isExpanded = expandedRows.has(account.id);
@@ -549,32 +570,57 @@ export default function MappingTable() {
                           <StatusIcon className="h-3 w-3" aria-hidden="true" />
                           {statusLabel}
                         </span>
-                        {requiresSplit && !hasAllocation && (
-                          <span
-                            className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}
-                          >
-                            {hasSplitIssue
-                              ? 'Allocation percentages must equal 100%'
-                              : 'Allocation details required'}
-                          </span>
+                        {account.mappingType === 'dynamic' ? (
+                          <>
+                            {hasDynamicIssue && (
+                              <span className="text-xs text-rose-600 dark:text-rose-300">
+                                Resolve dynamic allocation warnings
+                              </span>
+                            )}
+                            {!hasAllocation && !hasDynamicIssue && (
+                              <span className="text-xs text-amber-600 dark:text-amber-300">
+                                Dynamic ratios need configuration
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          requiresSplit &&
+                          !hasAllocation && (
+                            <span
+                              className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}
+                            >
+                              {hasSplitIssue
+                                ? 'Allocation percentages must equal 100%'
+                                : 'Allocation details required'}
+                            </span>
+                          )
                         )}
                       </div>
                     </td>
                   </tr>
                   {requiresSplit && isExpanded && (
-                    <MappingSplitRow
-                      account={account}
-                      targetOptions={coaOptions}
-                      colSpan={COLUMN_DEFINITIONS.length + 2}
-                      panelId={`split-panel-${account.id}`}
-                      onAddSplit={() => addSplitDefinition(account.id)}
-                      onUpdateSplit={(splitId, updates) =>
-                        updateSplitDefinition(account.id, splitId, updates)
-                      }
-                      onRemoveSplit={(splitId) =>
-                        removeSplitDefinition(account.id, splitId)
-                      }
-                    />
+                    account.mappingType === 'dynamic' ? (
+                      <DynamicAllocationRow
+                        account={account}
+                        colSpan={COLUMN_DEFINITIONS.length + 2}
+                        panelId={`split-panel-${account.id}`}
+                        onOpenBuilder={() => setActiveDynamicAccountId(account.id)}
+                      />
+                    ) : (
+                      <MappingSplitRow
+                        account={account}
+                        targetOptions={coaOptions}
+                        colSpan={COLUMN_DEFINITIONS.length + 2}
+                        panelId={`split-panel-${account.id}`}
+                        onAddSplit={() => addSplitDefinition(account.id)}
+                        onUpdateSplit={(splitId, updates) =>
+                          updateSplitDefinition(account.id, splitId, updates)
+                        }
+                        onRemoveSplit={(splitId) =>
+                          removeSplitDefinition(account.id, splitId)
+                        }
+                      />
+                    )
                   )}
                 </Fragment>
               );
@@ -592,6 +638,40 @@ export default function MappingTable() {
           </tbody>
         </table>
       </div>
+      {activeDynamicAccountId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-5xl overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-900"
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+                  Dynamic allocation builder
+                </h3>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Configure ratio-based distributions for account {activeDynamicAccountId}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveDynamicAccountId(null)}
+                className="rounded-md p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-offset-slate-900"
+                aria-label="Close dynamic allocation builder"
+              >
+                <X className="h-5 w-5" aria-hidden="true" />
+              </button>
+            </div>
+            <div className="max-h-[80vh] overflow-y-auto p-6">
+              <RatioAllocationManager
+                initialSourceAccountId={activeDynamicAccountId}
+                onDone={() => setActiveDynamicAccountId(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
