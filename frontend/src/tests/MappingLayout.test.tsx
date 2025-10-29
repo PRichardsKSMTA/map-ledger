@@ -11,8 +11,17 @@ const clientSnapshot = (() => {
 })();
 
 const ratioSnapshot = (() => {
-  const { allocations, groups, basisAccounts, sourceAccounts, presets, availablePeriods, selectedPeriod } =
-    useRatioAllocationStore.getState();
+  const {
+    allocations,
+    groups,
+    basisAccounts,
+    sourceAccounts,
+    presets,
+    availablePeriods,
+    selectedPeriod,
+    validationErrors,
+    auditLog,
+  } = useRatioAllocationStore.getState();
   return {
     allocations: allocations.map(allocation => ({
       ...allocation,
@@ -31,6 +40,19 @@ const ratioSnapshot = (() => {
     presets: presets.map(preset => ({ ...preset })),
     availablePeriods: availablePeriods.slice(),
     selectedPeriod,
+    validationErrors: validationErrors.map(issue => ({
+      ...issue,
+      targetIds: issue.targetIds ? [...issue.targetIds] : undefined,
+    })),
+    auditLog: auditLog.map(entry => ({
+      ...entry,
+      sourceAccount: { ...entry.sourceAccount },
+      adjustment: entry.adjustment ? { ...entry.adjustment } : undefined,
+      targets: entry.targets.map(target => ({
+        ...target,
+        basisMembers: target.basisMembers.map(member => ({ ...member })),
+      })),
+    })),
   };
 })();
 
@@ -69,6 +91,19 @@ const resetRatioStore = () => {
     selectedPeriod: ratioSnapshot.selectedPeriod ?? null,
     results: [],
     isProcessing: false,
+    validationErrors: ratioSnapshot.validationErrors.map(issue => ({
+      ...issue,
+      targetIds: issue.targetIds ? [...issue.targetIds] : undefined,
+    })),
+    auditLog: ratioSnapshot.auditLog.map(entry => ({
+      ...entry,
+      sourceAccount: { ...entry.sourceAccount },
+      adjustment: entry.adjustment ? { ...entry.adjustment } : undefined,
+      targets: entry.targets.map(target => ({
+        ...target,
+        basisMembers: target.basisMembers.map(member => ({ ...member })),
+      })),
+    })),
   });
 };
 

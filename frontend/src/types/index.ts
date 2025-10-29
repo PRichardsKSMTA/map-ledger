@@ -152,14 +152,32 @@ export interface RatioAllocation {
   status: 'active' | 'inactive';
 }
 
+export interface AllocationResultTargetBreakdown {
+  datapointId: string;
+  targetId: string;
+  targetName: string;
+  basisValue: number;
+  value: number;
+  percentage: number;
+  ratio: number;
+}
+
+export interface AllocationResultAdjustment {
+  targetId: string;
+  amount: number;
+}
+
 export interface AllocationResult {
+  allocationId: string;
+  allocationName: string;
   periodId: string;
+  sourceAccountId: string;
+  sourceAccountName: string;
   sourceValue: number;
-  allocations: {
-    datapointId: string;
-    value: number;
-    percentage: number;
-  }[];
+  basisTotal: number;
+  runAt: string;
+  adjustment?: AllocationResultAdjustment;
+  allocations: AllocationResultTargetBreakdown[];
 }
 
 export interface OperationalMetric {
@@ -222,6 +240,50 @@ export interface DynamicMappingPreset {
   description: string;
   sourceAccountId: string;
   targetGroupIds: string[];
+}
+
+export interface DynamicAllocationBasisMember {
+  accountId: string;
+  accountName: string;
+  value: number;
+}
+
+export interface DynamicAllocationTargetAudit {
+  targetId: string;
+  targetName: string;
+  basisValue: number;
+  ratio: number;
+  allocation: number;
+  basisMembers: DynamicAllocationBasisMember[];
+}
+
+export interface DynamicAllocationAuditRecord {
+  id: string;
+  allocationId: string;
+  allocationName: string;
+  periodId: string;
+  runAt: string;
+  sourceAccount: {
+    id: string;
+    number: string;
+    description: string;
+  };
+  sourceAmount: number;
+  basisTotal: number;
+  targets: DynamicAllocationTargetAudit[];
+  adjustment?: AllocationResultAdjustment;
+  presetId?: string | null;
+  userId?: string | null;
+}
+
+export interface DynamicAllocationValidationIssue {
+  id: string;
+  allocationId: string;
+  periodId: string;
+  sourceAccountId: string;
+  sourceAccountName: string;
+  message: string;
+  targetIds?: string[];
 }
 export interface OperationRef {
   id: string; // SCAC code

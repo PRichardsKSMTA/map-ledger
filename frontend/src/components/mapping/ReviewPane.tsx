@@ -21,17 +21,27 @@ const createLogId = () => `log-${Math.random().toString(36).slice(2, 10)}`;
 const formatCurrency = (value: number) =>
   value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
+const formatCurrencyWithCents = (value: number) =>
+  value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
 const ReviewPane = () => {
   const accounts = useMappingStore(selectAccounts);
   const summary = useMappingStore(selectSummaryMetrics);
   const splitIssues = useMappingStore(selectSplitValidationIssues);
   const finalizeMappings = useMappingStore(state => state.finalizeMappings);
-  const { selectedPeriod, results, isProcessing, calculateAllocations } = useRatioAllocationStore(state => ({
-    selectedPeriod: state.selectedPeriod,
-    results: state.results,
-    isProcessing: state.isProcessing,
-    calculateAllocations: state.calculateAllocations,
-  }));
+  const { selectedPeriod, results, validationErrors, isProcessing, calculateAllocations } =
+    useRatioAllocationStore(state => ({
+      selectedPeriod: state.selectedPeriod,
+      results: state.results,
+      validationErrors: state.validationErrors,
+      isProcessing: state.isProcessing,
+      calculateAllocations: state.calculateAllocations,
+    }));
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([
@@ -43,7 +53,7 @@ const ReviewPane = () => {
     },
   ]);
 
-  const warnings = useMemo(() => {
+  const mappingWarnings = useMemo(() => {
     if (splitIssues.length === 0) {
       return [] as { accountName: string; message: string }[];
     }
@@ -57,9 +67,50 @@ const ReviewPane = () => {
     });
   }, [accounts, splitIssues]);
 
-  const periodResult = useMemo(
-    () => (selectedPeriod ? results.find(result => result.periodId === selectedPeriod) : undefined),
+  const dynamicWarnings = useMemo(() => {
+    const issues = selectedPeriod
+      ? validationErrors.filter(issue => issue.periodId === selectedPeriod)
+      : validationErrors;
+    return issues.map(issue => ({
+      accountName: issue.sourceAccountName,
+      message: issue.message,
+    }));
+  }, [selectedPeriod, validationErrors]);
+
+  const warnings = useMemo(
+    () => [...mappingWarnings, ...dynamicWarnings],
+    [mappingWarnings, dynamicWarnings],
+  );
+
+  const periodResults = useMemo(
+    () => (selectedPeriod ? results.filter(result => result.periodId === selectedPeriod) : []),
     [results, selectedPeriod]
+  );
+
+  const flattenedPeriodResults = useMemo(
+    () =>
+      periodResults.flatMap(result =>
+        result.allocations.map(target => ({
+          key: `${result.allocationId}-${target.targetId}`,
+          sourceName: result.allocationName,
+          targetName: target.targetName,
+          basisValue: target.basisValue,
+          allocation: target.value,
+          percentage: target.percentage,
+        }))
+      ),
+    [periodResults]
+  );
+
+  const adjustmentSummaries = useMemo(
+    () =>
+      periodResults
+        .filter(result => result.adjustment && Math.abs(result.adjustment.amount) > 0)
+        .map(result => ({
+          allocationName: result.allocationName,
+          amount: result.adjustment?.amount ?? 0,
+        })),
+    [periodResults]
   );
 
   const appendLog = (entry: Omit<PublishLogEntry, 'id' | 'timestamp'> & { timestamp?: string }) => {
@@ -78,7 +129,11 @@ const ReviewPane = () => {
     if (selectedPeriod) {
       await calculateAllocations(selectedPeriod);
     }
-    const hasWarnings = warnings.length > 0;
+    const ratioState = useRatioAllocationStore.getState();
+    const dynamicIssues = selectedPeriod
+      ? ratioState.validationErrors.filter(issue => issue.periodId === selectedPeriod)
+      : ratioState.validationErrors;
+    const hasWarnings = splitIssues.length > 0 || dynamicIssues.length > 0;
     setStatusMessage(
       hasWarnings
         ? 'Checks completed — resolve the warnings below before publishing.'
@@ -284,41 +339,54 @@ const ReviewPane = () => {
         <CardContent>
           {!selectedPeriod ? (
             <p className="text-sm text-gray-500">Select a reporting period to preview calculated allocations.</p>
-          ) : !periodResult || periodResult.allocations.length === 0 ? (
+          ) : flattenedPeriodResults.length === 0 ? (
             <p className="text-sm text-gray-500">No allocation results generated yet for {selectedPeriod}.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-slate-700">
-                <thead className="bg-gray-50 text-left dark:bg-slate-800">
-                  <tr>
-                    <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
-                      Datapoint
-                    </th>
-                    <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
-                      Allocated amount
-                    </th>
-                    <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
-                      Percentage
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 dark:divide-slate-800">
-                  {periodResult.allocations.map(allocation => (
-                    <tr key={allocation.datapointId}>
-                      <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{allocation.datapointId}</td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
-                        {allocation.value.toLocaleString('en-US', {
-                          style: 'currency',
-                          currency: 'USD',
-                          maximumFractionDigits: 0,
-                        })}
-                      </td>
-                      <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{allocation.percentage.toFixed(1)}%</td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-slate-700">
+                  <thead className="bg-gray-50 text-left dark:bg-slate-800">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
+                        Source allocation
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
+                        Target datapoint
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
+                        Basis value
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
+                        Allocated amount
+                      </th>
+                      <th scope="col" className="px-4 py-3 font-medium text-gray-500 dark:text-gray-300">
+                        Percentage
+                      </th>
                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-slate-800">
+                    {flattenedPeriodResults.map(row => (
+                      <tr key={row.key}>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{row.sourceName}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{row.targetName}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{formatCurrency(row.basisValue)}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{formatCurrencyWithCents(row.allocation)}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-gray-100">{row.percentage.toFixed(2)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {adjustmentSummaries.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                  {adjustmentSummaries.map(summary => (
+                    <li key={summary.allocationName}>
+                      {summary.allocationName} adjusted by {formatCurrencyWithCents(summary.amount)} to balance rounding.
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </ul>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

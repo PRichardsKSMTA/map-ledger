@@ -1,9 +1,10 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Plus, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus, SlidersHorizontal } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import type { DynamicDatapointGroup } from '../../types';
+import { allocateDynamic, getBasisValue, getGroupTotal } from '../../utils/dynamicAllocation';
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -17,6 +18,7 @@ const RatioAllocationBuilder = () => {
     presets,
     availablePeriods,
     selectedPeriod,
+    validationErrors,
     setSelectedPeriod,
     toggleGroupMember,
     createGroup,
@@ -80,38 +82,65 @@ const RatioAllocationBuilder = () => {
   const resolveBasisValue = useCallback(
     (accountId: string): number => {
       const basisAccount = basisAccounts.find(account => account.id === accountId);
-      if (!basisAccount) {
-        return 0;
-      }
-      if (selectedPeriod && basisAccount.valuesByPeriod && selectedPeriod in basisAccount.valuesByPeriod) {
-        const periodValue = basisAccount.valuesByPeriod[selectedPeriod];
-        if (typeof periodValue === 'number') {
-          return periodValue;
-        }
-      }
-      return basisAccount.value ?? 0;
+      return basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
     },
     [basisAccounts, selectedPeriod],
   );
 
   const calculateGroupTotal = useCallback(
-    (group: DynamicDatapointGroup): number =>
-      group.members.reduce((sum, member) => sum + resolveBasisValue(member.accountId), 0),
-    [resolveBasisValue],
+    (group: DynamicDatapointGroup): number => getGroupTotal(group, basisAccounts, selectedPeriod),
+    [basisAccounts, selectedPeriod],
   );
 
-  const allocationBasisTotal = useMemo(() => {
+  const targetDetails = useMemo(() => {
     if (!selectedAllocation) {
-      return 0;
+      return [] as { targetId: string; name: string; basisValue: number }[];
     }
-    return selectedAllocation.targetDatapoints.reduce((sum, target) => {
+    return selectedAllocation.targetDatapoints.map(target => {
       if (target.groupId) {
         const group = groups.find(item => item.id === target.groupId);
-        return sum + (group ? calculateGroupTotal(group) : 0);
+        const basisValue = group ? getGroupTotal(group, basisAccounts, selectedPeriod) : 0;
+        return { targetId: target.datapointId, name: target.name, basisValue };
       }
-      return sum + target.ratioMetric.value;
-    }, 0);
-  }, [calculateGroupTotal, groups, selectedAllocation]);
+      const basisAccount = basisAccounts.find(account => account.id === target.ratioMetric.id);
+      const basisValue = basisAccount
+        ? getBasisValue(basisAccount, selectedPeriod)
+        : typeof target.ratioMetric.value === 'number'
+            ? target.ratioMetric.value
+            : 0;
+      return { targetId: target.datapointId, name: target.name, basisValue };
+    });
+  }, [basisAccounts, groups, selectedAllocation, selectedPeriod]);
+
+  const basisTotal = useMemo(
+    () => targetDetails.reduce((sum, detail) => sum + detail.basisValue, 0),
+    [targetDetails],
+  );
+
+  const previewComputation = useMemo(() => {
+    if (targetDetails.length === 0 || basisTotal <= 0) {
+      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
+    }
+    try {
+      return allocateDynamic(
+        sourceBalance,
+        targetDetails.map(detail => detail.basisValue),
+      );
+    } catch {
+      return { allocations: targetDetails.map(() => 0), adjustmentIndex: null, adjustmentAmount: 0 };
+    }
+  }, [basisTotal, sourceBalance, targetDetails]);
+
+  const allocationIssues = useMemo(() => {
+    if (!selectedAllocation) {
+      return [];
+    }
+    return validationErrors.filter(
+      issue =>
+        issue.allocationId === selectedAllocation.id &&
+        (!selectedPeriod || issue.periodId === selectedPeriod),
+    );
+  }, [selectedAllocation, selectedPeriod, validationErrors]);
 
   const groupTotals = useMemo(
     () => new Map(groups.map(group => [group.id, calculateGroupTotal(group)])),
@@ -363,10 +392,26 @@ const RatioAllocationBuilder = () => {
                   {formatCurrency(sourceBalance)}
                 </div>
                 <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Allocation ratios are derived from {allocationBasisTotal.toLocaleString()} total basis value mapped into the selected dynamic datapoints.
+                  Allocation ratios are derived from {basisTotal.toLocaleString()} total basis value mapped into the selected dynamic datapoints.
                 </div>
               </div>
             </div>
+
+            {allocationIssues.length > 0 && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                  <div>
+                    <p className="font-medium">Resolve basis issues before applying this allocation.</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-xs">
+                      {allocationIssues.map(issue => (
+                        <li key={issue.id}>{issue.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-700">
               <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
@@ -387,27 +432,47 @@ const RatioAllocationBuilder = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-950">
-                  {selectedAllocation.targetDatapoints.map(target => {
-                    const basisValue = target.groupId ? groupTotals.get(target.groupId) ?? 0 : target.ratioMetric.value;
-                    const ratio = allocationBasisTotal > 0 ? basisValue / allocationBasisTotal : 0;
-                    const allocatedValue = sourceBalance * ratio;
-                    return (
-                      <tr key={target.datapointId}>
-                        <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-100">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" />
-                            <span>{target.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{formatCurrency(basisValue)}</td>
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{(ratio * 100).toFixed(2)}%</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400">{formatCurrency(allocatedValue)}</td>
-                      </tr>
-                    );
-                  })}
+                  {targetDetails.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
+                        Add target datapoints to preview the dynamic allocation.
+                      </td>
+                    </tr>
+                  ) : (
+                    targetDetails.map((detail, index) => {
+                      const ratio = basisTotal > 0 ? detail.basisValue / basisTotal : 0;
+                      const allocatedValue = previewComputation.allocations[index] ?? 0;
+                      return (
+                        <tr key={detail.targetId}>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-100">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                              <span>{detail.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{formatCurrency(detail.basisValue)}</td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{(ratio * 100).toFixed(2)}%</td>
+                          <td className="px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400">{formatCurrency(allocatedValue)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
+
+            {basisTotal <= 0 && targetDetails.length > 0 && (
+              <p className="text-sm text-amber-600 dark:text-amber-300">
+                Provide nonzero basis datapoints to generate allocation amounts.
+              </p>
+            )}
+
+            {previewComputation.adjustmentIndex !== null && Math.abs(previewComputation.adjustmentAmount) > 0 && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Rounded totals include a {formatCurrency(previewComputation.adjustmentAmount)} adjustment applied to the
+                largest allocation to balance back to the source amount.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
