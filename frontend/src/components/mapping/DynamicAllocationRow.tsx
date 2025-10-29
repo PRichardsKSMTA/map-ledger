@@ -3,6 +3,7 @@ import { AlertTriangle, Calculator, Layers } from 'lucide-react';
 import type { GLAccountMappingRow } from '../../types';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
+  allocateDynamic,
   getGroupMembersWithValues,
   getGroupTotal,
   getSourceValue,
@@ -104,6 +105,11 @@ const DynamicAllocationRow = ({
     });
   }, [allocation, basisAccounts, groups, selectedPeriod]);
 
+  const basisTotal = useMemo(
+    () => targetSummaries.reduce((sum, summary) => sum + summary.basisTotal, 0),
+    [targetSummaries],
+  );
+
   const periodResult = useMemo(() => {
     if (!allocation || !selectedPeriod) {
       return null;
@@ -125,6 +131,69 @@ const DynamicAllocationRow = ({
     }
     return relevant.filter(issue => issue.periodId === selectedPeriod);
   }, [account.id, selectedPeriod, validationErrors]);
+
+  const computedPreview = useMemo(() => {
+    if (periodResult) {
+      return {
+        allocations: periodResult.allocations.map(target => ({
+          targetId: target.targetId,
+          targetName: target.targetName,
+          value: target.value,
+          percentage: target.percentage,
+        })),
+        adjustment: periodResult.adjustment
+          ? {
+              amount: periodResult.adjustment.amount,
+              targetName:
+                periodResult.allocations.find(
+                  target => target.targetId === periodResult.adjustment?.targetId,
+                )?.targetName ?? null,
+            }
+          : null,
+      } as const;
+    }
+
+    if (!allocation || targetSummaries.length === 0 || basisTotal <= 0) {
+      return null;
+    }
+
+    try {
+      const computation = allocateDynamic(
+        sourceValue,
+        targetSummaries.map(summary => summary.basisTotal),
+      );
+
+      const allocations = targetSummaries.map((summary, index) => {
+        const ratio = basisTotal > 0 ? summary.basisTotal / basisTotal : 0;
+        return {
+          targetId: summary.id,
+          targetName: summary.name,
+          value: computation.allocations[index] ?? 0,
+          percentage: ratio * 100,
+        };
+      });
+
+      const adjustment =
+        computation.adjustmentIndex !== null
+          ? {
+              amount: computation.adjustmentAmount,
+              targetName:
+                targetSummaries[computation.adjustmentIndex]?.name ?? null,
+            }
+          : null;
+
+      return { allocations, adjustment } as const;
+    } catch (error) {
+      console.warn('Failed to derive preview for dynamic allocation row', error);
+      return null;
+    }
+  }, [
+    allocation,
+    basisTotal,
+    periodResult,
+    sourceValue,
+    targetSummaries,
+  ]);
 
   return (
     <tr>
@@ -202,13 +271,21 @@ const DynamicAllocationRow = ({
                       </div>
                     </div>
                     {summary.memberValues.length > 0 && (
-                      <ul className="mt-2 grid gap-1 text-xs text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                      <ul
+                        className="mt-3 divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-600 dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300"
+                      >
                         {summary.memberValues.map(member => (
-                          <li key={member.accountId} className="flex items-center justify-between gap-2">
-                            <span className="truncate" title={member.accountName}>
+                          <li
+                            key={member.accountId}
+                            className="flex items-center justify-between gap-3 px-3 py-2"
+                          >
+                            <span
+                              className="flex-1 truncate"
+                              title={member.accountName}
+                            >
                               {member.accountName}
                             </span>
-                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                            <span className="font-medium text-slate-700 tabular-nums dark:text-slate-200">
                               {basisFormatter.format(member.value)}
                             </span>
                           </li>
@@ -222,12 +299,12 @@ const DynamicAllocationRow = ({
           )}
 
           {selectedPeriod ? (
-            periodResult ? (
+            computedPreview ? (
               <div className="space-y-2 rounded-md bg-blue-50 p-4 text-sm text-blue-900 dark:bg-blue-500/10 dark:text-blue-100">
                 <div className="text-sm font-semibold">
                   Allocation preview for {selectedPeriod}
                 </div>
-                {periodResult.allocations.map(target => (
+                {computedPreview.allocations.map(target => (
                   <div key={target.targetId} className="flex items-center justify-between gap-4">
                     <span className="text-blue-800 dark:text-blue-200">{target.targetName}</span>
                     <span className="font-semibold">
@@ -235,11 +312,12 @@ const DynamicAllocationRow = ({
                     </span>
                   </div>
                 ))}
-                {periodResult.adjustment && Math.abs(periodResult.adjustment.amount) > 0 && (
-                  <p className="text-xs text-blue-700 dark:text-blue-200">
-                    Includes a {currencyFormatter.format(periodResult.adjustment.amount)} rounding adjustment applied to the largest target.
-                  </p>
-                )}
+                {computedPreview.adjustment && computedPreview.adjustment.targetName &&
+                  Math.abs(computedPreview.adjustment.amount) > 0 && (
+                    <p className="text-xs text-blue-700 dark:text-blue-200">
+                      Includes a {currencyFormatter.format(computedPreview.adjustment.amount)} rounding adjustment applied to {computedPreview.adjustment.targetName}.
+                    </p>
+                  )}
               </div>
             ) : (
               <p className="rounded-md border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100">
