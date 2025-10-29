@@ -76,6 +76,15 @@ export interface ImportPreviewRow {
   glMonth?: string;
 }
 
+export interface TrialBalanceRow {
+  entity: string;
+  accountId: string;
+  description: string;
+  netChange: number;
+  glMonth?: string;
+  [key: string]: unknown;
+}
+
 export interface Import {
   id: string;
   clientId: string;

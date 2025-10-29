@@ -1,17 +1,9 @@
 import { useEffect, useState } from 'react';
-
-export interface AccountRow {
-  entity: string;
-  accountId: string;
-  description: string;
-  netChange: number;
-  glMonth?: string;
-  [key: string]: any;
-}
+import type { TrialBalanceRow } from '../../types';
 
 interface ExcludeAccountsProps {
-  rows: AccountRow[];
-  onConfirm: (included: AccountRow[], excluded: AccountRow[]) => void;
+  rows: TrialBalanceRow[];
+  onConfirm: (included: TrialBalanceRow[], excluded: TrialBalanceRow[]) => void;
 }
 
 export default function ExcludeAccounts({ rows, onConfirm }: ExcludeAccountsProps) {

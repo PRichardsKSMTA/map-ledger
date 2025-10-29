@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ExcludeAccounts, { AccountRow } from '../components/import/ExcludeAccounts';
+import ExcludeAccounts from '../components/import/ExcludeAccounts';
+import type { TrialBalanceRow } from '../types';
 
 describe('ExcludeAccounts', () => {
-  const rows: AccountRow[] = [
+  const rows: TrialBalanceRow[] = [
     { accountId: '1000', description: 'Cash', netChange: 10, entity: 'E1' },
     { accountId: '2000', description: 'AP', netChange: -5, entity: 'E1' },
   ];
