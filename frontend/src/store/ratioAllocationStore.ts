@@ -98,7 +98,7 @@ type ResolvedTargetDetail = {
   error?: string;
 };
 
-type RatioAllocationHydrationPayload = {
+export type RatioAllocationHydrationPayload = {
   basisAccounts?: DynamicBasisAccount[];
   sourceAccounts?: DynamicSourceAccount[];
   groups?: DynamicDatapointGroup[];

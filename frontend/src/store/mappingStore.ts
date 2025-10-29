@@ -12,7 +12,7 @@ import {
   getStandardScoaOption,
 } from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
-import { useRatioAllocationStore } from './ratioAllocationStore';
+import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 
 const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
@@ -260,14 +260,14 @@ const syncDynamicAllocationState = (
     ? normalizedRequested
     : availablePeriods[0] ?? null;
 
-  const hydratePayload = {
+  const hydratePayload: RatioAllocationHydrationPayload = {
     basisAccounts,
     sourceAccounts,
     groups: [],
     allocations: [],
     availablePeriods,
     selectedPeriod,
-  } as const;
+  };
 
   useRatioAllocationStore.getState().hydrate(hydratePayload);
   useRatioAllocationStore.setState({ results: [], validationErrors: [], auditLog: [] });
