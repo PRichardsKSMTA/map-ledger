@@ -1,5 +1,20 @@
-import { ChangeEvent, Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronRight } from 'lucide-react';
+import {
+  ChangeEvent,
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  ArrowUpDown,
+  Check,
+  ChevronRight,
+  HelpCircle,
+  Sparkles,
+  XCircle,
+} from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
@@ -44,9 +59,18 @@ const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
 
 const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
   New: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
-  Unmapped: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
-  Mapped: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  Unmapped:
+    'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+  Mapped:
+    'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
   Excluded: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200',
+};
+
+const STATUS_ICONS: Record<GLAccountMappingRow['status'], LucideIcon> = {
+  New: Sparkles,
+  Unmapped: HelpCircle,
+  Mapped: Check,
+  Excluded: XCircle,
 };
 
 export const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
@@ -56,12 +80,13 @@ export const STATUS_ORDER: Record<GLAccountMappingRow['status'], number> = {
   Excluded: 3,
 };
 
-const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> = {
-  direct: 'Direct',
-  percentage: 'Percentage',
-  dynamic: 'Dynamic',
-  exclude: 'Excluded',
-};
+const MAPPING_TYPE_LABELS: Record<GLAccountMappingRow['mappingType'], string> =
+  {
+    direct: 'Direct',
+    percentage: 'Percentage',
+    dynamic: 'Dynamic',
+    exclude: 'Excluded',
+  };
 
 const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
   Object.entries(MAPPING_TYPE_LABELS) as [MappingType, string][]
@@ -101,45 +126,66 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
-const formatCurrency = (value: number): string => currencyFormatter.format(value);
+const formatCurrency = (value: number): string =>
+  currencyFormatter.format(value);
 
 export default function MappingTable() {
   const { allocations } = useRatioAllocationStore();
-  const datapoints = useTemplateStore(state => state.datapoints);
-  const coaOptions = useMemo<TargetScoaOption[]>(() => buildTargetScoaOptions(datapoints), [datapoints]);
+  const datapoints = useTemplateStore((state) => state.datapoints);
+  const coaOptions = useMemo<TargetScoaOption[]>(
+    () => buildTargetScoaOptions(datapoints),
+    [datapoints]
+  );
   const accounts = useMappingStore(selectAccounts);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
-  const updateTarget = useMappingStore(state => state.updateTarget);
-  const updateMappingType = useMappingStore(state => state.updateMappingType);
-  const updatePolarity = useMappingStore(state => state.updatePolarity);
-  const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
-  const addSplitDefinition = useMappingStore(state => state.addSplitDefinition);
-  const updateSplitDefinition = useMappingStore(state => state.updateSplitDefinition);
-  const removeSplitDefinition = useMappingStore(state => state.removeSplitDefinition);
-  const { selectedIds, toggleSelection, setSelection, clearSelection } = useMappingSelectionStore();
+  const updateTarget = useMappingStore((state) => state.updateTarget);
+  const updateMappingType = useMappingStore((state) => state.updateMappingType);
+  const updatePolarity = useMappingStore((state) => state.updatePolarity);
+  const applyPresetToAccounts = useMappingStore(
+    (state) => state.applyPresetToAccounts
+  );
+  const addSplitDefinition = useMappingStore(
+    (state) => state.addSplitDefinition
+  );
+  const updateSplitDefinition = useMappingStore(
+    (state) => state.updateSplitDefinition
+  );
+  const removeSplitDefinition = useMappingStore(
+    (state) => state.removeSplitDefinition
+  );
+  const { selectedIds, toggleSelection, setSelection, clearSelection } =
+    useMappingSelectionStore();
   const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  const [sortConfig, setSortConfig] = useState<{
+    key: SortKey;
+    direction: SortDirection;
+  } | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(
+    () => new Set()
+  );
 
-  const splitIssueIds = useMemo(() => new Set(splitValidationIssues.map(issue => issue.accountId)), [
-    splitValidationIssues,
-  ]);
+  const splitIssueIds = useMemo(
+    () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
+    [splitValidationIssues]
+  );
 
   useEffect(() => {
-    const validIds = new Set(accounts.map(account => account.id));
-    const filteredSelection = Array.from(selectedIds).filter(id => validIds.has(id));
+    const validIds = new Set(accounts.map((account) => account.id));
+    const filteredSelection = Array.from(selectedIds).filter((id) =>
+      validIds.has(id)
+    );
     if (filteredSelection.length !== selectedIds.size) {
       setSelection(filteredSelection);
     }
   }, [accounts, selectedIds, setSelection]);
 
   useEffect(() => {
-    setExpandedRows(previous => {
+    setExpandedRows((previous) => {
       const next = new Set<string>();
-      previous.forEach(id => {
-        if (accounts.some(account => account.id === id)) {
+      previous.forEach((id) => {
+        if (accounts.some((account) => account.id === id)) {
           next.add(id);
         }
       });
@@ -149,7 +195,7 @@ export default function MappingTable() {
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
-    return accounts.filter(account => {
+    return accounts.filter((account) => {
       const matchesSearch =
         !normalizedQuery ||
         [
@@ -184,24 +230,31 @@ export default function MappingTable() {
       }
       const textA = typeof valueA === 'number' ? valueA.toString() : valueA;
       const textB = typeof valueB === 'number' ? valueB.toString() : valueB;
-      return textA.localeCompare(textB, undefined, { sensitivity: 'base' }) * multiplier;
+      return (
+        textA.localeCompare(textB, undefined, { sensitivity: 'base' }) *
+        multiplier
+      );
     };
     return [...filteredAccounts].sort(safeCompare);
   }, [filteredAccounts, sortConfig]);
 
   useEffect(() => {
     if (!selectAllRef.current) return;
-    const allIds = sortedAccounts.map(account => account.id);
-    const isAllSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+    const allIds = sortedAccounts.map((account) => account.id);
+    const isAllSelected =
+      allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
     selectAllRef.current.checked = isAllSelected;
     selectAllRef.current.indeterminate =
-      selectedIds.size > 0 && !isAllSelected && allIds.some(id => selectedIds.has(id));
+      selectedIds.size > 0 &&
+      !isAllSelected &&
+      allIds.some((id) => selectedIds.has(id));
   }, [sortedAccounts, selectedIds]);
 
   const handleSort = (key: SortKey) => {
-    setSortConfig(previous => {
+    setSortConfig((previous) => {
       if (previous && previous.key === key) {
-        const nextDirection: SortDirection = previous.direction === 'asc' ? 'desc' : 'asc';
+        const nextDirection: SortDirection =
+          previous.direction === 'asc' ? 'desc' : 'asc';
         return { key, direction: nextDirection };
       }
       return { key, direction: 'asc' };
@@ -211,7 +264,7 @@ export default function MappingTable() {
   const handleSelectAll = (event: ChangeEvent<HTMLInputElement>) => {
     const shouldSelectAll = event.target.checked;
     if (shouldSelectAll) {
-      setSelection(sortedAccounts.map(account => account.id));
+      setSelection(sortedAccounts.map((account) => account.id));
     } else {
       clearSelection();
     }
@@ -222,7 +275,7 @@ export default function MappingTable() {
   };
 
   const toggleSplitRow = (id: string) => {
-    setExpandedRows(previous => {
+    setExpandedRows((previous) => {
       const next = new Set(previous);
       if (next.has(id)) {
         next.delete(id);
@@ -233,7 +286,9 @@ export default function MappingTable() {
     });
   };
 
-  const getAriaSort = (columnKey: SortKey): 'ascending' | 'descending' | 'none' => {
+  const getAriaSort = (
+    columnKey: SortKey
+  ): 'ascending' | 'descending' | 'none' => {
     if (sortConfig?.key !== columnKey) {
       return 'none';
     }
@@ -244,7 +299,10 @@ export default function MappingTable() {
     <div className="space-y-4">
       <MappingToolbar />
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700" role="table">
+        <table
+          className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700"
+          role="table"
+        >
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               <th scope="col" className="w-10 px-3 py-3">
@@ -260,7 +318,7 @@ export default function MappingTable() {
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              {COLUMN_DEFINITIONS.map(column => (
+              {COLUMN_DEFINITIONS.map((column) => (
                 <th
                   key={column.key}
                   scope="col"
@@ -280,21 +338,29 @@ export default function MappingTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
-            {sortedAccounts.map(account => {
+            {sortedAccounts.map((account) => {
               const isSelected = selectedIds.has(account.id);
-      const targetScoa = account.manualCOAId ?? account.suggestedCOAId ?? '';
-      const requiresSplit = account.mappingType === 'percentage' || account.mappingType === 'dynamic';
-      const hasSplitIssue = splitIssueIds.has(account.id);
-      const hasAllocation =
-        (account.splitDefinitions.length > 0 && !hasSplitIssue) ||
-        allocations.some(allocation => allocation.sourceAccount.id === account.id);
+              const targetScoa =
+                account.manualCOAId ?? account.suggestedCOAId ?? '';
+              const requiresSplit =
+                account.mappingType === 'percentage' ||
+                account.mappingType === 'dynamic';
+              const hasSplitIssue = splitIssueIds.has(account.id);
+              const hasAllocation =
+                (account.splitDefinitions.length > 0 && !hasSplitIssue) ||
+                allocations.some(
+                  (allocation) => allocation.sourceAccount.id === account.id
+                );
               const statusLabel = STATUS_LABELS[account.status];
+              const StatusIcon = STATUS_ICONS[account.status];
               const isExpanded = expandedRows.has(account.id);
 
               return (
                 <Fragment key={account.id}>
                   <tr
-                    className={isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined}
+                    className={
+                      isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined
+                    }
                   >
                     <td className="px-3 py-4">
                       {requiresSplit ? (
@@ -312,7 +378,10 @@ export default function MappingTable() {
                           />
                         </button>
                       ) : (
-                        <span className="inline-flex h-6 w-6 items-center justify-center" aria-hidden="true" />
+                        <span
+                          className="inline-flex h-6 w-6 items-center justify-center"
+                          aria-hidden="true"
+                        />
                       )}
                     </td>
                     <td className="px-3 py-4">
@@ -325,14 +394,20 @@ export default function MappingTable() {
                       />
                     </td>
                     <td className="max-w-[220px] px-3 py-4">
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.companyName}</div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400">{account.entityName ?? '—'}</div>
+                      <div className="font-medium text-slate-900 dark:text-slate-100">
+                        {account.companyName}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        {account.entityName ?? '—'}
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
                       {account.accountId}
                     </td>
                     <td className="px-3 py-4">
-                      <div className="font-medium text-slate-900 dark:text-slate-100">{account.accountName}</div>
+                      <div className="font-medium text-slate-900 dark:text-slate-100">
+                        {account.accountName}
+                      </div>
                     </td>
                     <td className="px-3 py-4">
                       <div className="font-medium text-slate-900 dark:text-slate-100">
@@ -340,36 +415,46 @@ export default function MappingTable() {
                       </div>
                     </td>
                     <td className="px-3 py-4">
-                      <label className="sr-only" htmlFor={`mapping-type-${account.id}`}>
+                      <label
+                        className="sr-only"
+                        htmlFor={`mapping-type-${account.id}`}
+                      >
                         Select mapping type for {account.accountName}
                       </label>
                       <select
                         id={`mapping-type-${account.id}`}
                         value={account.mappingType}
-                        onChange={event =>
-                          updateMappingType(account.id, event.target.value as MappingType)
+                        onChange={(event) =>
+                          updateMappingType(
+                            account.id,
+                            event.target.value as MappingType
+                          )
                         }
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
-                        {MAPPING_TYPE_OPTIONS.map(option => (
+                        {MAPPING_TYPE_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
                         ))}
                       </select>
                     </td>
-                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.targetScoa ?? ''}`}>
+                    <td
+                      className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.targetScoa ?? ''}`}
+                    >
                       <label className="sr-only" htmlFor={`scoa-${account.id}`}>
                         Select target SCoA for {account.accountName}
                       </label>
                       <select
                         id={`scoa-${account.id}`}
                         value={targetScoa}
-                        onChange={event => updateTarget(account.id, event.target.value)}
+                        onChange={(event) =>
+                          updateTarget(account.id, event.target.value)
+                        }
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
                         <option value="">Select target</option>
-                        {coaOptions.map(option => (
+                        {coaOptions.map((option) => (
                           <option key={option.id} value={option.value}>
                             {option.label}
                           </option>
@@ -377,18 +462,24 @@ export default function MappingTable() {
                       </select>
                     </td>
                     <td className="px-3 py-4">
-                      <label className="sr-only" htmlFor={`polarity-${account.id}`}>
+                      <label
+                        className="sr-only"
+                        htmlFor={`polarity-${account.id}`}
+                      >
                         Select polarity for {account.accountName}
                       </label>
                       <select
                         id={`polarity-${account.id}`}
                         value={account.polarity}
-                        onChange={event =>
-                          updatePolarity(account.id, event.target.value as MappingPolarity)
+                        onChange={(event) =>
+                          updatePolarity(
+                            account.id,
+                            event.target.value as MappingPolarity
+                          )
                         }
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
-                        {POLARITY_OPTIONS.map(option => (
+                        {POLARITY_OPTIONS.map((option) => (
                           <option key={option} value={option}>
                             {option}
                           </option>
@@ -396,20 +487,23 @@ export default function MappingTable() {
                       </select>
                     </td>
                     <td className="px-3 py-4">
-                      <label className="sr-only" htmlFor={`preset-${account.id}`}>
+                      <label
+                        className="sr-only"
+                        htmlFor={`preset-${account.id}`}
+                      >
                         Select preset for {account.accountName}
                       </label>
                       <select
                         id={`preset-${account.id}`}
                         value={account.presetId ?? ''}
-                        onChange={event => {
+                        onChange={(event) => {
                           const nextValue = event.target.value || null;
                           applyPresetToAccounts([account.id], nextValue);
                         }}
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       >
                         <option value="">No preset</option>
-                        {PRESET_OPTIONS.map(option => (
+                        {PRESET_OPTIONS.map((option) => (
                           <option key={option.value} value={option.value}>
                             {option.label}
                           </option>
@@ -418,11 +512,17 @@ export default function MappingTable() {
                     </td>
                     <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{account.aiConfidence !== undefined ? `${account.aiConfidence}%` : '—'}</span>
+                        <span className="font-medium">
+                          {account.aiConfidence !== undefined
+                            ? `${account.aiConfidence}%`
+                            : '—'}
+                        </span>
                         <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                           <div
                             className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
-                            style={{ width: `${Math.min(account.aiConfidence ?? 0, 100)}%` }}
+                            style={{
+                              width: `${Math.min(account.aiConfidence ?? 0, 100)}%`,
+                            }}
                             aria-hidden="true"
                           />
                         </div>
@@ -435,12 +535,16 @@ export default function MappingTable() {
                           role="status"
                           aria-label={`Status ${statusLabel}`}
                         >
-                          <Check className="h-3 w-3" aria-hidden="true" />
+                          <StatusIcon className="h-3 w-3" aria-hidden="true" />
                           {statusLabel}
                         </span>
                         {requiresSplit && !hasAllocation && (
-                          <span className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}>
-                            {hasSplitIssue ? 'Allocation percentages must equal 100%' : 'Allocation details required'}
+                          <span
+                            className={`text-xs ${hasSplitIssue ? 'text-rose-600 dark:text-rose-300' : 'text-amber-600 dark:text-amber-300'}`}
+                          >
+                            {hasSplitIssue
+                              ? 'Allocation percentages must equal 100%'
+                              : 'Allocation details required'}
                           </span>
                         )}
                       </div>
@@ -453,8 +557,12 @@ export default function MappingTable() {
                       colSpan={COLUMN_DEFINITIONS.length + 2}
                       panelId={`split-panel-${account.id}`}
                       onAddSplit={() => addSplitDefinition(account.id)}
-                      onUpdateSplit={(splitId, updates) => updateSplitDefinition(account.id, splitId, updates)}
-                      onRemoveSplit={splitId => removeSplitDefinition(account.id, splitId)}
+                      onUpdateSplit={(splitId, updates) =>
+                        updateSplitDefinition(account.id, splitId, updates)
+                      }
+                      onRemoveSplit={(splitId) =>
+                        removeSplitDefinition(account.id, splitId)
+                      }
                     />
                   )}
                 </Fragment>
@@ -462,7 +570,10 @@ export default function MappingTable() {
             })}
             {sortedAccounts.length === 0 && (
               <tr>
-                <td colSpan={COLUMN_DEFINITIONS.length + 2} className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                <td
+                  colSpan={COLUMN_DEFINITIONS.length + 2}
+                  className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
+                >
                   No mapping rows match your filters.
                 </td>
               </tr>
@@ -474,7 +585,10 @@ export default function MappingTable() {
   );
 }
 
-function getSortValue(account: GLAccountMappingRow, key: SortKey): string | number {
+function getSortValue(
+  account: GLAccountMappingRow,
+  key: SortKey
+): string | number {
   switch (key) {
     case 'companyName':
       return `${account.companyName} ${account.entityName ?? ''}`.trim();
