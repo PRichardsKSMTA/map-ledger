@@ -19,6 +19,7 @@ const RatioAllocationBuilder = () => {
     validationErrors,
     toggleGroupMember,
     createGroup,
+    toggleAllocationGroupTarget,
   } = useRatioAllocationStore();
 
   const [selectedAllocationId, setSelectedAllocationId] = useState<string | null>(null);
@@ -75,6 +76,17 @@ const RatioAllocationBuilder = () => {
     }
     return allocations.find(allocation => allocation.id === selectedAllocationId) ?? null;
   }, [allocations, selectedAllocationId]);
+
+  const selectedGroupIds = useMemo(() => {
+    if (!selectedAllocation) {
+      return new Set<string>();
+    }
+    return new Set(
+      selectedAllocation.targetDatapoints
+        .filter(target => target.groupId)
+        .map(target => target.groupId as string),
+    );
+  }, [selectedAllocation]);
 
   const selectedSourceAccount = useMemo(() => {
     if (!selectedAllocation) {
@@ -280,24 +292,43 @@ const RatioAllocationBuilder = () => {
           )}
 
           <div className="space-y-4">
-            {groups.map(group => (
-              <Card key={group.id} className="border border-slate-200 shadow-sm dark:border-slate-700">
-                <CardHeader className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h4 className="text-base font-medium text-slate-900 dark:text-slate-100">{group.label}</h4>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Maps to {group.targetName}</p>
-                  </div>
-                  <div className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                    Basis total: {formatCurrency(groupTotals.get(group.id) ?? 0)}
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {basisAccounts.map(account => {
-                    const checked = group.members.some(member => member.accountId === account.id);
-                    return (
-                      <label
-                        key={account.id}
-                        className="flex cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+            {groups.map(group => {
+              const isSelected = selectedGroupIds.has(group.id);
+              const basisTotal = formatCurrency(groupTotals.get(group.id) ?? 0);
+              return (
+                <Card key={group.id} className="border border-slate-200 shadow-sm dark:border-slate-700">
+                  <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h4 className="text-base font-medium text-slate-900 dark:text-slate-100">{group.label}</h4>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Maps to {group.targetName}</p>
+                    </div>
+                    <div className="flex flex-col items-start gap-2 text-sm md:items-end">
+                      <div className="font-medium text-blue-700 dark:text-blue-400">Basis total: {basisTotal}</div>
+                      <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                          checked={isSelected}
+                          disabled={!selectedAllocation}
+                          onChange={() => {
+                            if (!selectedAllocation) {
+                              return;
+                            }
+                            toggleAllocationGroupTarget(selectedAllocation.id, group.id);
+                          }}
+                          aria-label={`Include ${group.label} in the allocation`}
+                        />
+                        <span>{isSelected ? 'Included in allocation' : 'Include in allocation'}</span>
+                      </label>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {basisAccounts.map(account => {
+                      const checked = group.members.some(member => member.accountId === account.id);
+                      return (
+                        <label
+                          key={account.id}
+                          className="flex cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
                       >
                         <span className="flex items-center gap-2">
                           <input
@@ -310,10 +341,11 @@ const RatioAllocationBuilder = () => {
                         <span className="font-medium">{formatCurrency(resolveBasisValue(account.id))}</span>
                       </label>
                     );
-                  })}
-                </CardContent>
-              </Card>
-            ))}
+                    })}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

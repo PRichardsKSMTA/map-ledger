@@ -123,6 +123,7 @@ type RatioAllocationState = {
   }) => void;
   updateGroup: (groupId: string, updates: Partial<Omit<DynamicDatapointGroup, 'id' | 'members'>>) => void;
   toggleGroupMember: (groupId: string, accountId: string) => void;
+  toggleAllocationGroupTarget: (allocationId: string, groupId: string) => void;
 };
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
@@ -597,6 +598,52 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, groups, state.basisAccounts, state.selectedPeriod),
       );
       return { groups, allocations };
+    });
+  },
+
+  toggleAllocationGroupTarget: (allocationId, groupId) => {
+    set(state => {
+      const group = state.groups.find(item => item.id === groupId);
+      if (!group) {
+        return state;
+      }
+
+      const allocations = state.allocations.map(allocation => {
+        if (allocation.id !== allocationId) {
+          return allocation;
+        }
+
+        const exists = allocation.targetDatapoints.some(target => {
+          if (target.groupId) {
+            return target.groupId === groupId;
+          }
+          return target.datapointId === group.targetId;
+        });
+
+        const nextTargets = exists
+          ? allocation.targetDatapoints.filter(target => {
+              if (target.groupId) {
+                return target.groupId !== groupId;
+              }
+              return target.datapointId !== group.targetId;
+            })
+          : [
+              ...allocation.targetDatapoints,
+              buildTargetDatapoint(group, state.basisAccounts, state.selectedPeriod),
+            ];
+
+        return synchronizeAllocationTargets(
+          {
+            ...allocation,
+            targetDatapoints: nextTargets,
+          },
+          state.groups,
+          state.basisAccounts,
+          state.selectedPeriod,
+        );
+      });
+
+      return { allocations };
     });
   },
 }));
