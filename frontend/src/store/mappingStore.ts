@@ -47,22 +47,7 @@ const baseMappings: GLAccountMappingRow[] = [
     aiConfidence: 70,
     polarity: 'Debit',
     notes: 'Needs reviewer confirmation of dynamic allocation.',
-    splitDefinitions: [
-      {
-        id: 'split-3',
-        targetId: FUEL_EXPENSE_TARGET.id,
-        targetName: FUEL_EXPENSE_TARGET.label,
-        allocationType: 'amount',
-        allocationValue: 45000,
-      },
-      {
-        id: 'split-4',
-        targetId: TRACTOR_MAINTENANCE_TARGET.id,
-        targetName: TRACTOR_MAINTENANCE_TARGET.label,
-        allocationType: 'amount',
-        allocationValue: 20000,
-      },
-    ],
+    splitDefinitions: [],
     companies: [
       { id: 'entity-main', company: 'Global Main', balance: 65000 },
     ],
@@ -187,7 +172,11 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
     return 'Excluded';
   }
 
-  if (account.mappingType === 'percentage' || account.mappingType === 'dynamic') {
+  if (account.mappingType === 'dynamic') {
+    return account.status === 'Excluded' ? 'Excluded' : account.status;
+  }
+
+  if (account.mappingType === 'percentage') {
     if (account.splitDefinitions.length === 0) {
       return 'Unmapped';
     }
@@ -200,15 +189,13 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
       return 'Unmapped';
     }
 
-    if (account.mappingType === 'percentage') {
-      const totalPercentage = account.splitDefinitions.reduce(
-        (sum, split) => sum + getSplitPercentage(account, split),
-        0,
-      );
+    const totalPercentage = account.splitDefinitions.reduce(
+      (sum, split) => sum + getSplitPercentage(account, split),
+      0,
+    );
 
-      if (Math.abs(totalPercentage - 100) > 0.01) {
-        return 'Unmapped';
-      }
+    if (Math.abs(totalPercentage - 100) > 0.01) {
+      return 'Unmapped';
     }
 
     return 'Mapped';
@@ -371,10 +358,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                     ? 'Unmapped'
                     : account.status,
               manualCOAId: mappingType === 'exclude' ? undefined : account.manualCOAId,
-              splitDefinitions:
-                mappingType === 'percentage' || mappingType === 'dynamic'
-                  ? account.splitDefinitions
-                  : [],
+          splitDefinitions:
+            mappingType === 'percentage'
+              ? account.splitDefinitions
+              : [],
             })
           : account
       ),
@@ -397,11 +384,14 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (account.id !== id) {
           return account;
         }
+        if (account.mappingType !== 'percentage') {
+          return account;
+        }
         const nextSplit: MappingSplitDefinition = {
           id: createId(),
           targetId: '',
           targetName: '',
-          allocationType: account.mappingType === 'dynamic' ? 'amount' : 'percentage',
+          allocationType: 'percentage',
           allocationValue: 0,
           notes: '',
         };
@@ -588,7 +578,7 @@ const createId = (): string => {
 const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
   const issues: { accountId: string; message: string }[] = [];
   accounts.forEach(account => {
-    if (account.mappingType !== 'percentage' && account.mappingType !== 'dynamic') {
+    if (account.mappingType !== 'percentage') {
       return;
     }
     if (account.splitDefinitions.length === 0) {
@@ -601,15 +591,6 @@ const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
     );
     if (Math.abs(totalPercentage - 100) > 0.01) {
       issues.push({ accountId: account.id, message: 'Split percentages must equal 100%' });
-    }
-    if (account.mappingType === 'dynamic') {
-      const totalAmount = account.splitDefinitions.reduce((sum, split) => {
-        const percentage = getSplitPercentage(account, split);
-        return sum + getSplitAmount(account, percentage);
-      }, 0);
-      if (Math.abs(totalAmount - account.netChange) > Math.max(1, Math.abs(account.netChange) * 0.001)) {
-        issues.push({ accountId: account.id, message: 'Dynamic allocations must reconcile to the account net change' });
-      }
     }
   });
   return issues;
@@ -669,6 +650,5 @@ export const selectSplitValidationIssues = (state: MappingState) =>
 export const selectAccountsRequiringSplits = (state: MappingState) =>
   state.accounts.filter(
     account =>
-      (account.mappingType === 'percentage' || account.mappingType === 'dynamic') &&
-      account.splitDefinitions.length === 0
+      account.mappingType === 'percentage' && account.splitDefinitions.length === 0
   );

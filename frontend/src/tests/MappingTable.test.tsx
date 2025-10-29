@@ -35,7 +35,7 @@ describe('MappingTable', () => {
   test('lists all COA datapoints in the target selector', () => {
     render(<MappingTable />);
 
-    const targetSelect = screen.getByLabelText('Select target SCoA for Fuel Expense');
+    const targetSelect = screen.getByLabelText('Select target SCoA for Linehaul Revenue');
     const optionLabels = within(targetSelect)
       .getAllByRole('option')
       .map(option => option.textContent?.trim())
@@ -64,6 +64,20 @@ describe('MappingTable', () => {
     const companyCells = screen.getAllByText('Acme Freight');
     expect(companyCells.length).toBeGreaterThan(0);
     expect(screen.queryByText('Acme Freight Operations')).not.toBeInTheDocument();
+  });
+
+  test('shows dynamic allocation helper when expanding a dynamic mapping row', () => {
+    render(<MappingTable />);
+
+    const toggleButton = screen.getByLabelText('Show split details for Fuel Expense');
+    fireEvent.click(toggleButton);
+
+    expect(
+      screen.getByText(
+        /No dynamic ratios are configured yet. Launch the builder to choose basis datapoints/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open dynamic allocation builder/ })).toBeInTheDocument();
   });
 });
 

@@ -115,40 +115,17 @@ export default function MappingSplitRow({
     const percentageTotalRaw = splitRows.reduce((sum, split) => sum + split.percentage, 0);
     const amountTotal = splitRows.reduce((sum, split) => sum + split.amount, 0);
 
-    if (account.mappingType === 'percentage') {
-      const roundedTotal = Math.round(percentageTotalRaw);
-      const remaining = Math.max(0, 100 - roundedTotal);
-      return {
-        percentageTotalLabel: `${roundedTotal}%`,
-        amountTotal,
-        remainingLabel: `${remaining}%`,
-        isComplete: roundedTotal === 100,
-      };
-    }
-
-    const remainingRaw = 100 - percentageTotalRaw;
     return {
-      percentageTotalLabel: `${percentageTotalRaw.toFixed(1)}%`,
+      percentageTotalLabel: `${Math.round(percentageTotalRaw)}%`,
       amountTotal,
-      remainingLabel: `${remainingRaw.toFixed(1)}%`,
-      isComplete: Math.abs(percentageTotalRaw - 100) <= 0.01,
+      remainingLabel: `${Math.max(0, 100 - Math.round(percentageTotalRaw))}%`,
+      isComplete: Math.round(percentageTotalRaw) === 100,
     };
-  }, [account.mappingType, splitRows]);
+  }, [splitRows]);
 
   const handlePercentageChange = (splitId: string, value: string) => {
     const rawValue = Number(value);
-    const normalizedValue =
-      account.mappingType === 'percentage' ? Math.round(rawValue) : rawValue;
-    const numericValue = clampPercentage(normalizedValue);
-
-    if (account.mappingType === 'dynamic') {
-      const nextAmount = calculateSplitAmount(account, numericValue);
-      onUpdateSplit(splitId, {
-        allocationType: 'amount',
-        allocationValue: Number.isFinite(nextAmount) ? nextAmount : 0,
-      });
-      return;
-    }
+    const numericValue = clampPercentage(Math.round(rawValue));
 
     const otherSplits = account.splitDefinitions.filter(split => split.id !== splitId);
     const redistribution = distributePercentageRemainder(
@@ -199,9 +176,7 @@ export default function MappingSplitRow({
                 Allocation splits
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {account.mappingType === 'dynamic'
-                  ? 'Dynamic allocation amounts are determined by the relationships between chosen datapoints.'
-                  : 'Ensure 100% allocation across targets.'}
+                Ensure 100% allocation across targets.
               </p>
             </div>
             <button
@@ -256,11 +231,9 @@ export default function MappingSplitRow({
                           type="number"
                           min={0}
                           max={100}
-                          step={account.mappingType === 'percentage' ? 1 : 0.1}
+                          step={1}
                           value={Number.isFinite(split.percentage)
-                            ? account.mappingType === 'percentage'
-                              ? Math.round(split.percentage)
-                              : Number(split.percentage.toFixed(1))
+                            ? Math.round(split.percentage)
                             : 0}
                           onChange={event => handlePercentageChange(split.id, event.target.value)}
                           className="w-24 rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
