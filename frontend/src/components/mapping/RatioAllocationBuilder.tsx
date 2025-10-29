@@ -4,7 +4,12 @@ import { Card, CardContent, CardHeader } from '../ui/Card';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import type { DynamicDatapointGroup } from '../../types';
-import { allocateDynamic, getBasisValue, getGroupTotal } from '../../utils/dynamicAllocation';
+import {
+  allocateDynamic,
+  getBasisValue,
+  getGroupMembersWithValues,
+  getGroupTotal,
+} from '../../utils/dynamicAllocation';
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -17,8 +22,9 @@ const RatioAllocationBuilder = () => {
     sourceAccounts,
     selectedPeriod,
     validationErrors,
-    toggleGroupMember,
     createGroup,
+    updateGroup,
+    setGroupMembers,
     toggleAllocationGroupTarget,
   } = useRatioAllocationStore();
 
@@ -27,6 +33,13 @@ const RatioAllocationBuilder = () => {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupTargetId, setNewGroupTargetId] = useState<string>('');
   const [newGroupMembers, setNewGroupMembers] = useState<string[]>([]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupDraft, setGroupDraft] = useState<{
+    label: string;
+    targetId: string;
+    memberIds: string[];
+  } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedAllocationId && allocations.length > 0) {
@@ -103,11 +116,6 @@ const RatioAllocationBuilder = () => {
     [basisAccounts, selectedPeriod],
   );
 
-  const calculateGroupTotal = useCallback(
-    (group: DynamicDatapointGroup): number => getGroupTotal(group, basisAccounts, selectedPeriod),
-    [basisAccounts, selectedPeriod],
-  );
-
   const targetDetails = useMemo(() => {
     if (!selectedAllocation) {
       return [] as { targetId: string; name: string; basisValue: number }[];
@@ -143,11 +151,6 @@ const RatioAllocationBuilder = () => {
         (!selectedPeriod || issue.periodId === selectedPeriod),
     );
   }, [selectedAllocation, selectedPeriod, validationErrors]);
-
-  const groupTotals = useMemo(
-    () => new Map(groups.map(group => [group.id, calculateGroupTotal(group)])),
-    [calculateGroupTotal, groups],
-  );
 
   const sourceBalance = useMemo(() => {
     if (!selectedSourceAccount) {
@@ -189,6 +192,42 @@ const RatioAllocationBuilder = () => {
     setIsCreatingGroup(false);
     setNewGroupName('');
     setNewGroupMembers([]);
+  };
+
+  const beginEditGroup = (group: DynamicDatapointGroup) => {
+    setEditingGroupId(group.id);
+    setGroupDraft({
+      label: group.label,
+      targetId: group.targetId,
+      memberIds: group.members.map(member => member.accountId),
+    });
+    setEditError(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingGroupId(null);
+    setGroupDraft(null);
+    setEditError(null);
+  };
+
+  const handleSaveGroup = () => {
+    if (!editingGroupId || !groupDraft) {
+      return;
+    }
+    const trimmedLabel = groupDraft.label.trim();
+    if (!trimmedLabel) {
+      setEditError('Enter a datapoint name.');
+      return;
+    }
+    if (groupDraft.memberIds.length === 0) {
+      setEditError('Select at least one source account.');
+      return;
+    }
+    updateGroup(editingGroupId, { label: trimmedLabel, targetId: groupDraft.targetId });
+    setGroupMembers(editingGroupId, groupDraft.memberIds);
+    setEditingGroupId(null);
+    setGroupDraft(null);
+    setEditError(null);
   };
 
   return (
@@ -294,13 +333,34 @@ const RatioAllocationBuilder = () => {
           <div className="space-y-4">
             {groups.map(group => {
               const isSelected = selectedGroupIds.has(group.id);
-              const basisTotal = formatCurrency(groupTotals.get(group.id) ?? 0);
+              const isEditing = editingGroupId === group.id;
+              const draft = isEditing && groupDraft ? groupDraft : null;
+              const memberIdsForTotal = draft
+                ? draft.memberIds
+                : group.members.map(member => member.accountId);
+              const basisTotalValue = memberIdsForTotal.reduce(
+                (sum, accountId) => sum + resolveBasisValue(accountId),
+                0,
+              );
+              const basisTotal = formatCurrency(basisTotalValue);
+              const headerLabel = draft ? draft.label : group.label;
+              const headerTargetName = draft
+                ? draft.targetId
+                  ? targetOptions.find(option => option.value === draft.targetId)?.label ??
+                    group.targetName ??
+                    draft.targetId
+                  : 'No target selected'
+                : group.targetName || 'No target selected';
+              const memberValues = getGroupMembersWithValues(group, basisAccounts, selectedPeriod);
+
               return (
                 <Card key={group.id} className="border border-slate-200 shadow-sm dark:border-slate-700">
                   <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h4 className="text-base font-medium text-slate-900 dark:text-slate-100">{group.label}</h4>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">Maps to {group.targetName}</p>
+                      <h4 className="text-base font-medium text-slate-900 dark:text-slate-100">
+                        {headerLabel || 'Untitled datapoint'}
+                      </h4>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Maps to {headerTargetName}</p>
                     </div>
                     <div className="flex flex-col items-start gap-2 text-sm md:items-end">
                       <div className="font-medium text-blue-700 dark:text-blue-400">Basis total: {basisTotal}</div>
@@ -320,28 +380,146 @@ const RatioAllocationBuilder = () => {
                         />
                         <span>{isSelected ? 'Included in allocation' : 'Include in allocation'}</span>
                       </label>
+                      <button
+                        type="button"
+                        onClick={() => beginEditGroup(group)}
+                        disabled={isEditing}
+                        className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+                      >
+                        Edit datapoint
+                      </button>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {basisAccounts.map(account => {
-                      const checked = group.members.some(member => member.accountId === account.id);
-                      return (
-                        <label
-                          key={account.id}
-                          className="flex cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
-                      >
-                        <span className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleGroupMember(group.id, account.id)}
-                          />
-                          {account.name}
-                        </span>
-                        <span className="font-medium">{formatCurrency(resolveBasisValue(account.id))}</span>
-                      </label>
-                    );
-                    })}
+                  <CardContent className="space-y-4">
+                    {isEditing && draft ? (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Datapoint name
+                            <input
+                              value={draft.label}
+                              onChange={event =>
+                                setGroupDraft(current =>
+                                  current
+                                    ? { ...current, label: event.target.value }
+                                    : current,
+                                )
+                              }
+                              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                              placeholder="e.g. Regional operations cost pool"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Target SCoA account
+                            <select
+                              value={draft.targetId}
+                              onChange={event =>
+                                setGroupDraft(current =>
+                                  current
+                                    ? { ...current, targetId: event.target.value }
+                                    : current,
+                                )
+                              }
+                              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                            >
+                              <option value="">No target selected</option>
+                              {targetOptions.map(option => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Select source accounts
+                          </p>
+                          {basisAccounts.length === 0 ? (
+                            <p className="mt-2 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+                              Import basis accounts before editing this datapoint.
+                            </p>
+                          ) : (
+                            <div className="mt-2 grid gap-2 md:grid-cols-2">
+                              {basisAccounts.map(account => {
+                                const checked = draft.memberIds.includes(account.id);
+                                return (
+                                  <label
+                                    key={account.id}
+                                    className="flex cursor-pointer items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900"
+                                  >
+                                    <span className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() =>
+                                          setGroupDraft(current => {
+                                            if (!current) {
+                                              return current;
+                                            }
+                                            const exists = current.memberIds.includes(account.id);
+                                            const memberIds = exists
+                                              ? current.memberIds.filter(id => id !== account.id)
+                                              : [...current.memberIds, account.id];
+                                            return { ...current, memberIds };
+                                          })
+                                        }
+                                      />
+                                      {account.name}
+                                    </span>
+                                    <span className="font-medium">{formatCurrency(resolveBasisValue(account.id))}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        {editError && (
+                          <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">
+                            {editError}
+                          </p>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={handleCancelEdit}
+                            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveGroup}
+                            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400 dark:focus:ring-offset-slate-900"
+                            disabled={!draft.label.trim() || draft.memberIds.length === 0}
+                          >
+                            Save changes
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-3">
+                        {memberValues.length === 0 ? (
+                          <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+                            No source accounts selected. Edit the datapoint to add basis accounts.
+                          </p>
+                        ) : (
+                          <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white shadow-sm dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900">
+                            {memberValues.map(member => (
+                              <li
+                                key={member.accountId}
+                                className="flex items-center justify-between px-3 py-2 text-sm text-slate-700 dark:text-slate-200"
+                              >
+                                <span>{member.accountName}</span>
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {formatCurrency(member.value)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               );

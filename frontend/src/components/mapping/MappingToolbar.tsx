@@ -1,6 +1,7 @@
 import { ChangeEvent, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import {
+  selectAccounts,
   selectActiveStatuses,
   selectSearchTerm,
   useMappingStore,
@@ -9,9 +10,11 @@ import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import { useTemplateStore } from '../../store/templateStore';
 import type { GLAccountMappingRow } from '../../types';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
+import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import BatchMapModal from './BatchMapModal';
 import PresetModal from './PresetModal';
 import BatchExclude from './BatchExclude';
+import BuildDatapointModal from './BuildDatapointModal';
 
 const STATUS_DEFINITIONS: {
   value: GLAccountMappingRow['status'];
@@ -50,15 +53,23 @@ export default function MappingToolbar() {
   const finalizeMappings = useMappingStore(state => state.finalizeMappings);
   const applyBatchMapping = useMappingStore(state => state.applyBatchMapping);
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
+  const accounts = useMappingStore(selectAccounts);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
+  const createDynamicGroup = useRatioAllocationStore(state => state.createGroup);
   const datapoints = useTemplateStore(state => state.datapoints);
   const coaOptions = useMemo(() => buildTargetScoaOptions(datapoints), [datapoints]);
   const [isBatchMapOpen, setBatchMapOpen] = useState(false);
   const [isPresetOpen, setPresetOpen] = useState(false);
   const [isBatchExcludeOpen, setBatchExcludeOpen] = useState(false);
+  const [isBuildDatapointOpen, setBuildDatapointOpen] = useState(false);
   const [finalizeError, setFinalizeError] = useState<string | null>(null);
   const hasSelection = selectedIds.size > 0;
   const selectedCount = selectedIds.size;
+
+  const selectedAccounts = useMemo(
+    () => accounts.filter(account => selectedIds.has(account.id)),
+    [accounts, selectedIds],
+  );
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
@@ -117,6 +128,21 @@ export default function MappingToolbar() {
     }
     applyBatchMapping(Array.from(selectedIds), { mappingType: 'exclude', status: 'Excluded' });
     setBatchExcludeOpen(false);
+    clearSelection();
+    setFinalizeError(null);
+  };
+
+  const handleCreateDatapoint = (name: string) => {
+    if (!selectedIds.size) {
+      return;
+    }
+    const memberAccountIds = selectedAccounts.map(account => account.id);
+    if (memberAccountIds.length === 0) {
+      setBuildDatapointOpen(false);
+      return;
+    }
+    createDynamicGroup({ label: name, memberAccountIds });
+    setBuildDatapointOpen(false);
     clearSelection();
     setFinalizeError(null);
   };
@@ -212,6 +238,18 @@ export default function MappingToolbar() {
           </button>
           <button
             type="button"
+            onClick={() => setBuildDatapointOpen(true)}
+            disabled={!hasSelection}
+            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+              hasSelection
+                ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+            }`}
+          >
+            Build datapoint
+          </button>
+          <button
+            type="button"
             onClick={() => setBatchExcludeOpen(true)}
             disabled={!hasSelection}
             className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
@@ -265,6 +303,12 @@ export default function MappingToolbar() {
         selectedCount={selectedCount}
         onClose={() => setPresetOpen(false)}
         onApply={handleApplyPreset}
+      />
+      <BuildDatapointModal
+        open={isBuildDatapointOpen && hasSelection}
+        selectedAccounts={selectedAccounts}
+        onClose={() => setBuildDatapointOpen(false)}
+        onCreate={handleCreateDatapoint}
       />
       <BatchExclude
         open={isBatchExcludeOpen && hasSelection}
