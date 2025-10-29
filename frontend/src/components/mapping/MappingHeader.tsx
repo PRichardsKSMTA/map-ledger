@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import { CalendarDays, Building2 } from 'lucide-react';
 import { useClientStore } from '../../store/clientStore';
 import { useMappingStore } from '../../store/mappingStore';
@@ -14,13 +14,11 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
   const operations = useMappingStore(state =>
     state.accounts.map(account => account.operation)
   );
-  const { metrics, selectedPeriod, setSelectedPeriod } = useRatioAllocationStore(
-    state => ({
-      metrics: state.metrics,
-      selectedPeriod: state.selectedPeriod,
-      setSelectedPeriod: state.setSelectedPeriod,
-    })
-  );
+  const { availablePeriods, selectedPeriod, setSelectedPeriod } = useRatioAllocationStore(state => ({
+    availablePeriods: state.availablePeriods,
+    selectedPeriod: state.selectedPeriod,
+    setSelectedPeriod: state.setSelectedPeriod,
+  }));
 
   const activeClient = useMemo(() => {
     if (clients.length === 0) {
@@ -33,15 +31,7 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
     return Array.from(new Set(operations)).filter(Boolean);
   }, [operations]);
 
-  const availablePeriods = useMemo(() => {
-    return Array.from(new Set(metrics.map(metric => metric.period))).sort();
-  }, [metrics]);
-
-  useEffect(() => {
-    if (!selectedPeriod && availablePeriods.length > 0) {
-      setSelectedPeriod(availablePeriods[0]);
-    }
-  }, [selectedPeriod, availablePeriods, setSelectedPeriod]);
+  const hasAvailablePeriods = availablePeriods.length > 0;
 
   return (
     <div className="bg-white dark:bg-slate-900 shadow-sm rounded-lg p-6">
@@ -90,9 +80,10 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
                   setSelectedPeriod(next);
                 }
               }}
+              disabled={!hasAvailablePeriods}
             >
               <option value="" disabled>
-                Select period
+                {hasAvailablePeriods ? 'Select period' : 'No periods available'}
               </option>
               {availablePeriods.map(period => (
                 <option key={period} value={period}>
