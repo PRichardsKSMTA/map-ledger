@@ -32,13 +32,19 @@ const getTargetNameById = (targetId: string): string => {
   return option?.label ?? targetId;
 };
 
+const normalizeTargetId = (targetId?: string | null): string =>
+  typeof targetId === 'string' ? targetId.trim() : '';
+
+const resolveTargetName = (targetId: string): string =>
+  targetId ? getTargetNameById(targetId) : 'No target selected';
+
 const buildTargetDatapoint = (
   group: DynamicDatapointGroup,
   basisAccounts: DynamicBasisAccount[],
   periodId?: string | null,
 ): RatioAllocationTargetDatapoint => ({
-  datapointId: group.targetId,
-  name: group.targetName,
+  datapointId: group.targetId || group.id,
+  name: group.targetName || group.label,
   groupId: group.id,
   ratioMetric: {
     id: group.id,
@@ -50,16 +56,21 @@ const buildTargetDatapoint = (
 const normalizeGroup = (
   group: DynamicDatapointGroup,
   basisAccounts: DynamicBasisAccount[],
-): DynamicDatapointGroup => ({
-  ...group,
-  members: group.members.map(member => {
-    const basisAccount = basisAccounts.find(account => account.id === member.accountId);
-    return {
-      accountId: member.accountId,
-      accountName: basisAccount?.name ?? member.accountName ?? member.accountId,
-    };
-  }),
-});
+): DynamicDatapointGroup => {
+  const targetId = normalizeTargetId(group.targetId);
+  return {
+    ...group,
+    targetId,
+    targetName: group.targetName ? group.targetName : resolveTargetName(targetId),
+    members: group.members.map(member => {
+      const basisAccount = basisAccounts.find(account => account.id === member.accountId);
+      return {
+        accountId: member.accountId,
+        accountName: basisAccount?.name ?? member.accountName ?? member.accountId,
+      };
+    }),
+  };
+};
 
 const synchronizeAllocationTargets = (
   allocation: RatioAllocation,
@@ -117,11 +128,12 @@ type RatioAllocationState = {
   calculateAllocations: (periodId: string) => Promise<void>;
   createGroup: (payload: {
     label: string;
-    targetId: string;
+    targetId?: string;
     memberAccountIds: string[];
     notes?: string;
   }) => void;
   updateGroup: (groupId: string, updates: Partial<Omit<DynamicDatapointGroup, 'id' | 'members'>>) => void;
+  setGroupMembers: (groupId: string, memberAccountIds: string[]) => void;
   toggleGroupMember: (groupId: string, accountId: string) => void;
   toggleAllocationGroupTarget: (allocationId: string, groupId: string) => void;
 };
@@ -516,11 +528,12 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
 
   createGroup: ({ label, targetId, memberAccountIds, notes }) => {
     set(state => {
-      const targetName = getTargetNameById(targetId);
+      const normalizedTargetId = normalizeTargetId(targetId);
+      const targetName = resolveTargetName(normalizedTargetId);
       const newGroup: DynamicDatapointGroup = {
         id: createId(),
         label,
-        targetId,
+        targetId: normalizedTargetId,
         targetName,
         notes,
         members: memberAccountIds.map(accountId => {
@@ -546,8 +559,10 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   updateGroup: (groupId, updates) => {
     set(state => {
       const resolvedUpdates = { ...updates } as Partial<Omit<DynamicDatapointGroup, 'id' | 'members'>>;
-      if (updates.targetId) {
-        resolvedUpdates.targetName = getTargetNameById(updates.targetId);
+      if (updates.targetId !== undefined) {
+        const normalizedTargetId = normalizeTargetId(updates.targetId);
+        resolvedUpdates.targetId = normalizedTargetId;
+        resolvedUpdates.targetName = resolveTargetName(normalizedTargetId);
       }
       const groups = state.groups.map(group => {
         if (group.id !== groupId) {
@@ -558,6 +573,35 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           ...resolvedUpdates,
         };
       });
+      const allocations = state.allocations.map(allocation =>
+        synchronizeAllocationTargets(allocation, groups, state.basisAccounts, state.selectedPeriod),
+      );
+      return { groups, allocations };
+    });
+  },
+
+  setGroupMembers: (groupId, memberAccountIds) => {
+    set(state => {
+      const groups = state.groups.map(group => {
+        if (group.id !== groupId) {
+          return group;
+        }
+        const members = memberAccountIds.map(accountId => {
+          const account = state.basisAccounts.find(item => item.id === accountId);
+          if (!account) {
+            throw new Error(`Unknown basis account ${accountId}`);
+          }
+          return {
+            accountId,
+            accountName: account.name,
+          };
+        });
+        return {
+          ...group,
+          members,
+        };
+      });
+
       const allocations = state.allocations.map(allocation =>
         synchronizeAllocationTargets(allocation, groups, state.basisAccounts, state.selectedPeriod),
       );
@@ -613,11 +657,12 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           return allocation;
         }
 
+        const groupTargetKey = group.targetId || group.id;
         const exists = allocation.targetDatapoints.some(target => {
           if (target.groupId) {
             return target.groupId === groupId;
           }
-          return target.datapointId === group.targetId;
+          return target.datapointId === groupTargetKey;
         });
 
         const nextTargets = exists
@@ -625,7 +670,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
               if (target.groupId) {
                 return target.groupId !== groupId;
               }
-              return target.datapointId !== group.targetId;
+              return target.datapointId !== groupTargetKey;
             })
           : [
               ...allocation.targetDatapoints,
