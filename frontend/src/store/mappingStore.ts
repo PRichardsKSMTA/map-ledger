@@ -13,8 +13,6 @@ import {
 } from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 
-const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
-const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption('MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET');
 const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
 );
@@ -173,7 +171,7 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
   }
 
   if (account.mappingType === 'dynamic') {
-    return account.status === 'Excluded' ? 'Excluded' : account.status;
+    return account.status;
   }
 
   if (account.mappingType === 'percentage') {
