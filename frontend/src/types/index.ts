@@ -128,6 +128,17 @@ export interface ConnectionStatus {
   error?: string;
 }
 
+export interface RatioAllocationTargetDatapoint {
+  datapointId: string;
+  name: string;
+  groupId?: string;
+  ratioMetric: {
+    id: string;
+    name: string;
+    value: number;
+  };
+}
+
 export interface RatioAllocation {
   id: string;
   name: string;
@@ -136,15 +147,7 @@ export interface RatioAllocation {
     number: string;
     description: string;
   };
-  targetDatapoints: {
-    datapointId: string;
-    name: string;
-    ratioMetric: {
-      id: string;
-      name: string;
-      value: number;
-    };
-  }[];
+  targetDatapoints: RatioAllocationTargetDatapoint[];
   effectiveDate: string;
   status: 'active' | 'inactive';
 }
@@ -166,6 +169,59 @@ export interface OperationalMetric {
   type: string;
   value: number;
   period: string;
+}
+
+export interface DynamicSourceAccount {
+  id: string;
+  name: string;
+  number: string;
+  description: string;
+  /**
+   * Default value used when period-specific balances are unavailable.
+   */
+  value: number;
+  /**
+   * Optional map of period identifier to balance so dynamic allocations can
+   * run across multiple reporting cycles without hard-coding dates.
+   */
+  valuesByPeriod?: Record<string, number>;
+}
+
+export interface DynamicBasisAccount {
+  id: string;
+  name: string;
+  description: string;
+  /**
+   * Default value used when a period-specific balance is not supplied.
+   */
+  value: number;
+  mappedTargetId: string;
+  /**
+   * Optional map of period identifier to balance for dynamic ratios.
+   */
+  valuesByPeriod?: Record<string, number>;
+}
+
+export interface DynamicDatapointGroupMember {
+  accountId: string;
+  accountName: string;
+}
+
+export interface DynamicDatapointGroup {
+  id: string;
+  label: string;
+  targetId: string;
+  targetName: string;
+  members: DynamicDatapointGroupMember[];
+  notes?: string;
+}
+
+export interface DynamicMappingPreset {
+  id: string;
+  name: string;
+  description: string;
+  sourceAccountId: string;
+  targetGroupIds: string[];
 }
 export interface OperationRef {
   id: string; // SCAC code

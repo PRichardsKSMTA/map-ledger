@@ -27,7 +27,14 @@ const initialRatioSnapshot = (() => {
         ratioMetric: { ...target.ratioMetric },
       })),
     })),
-    metrics: snapshot.metrics.map(metric => ({ ...metric })),
+    groups: snapshot.groups.map(group => ({
+      ...group,
+      members: group.members.map(member => ({ ...member })),
+    })),
+    basisAccounts: snapshot.basisAccounts.map(account => ({ ...account })),
+    sourceAccounts: snapshot.sourceAccounts.map(account => ({ ...account })),
+    presets: snapshot.presets.map(preset => ({ ...preset })),
+    availablePeriods: snapshot.availablePeriods.slice(),
     selectedPeriod: snapshot.selectedPeriod,
     results: snapshot.results.map(result => ({
       ...result,
@@ -57,7 +64,14 @@ const resetStores = () => {
         ratioMetric: { ...target.ratioMetric },
       })),
     })),
-    metrics: initialRatioSnapshot.metrics.map(metric => ({ ...metric })),
+    groups: initialRatioSnapshot.groups.map(group => ({
+      ...group,
+      members: group.members.map(member => ({ ...member })),
+    })),
+    basisAccounts: initialRatioSnapshot.basisAccounts.map(account => ({ ...account })),
+    sourceAccounts: initialRatioSnapshot.sourceAccounts.map(account => ({ ...account })),
+    presets: initialRatioSnapshot.presets.map(preset => ({ ...preset })),
+    availablePeriods: initialRatioSnapshot.availablePeriods.slice(),
     selectedPeriod: initialRatioSnapshot.selectedPeriod,
     results: initialRatioSnapshot.results.map(result => ({
       ...result,

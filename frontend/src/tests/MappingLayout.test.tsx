@@ -11,7 +11,8 @@ const clientSnapshot = (() => {
 })();
 
 const ratioSnapshot = (() => {
-  const { allocations, metrics } = useRatioAllocationStore.getState();
+  const { allocations, groups, basisAccounts, sourceAccounts, presets, availablePeriods, selectedPeriod } =
+    useRatioAllocationStore.getState();
   return {
     allocations: allocations.map(allocation => ({
       ...allocation,
@@ -21,7 +22,15 @@ const ratioSnapshot = (() => {
         ratioMetric: { ...target.ratioMetric },
       })),
     })),
-    metrics: metrics.map(metric => ({ ...metric })),
+    groups: groups.map(group => ({
+      ...group,
+      members: group.members.map(member => ({ ...member })),
+    })),
+    basisAccounts: basisAccounts.map(account => ({ ...account })),
+    sourceAccounts: sourceAccounts.map(account => ({ ...account })),
+    presets: presets.map(preset => ({ ...preset })),
+    availablePeriods: availablePeriods.slice(),
+    selectedPeriod,
   };
 })();
 
@@ -49,8 +58,15 @@ const resetRatioStore = () => {
         ratioMetric: { ...target.ratioMetric },
       })),
     })),
-    metrics: ratioSnapshot.metrics.map(metric => ({ ...metric })),
-    selectedPeriod: null,
+    groups: ratioSnapshot.groups.map(group => ({
+      ...group,
+      members: group.members.map(member => ({ ...member })),
+    })),
+    basisAccounts: ratioSnapshot.basisAccounts.map(account => ({ ...account })),
+    sourceAccounts: ratioSnapshot.sourceAccounts.map(account => ({ ...account })),
+    presets: ratioSnapshot.presets.map(preset => ({ ...preset })),
+    availablePeriods: ratioSnapshot.availablePeriods.slice(),
+    selectedPeriod: ratioSnapshot.selectedPeriod ?? null,
     results: [],
     isProcessing: false,
   });
