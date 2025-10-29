@@ -132,7 +132,13 @@ export default function MappingToolbar() {
     setFinalizeError(null);
   };
 
-  const handleCreateDatapoint = (name: string) => {
+  const handleCreateDatapoint = ({
+    name,
+    targetId,
+  }: {
+    name: string;
+    targetId: string | null;
+  }) => {
     if (!selectedIds.size) {
       return;
     }
@@ -141,7 +147,12 @@ export default function MappingToolbar() {
       setBuildDatapointOpen(false);
       return;
     }
-    createDynamicGroup({ label: name, memberAccountIds });
+    const payload = {
+      label: name,
+      memberAccountIds,
+      targetId: targetId ?? undefined,
+    };
+    createDynamicGroup(payload);
     setBuildDatapointOpen(false);
     clearSelection();
     setFinalizeError(null);
@@ -307,6 +318,7 @@ export default function MappingToolbar() {
       <BuildDatapointModal
         open={isBuildDatapointOpen && hasSelection}
         selectedAccounts={selectedAccounts}
+        targetOptions={coaOptions}
         onClose={() => setBuildDatapointOpen(false)}
         onCreate={handleCreateDatapoint}
       />
