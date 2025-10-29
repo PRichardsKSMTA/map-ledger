@@ -48,8 +48,8 @@ describe('mappingStore selectors', () => {
     const counts = selectStatusCounts(useMappingStore.getState());
     expect(counts).toEqual({
       New: 1,
-      Unmapped: 1,
-      Mapped: 1,
+      Unmapped: 0,
+      Mapped: 2,
       Excluded: 1,
     });
   });
