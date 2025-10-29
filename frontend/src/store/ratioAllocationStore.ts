@@ -5,15 +5,11 @@ import {
   DynamicAllocationValidationIssue,
   DynamicBasisAccount,
   DynamicDatapointGroup,
-  DynamicMappingPreset,
   DynamicSourceAccount,
   RatioAllocation,
   RatioAllocationTargetDatapoint,
 } from '../types';
-import {
-  STANDARD_CHART_OF_ACCOUNTS,
-  getStandardScoaOption,
-} from '../data/standardChartOfAccounts';
+import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
 import {
   allocateDynamic,
   getBasisValue,
@@ -84,130 +80,6 @@ const synchronizeAllocationTargets = (
   }),
 });
 
-const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
-const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption(
-  'MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET',
-);
-
-const INITIAL_AVAILABLE_PERIODS = ['2024-Q1', '2024-Q2', '2024-Q3'];
-
-const INITIAL_BASIS_ACCOUNTS: DynamicBasisAccount[] = [
-  {
-    id: 'basis-fleet-miles',
-    name: 'Company fleet miles',
-    description: 'Logged company fleet miles across operations.',
-    value: 1156000,
-    mappedTargetId: FUEL_EXPENSE_TARGET.id,
-    valuesByPeriod: {
-      '2024-Q1': 382000,
-      '2024-Q2': 388500,
-      '2024-Q3': 384500,
-    },
-  },
-  {
-    id: 'basis-engine-hours',
-    name: 'Engine hours',
-    description: 'Total engine hours recorded across the fleet.',
-    value: 139000,
-    mappedTargetId: FUEL_EXPENSE_TARGET.id,
-    valuesByPeriod: {
-      '2024-Q1': 46200,
-      '2024-Q2': 46750,
-      '2024-Q3': 46050,
-    },
-  },
-  {
-    id: 'basis-maintenance-orders',
-    name: 'Maintenance work orders',
-    description: 'Closed work orders for company equipment.',
-    value: 564000,
-    mappedTargetId: TRACTOR_MAINTENANCE_TARGET.id,
-    valuesByPeriod: {
-      '2024-Q1': 186000,
-      '2024-Q2': 189500,
-      '2024-Q3': 188500,
-    },
-  },
-];
-
-const INITIAL_GROUP_TEMPLATES: DynamicDatapointGroup[] = [
-  {
-    id: 'group-fleet-utilization',
-    label: 'Fleet utilization',
-    targetId: FUEL_EXPENSE_TARGET.id,
-    targetName: FUEL_EXPENSE_TARGET.label,
-    notes: 'Combines mileage and engine hours to apportion fleet fuel costs.',
-    members: [
-      { accountId: 'basis-fleet-miles', accountName: 'Company fleet miles' },
-      { accountId: 'basis-engine-hours', accountName: 'Engine hours' },
-    ],
-  },
-  {
-    id: 'group-maintenance-activity',
-    label: 'Maintenance activity',
-    targetId: TRACTOR_MAINTENANCE_TARGET.id,
-    targetName: TRACTOR_MAINTENANCE_TARGET.label,
-    notes: 'Uses shop work orders to allocate maintenance-related expenses.',
-    members: [
-      {
-        accountId: 'basis-maintenance-orders',
-        accountName: 'Maintenance work orders',
-      },
-    ],
-  },
-];
-
-const INITIAL_SOURCE_ACCOUNTS: DynamicSourceAccount[] = [
-  {
-    id: 'acct-3',
-    name: 'Fuel Expense',
-    number: '6100',
-    description: 'Fuel Expense',
-    value: 65000,
-    valuesByPeriod: {
-      '2024-Q1': 61250,
-      '2024-Q2': 66875,
-      '2024-Q3': 65500,
-    },
-  },
-];
-
-const INITIAL_PRESETS: DynamicMappingPreset[] = [
-  {
-    id: 'preset-dynamic-fuel',
-    name: 'Fleet fuel allocation',
-    description:
-      'Allocate fuel expense according to fleet utilization and maintenance workload.',
-    sourceAccountId: 'acct-3',
-    targetGroupIds: ['group-fleet-utilization', 'group-maintenance-activity'],
-  },
-];
-
-const INITIAL_SELECTED_PERIOD = INITIAL_AVAILABLE_PERIODS[0] ?? null;
-
-const NORMALIZED_INITIAL_GROUPS = INITIAL_GROUP_TEMPLATES.map(group =>
-  normalizeGroup(group, INITIAL_BASIS_ACCOUNTS),
-);
-
-const INITIAL_ALLOCATIONS: RatioAllocation[] = INITIAL_SELECTED_PERIOD
-  ? [
-      {
-        id: 'allocation-acct-3',
-        name: 'Fuel Expense allocation',
-        sourceAccount: {
-          id: 'acct-3',
-          number: '6100',
-          description: 'Fuel Expense',
-        },
-        targetDatapoints: NORMALIZED_INITIAL_GROUPS.map(group =>
-          buildTargetDatapoint(group, INITIAL_BASIS_ACCOUNTS, INITIAL_SELECTED_PERIOD),
-        ),
-        effectiveDate: '2024-01-01T00:00:00.000Z',
-        status: 'active',
-      },
-    ]
-  : [];
-
 type ResolvedTargetDetail = {
   target: RatioAllocationTargetDatapoint;
   basisValue: number;
@@ -219,7 +91,6 @@ type RatioAllocationHydrationPayload = {
   basisAccounts?: DynamicBasisAccount[];
   sourceAccounts?: DynamicSourceAccount[];
   groups?: DynamicDatapointGroup[];
-  presets?: DynamicMappingPreset[];
   allocations?: RatioAllocation[];
   availablePeriods?: string[];
   selectedPeriod?: string | null;
@@ -230,7 +101,6 @@ type RatioAllocationState = {
   basisAccounts: DynamicBasisAccount[];
   groups: DynamicDatapointGroup[];
   sourceAccounts: DynamicSourceAccount[];
-  presets: DynamicMappingPreset[];
   availablePeriods: string[];
   isProcessing: boolean;
   selectedPeriod: string | null;
@@ -253,18 +123,16 @@ type RatioAllocationState = {
   }) => void;
   updateGroup: (groupId: string, updates: Partial<Omit<DynamicDatapointGroup, 'id' | 'members'>>) => void;
   toggleGroupMember: (groupId: string, accountId: string) => void;
-  applyPreset: (presetId: string) => void;
 };
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
-  allocations: INITIAL_ALLOCATIONS,
-  basisAccounts: INITIAL_BASIS_ACCOUNTS,
-  groups: NORMALIZED_INITIAL_GROUPS,
-  sourceAccounts: INITIAL_SOURCE_ACCOUNTS,
-  presets: INITIAL_PRESETS,
-  availablePeriods: INITIAL_AVAILABLE_PERIODS,
+  allocations: [],
+  basisAccounts: [],
+  groups: [],
+  sourceAccounts: [],
+  availablePeriods: [],
   isProcessing: false,
-  selectedPeriod: INITIAL_SELECTED_PERIOD,
+  selectedPeriod: null,
   results: [],
   validationErrors: [],
   auditLog: [],
@@ -286,7 +154,6 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         basisAccounts,
         groups,
         sourceAccounts: payload.sourceAccounts ?? state.sourceAccounts,
-        presets: payload.presets ?? state.presets,
         availablePeriods,
         selectedPeriod,
       };
@@ -298,10 +165,19 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     if (existing) {
       return existing;
     }
-    const sourceAccount = get().sourceAccounts.find(account => account.id === sourceAccountId);
-    if (!sourceAccount) {
-      throw new Error(`Unable to locate source account ${sourceAccountId}`);
-    }
+    const sourceAccount =
+      get().sourceAccounts.find(account => account.id === sourceAccountId) ??
+      (() => {
+        const fallback: DynamicSourceAccount = {
+          id: sourceAccountId,
+          name: sourceAccountId,
+          number: sourceAccountId,
+          description: sourceAccountId,
+          value: 0,
+        };
+        set(state => ({ sourceAccounts: [...state.sourceAccounts, fallback] }));
+        return fallback;
+      })();
     const allocation: RatioAllocation = {
       id: createId(),
       name: `${sourceAccount.name} allocation`,
@@ -392,7 +268,6 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         groups,
         basisAccounts,
         sourceAccounts,
-        presets,
         results: existingResults,
         validationErrors: existingValidationErrors,
         auditLog: existingAuditLog,
@@ -599,14 +474,6 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           allocations: targetAllocations,
         });
 
-        const preset = presets.find(
-          presetItem =>
-            presetItem.sourceAccountId === allocation.sourceAccount.id &&
-            presetItem.targetGroupIds.every(groupId =>
-              allocation.targetDatapoints.some(target => target.groupId === groupId),
-            ),
-        );
-
         newAuditRecords.push({
           id: createId(),
           allocationId: allocation.id,
@@ -621,7 +488,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           sourceAmount: sourceValue,
           basisTotal,
           adjustment,
-          presetId: preset?.id ?? null,
+          presetId: null,
           userId: null,
           targets: targetAllocations.map((targetAllocation, index) => ({
             targetId: targetAllocation.targetId,
@@ -730,60 +597,6 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, groups, state.basisAccounts, state.selectedPeriod),
       );
       return { groups, allocations };
-    });
-  },
-
-  applyPreset: presetId => {
-    set(state => {
-      const preset = state.presets.find(item => item.id === presetId);
-      if (!preset) {
-        return state;
-      }
-      const sourceAccount = state.sourceAccounts.find(account => account.id === preset.sourceAccountId);
-      if (!sourceAccount) {
-        return state;
-      }
-
-      const groups = preset.targetGroupIds
-        .map(groupId => state.groups.find(group => group.id === groupId))
-        .filter((group): group is DynamicDatapointGroup => Boolean(group));
-
-      if (!groups.length) {
-        return state;
-      }
-
-      const targetDatapoints = groups.map(group => buildTargetDatapoint(group, state.basisAccounts, state.selectedPeriod));
-      const existing = state.allocations.find(allocation => allocation.sourceAccount.id === sourceAccount.id);
-
-      const nextAllocation: RatioAllocation = existing
-        ? {
-            ...existing,
-            name: preset.name,
-            targetDatapoints,
-            status: 'active',
-          }
-        : {
-            id: createId(),
-            name: preset.name,
-            sourceAccount: {
-              id: sourceAccount.id,
-              number: sourceAccount.number,
-              description: sourceAccount.description,
-            },
-            targetDatapoints,
-            effectiveDate: new Date().toISOString(),
-            status: 'active',
-          };
-
-      const allocations = existing
-        ? state.allocations.map(allocation =>
-            allocation.id === existing.id
-              ? synchronizeAllocationTargets(nextAllocation, state.groups, state.basisAccounts, state.selectedPeriod)
-              : allocation,
-          )
-        : [...state.allocations, synchronizeAllocationTargets(nextAllocation, state.groups, state.basisAccounts, state.selectedPeriod)];
-
-      return { allocations };
     });
   },
 }));

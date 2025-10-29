@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Plus, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
@@ -15,18 +15,13 @@ const RatioAllocationBuilder = () => {
     groups,
     basisAccounts,
     sourceAccounts,
-    presets,
-    availablePeriods,
     selectedPeriod,
     validationErrors,
-    setSelectedPeriod,
     toggleGroupMember,
     createGroup,
-    applyPreset,
   } = useRatioAllocationStore();
 
   const [selectedAllocationId, setSelectedAllocationId] = useState<string | null>(null);
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupTargetId, setNewGroupTargetId] = useState<string>('');
@@ -44,7 +39,9 @@ const RatioAllocationBuilder = () => {
       STANDARD_CHART_OF_ACCOUNTS.find(item => item.id === targetId)?.label ?? targetId;
 
     basisAccounts.forEach(account => {
-      optionMap.set(account.mappedTargetId, labelFor(account.mappedTargetId));
+      if (account.mappedTargetId) {
+        optionMap.set(account.mappedTargetId, labelFor(account.mappedTargetId));
+      }
     });
     groups.forEach(group => {
       optionMap.set(group.targetId, group.targetName);
@@ -64,6 +61,13 @@ const RatioAllocationBuilder = () => {
       setNewGroupTargetId(targetOptions[0].value);
     }
   }, [newGroupTargetId, targetOptions]);
+
+  useEffect(() => {
+    if (basisAccounts.length === 0) {
+      setIsCreatingGroup(false);
+      setNewGroupMembers([]);
+    }
+  }, [basisAccounts.length]);
 
   const selectedAllocation = useMemo(() => {
     if (!selectedAllocationId) {
@@ -160,13 +164,6 @@ const RatioAllocationBuilder = () => {
     }
   }, [basisTotal, sourceBalance, targetDetails]);
 
-  const handlePresetApply = () => {
-    if (!selectedPresetId) {
-      return;
-    }
-    applyPreset(selectedPresetId);
-  };
-
   const handleCreateGroup = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!newGroupName.trim() || !newGroupTargetId || newGroupMembers.length === 0) {
@@ -186,53 +183,6 @@ const RatioAllocationBuilder = () => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-medium">Dynamic presets</h3>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-            Choose a preconfigured allocation to seed ratios with the correct underlying datapoints.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label htmlFor="dynamic-preset" className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-                Mapping preset
-              </label>
-              <select
-                id="dynamic-preset"
-                value={selectedPresetId}
-                onChange={event => setSelectedPresetId(event.target.value)}
-                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              >
-                <option value="">Select a preset…</option>
-                {presets.map(preset => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.name}
-                  </option>
-                ))}
-              </select>
-              {selectedPresetId && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {presets.find(preset => preset.id === selectedPresetId)?.description}
-                </p>
-              )}
-            </div>
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={handlePresetApply}
-                disabled={!selectedPresetId}
-                className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                <SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
-                Apply preset
-              </button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <h3 className="text-lg font-medium">Dynamic datapoints</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Group related basis accounts into the standard chart of account targets used for allocation ratios.
@@ -244,13 +194,20 @@ const RatioAllocationBuilder = () => {
               <button
                 type="button"
                 onClick={() => setIsCreatingGroup(previous => !previous)}
-                className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
+                disabled={basisAccounts.length === 0}
+                className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
               >
                 <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
                 {isCreatingGroup ? 'Cancel' : 'Create dynamic datapoint'}
               </button>
             </div>
           </div>
+
+          {basisAccounts.length === 0 && (
+            <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+              Import a trial balance to add basis datapoints before creating dynamic groups.
+            </p>
+          )}
 
           {isCreatingGroup && (
             <form onSubmit={handleCreateGroup} className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -370,22 +327,12 @@ const RatioAllocationBuilder = () => {
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                Period
-                <select
-                  value={selectedPeriod ?? ''}
-                  onChange={event => setSelectedPeriod(event.target.value)}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                >
-                  <option value="">Select period…</option>
-                  {availablePeriods.map(period => (
-                    <option key={period} value={period}>
-                      {period}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div className="space-y-2">
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                {selectedPeriod
+                  ? `Using balances for reporting period ${selectedPeriod}.`
+                  : 'Select a reporting period in the mapping header to preview period-specific balances.'}
+              </div>
               <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm dark:border-slate-700 dark:bg-slate-900">
                 <div className="font-medium text-slate-700 dark:text-slate-200">Source balance</div>
                 <div className="mt-1 text-lg font-semibold text-blue-700 dark:text-blue-400">

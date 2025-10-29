@@ -78,6 +78,6 @@ describe('DistributionTable', () => {
     const builderButton = screen.getByText('Open dynamic allocation builder');
     fireEvent.click(builderButton);
 
-    expect(screen.getByText('Dynamic presets')).toBeInTheDocument();
+    expect(screen.getByText('Dynamic datapoints')).toBeInTheDocument();
   });
 });

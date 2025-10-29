@@ -234,14 +234,6 @@ export interface DynamicDatapointGroup {
   notes?: string;
 }
 
-export interface DynamicMappingPreset {
-  id: string;
-  name: string;
-  description: string;
-  sourceAccountId: string;
-  targetGroupIds: string[];
-}
-
 export interface DynamicAllocationBasisMember {
   accountId: string;
   accountName: string;

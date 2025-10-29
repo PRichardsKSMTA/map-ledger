@@ -16,7 +16,6 @@ const ratioSnapshot = (() => {
     groups,
     basisAccounts,
     sourceAccounts,
-    presets,
     availablePeriods,
     selectedPeriod,
     validationErrors,
@@ -37,7 +36,6 @@ const ratioSnapshot = (() => {
     })),
     basisAccounts: basisAccounts.map(account => ({ ...account })),
     sourceAccounts: sourceAccounts.map(account => ({ ...account })),
-    presets: presets.map(preset => ({ ...preset })),
     availablePeriods: availablePeriods.slice(),
     selectedPeriod,
     validationErrors: validationErrors.map(issue => ({
@@ -86,7 +84,6 @@ const resetRatioStore = () => {
     })),
     basisAccounts: ratioSnapshot.basisAccounts.map(account => ({ ...account })),
     sourceAccounts: ratioSnapshot.sourceAccounts.map(account => ({ ...account })),
-    presets: ratioSnapshot.presets.map(preset => ({ ...preset })),
     availablePeriods: ratioSnapshot.availablePeriods.slice(),
     selectedPeriod: ratioSnapshot.selectedPeriod ?? null,
     results: [],
