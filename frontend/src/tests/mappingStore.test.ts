@@ -9,6 +9,7 @@ import {
   selectSummaryMetrics,
   useMappingStore,
 } from '../store/mappingStore';
+import type { TrialBalanceRow } from '../types';
 
 describe('mappingStore selectors', () => {
   beforeEach(() => {
@@ -51,5 +52,50 @@ describe('mappingStore selectors', () => {
       Mapped: 1,
       Excluded: 1,
     });
+  });
+
+  it('loads imported rows into mapping state', () => {
+    const rows: TrialBalanceRow[] = [
+      {
+        accountId: '1000',
+        description: 'Cash',
+        entity: 'HQ',
+        netChange: 1250,
+        glMonth: '2024-01',
+      },
+      {
+        accountId: '2000',
+        description: 'Revenue',
+        entity: 'HQ',
+        netChange: -1250,
+        glMonth: '2024-01',
+      },
+    ];
+
+    act(() => {
+      useMappingStore
+        .getState()
+        .loadImportedAccounts({
+          uploadId: 'import-1',
+          clientId: 'cli-123',
+          companyIds: ['ent-1'],
+          period: '2024-01',
+          rows,
+        });
+    });
+
+    const state = useMappingStore.getState();
+    expect(state.accounts).toHaveLength(2);
+    expect(state.accounts[0]).toEqual(
+      expect.objectContaining({
+        accountId: '1000',
+        status: 'Unmapped',
+        mappingType: 'direct',
+      }),
+    );
+    expect(state.activeUploadId).toBe('import-1');
+    expect(state.activeClientId).toBe('cli-123');
+    expect(state.activeCompanyIds).toEqual(['ent-1']);
+    expect(state.activePeriod).toBe('2024-01');
   });
 });

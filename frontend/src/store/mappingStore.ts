@@ -5,8 +5,10 @@ import type {
   MappingSplitDefinition,
   MappingStatus,
   MappingType,
+  TrialBalanceRow,
 } from '../types';
 import { getStandardScoaOption } from '../data/standardChartOfAccounts';
+import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 
 const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
 const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption('MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET');
@@ -174,6 +176,10 @@ interface MappingState {
   accounts: GLAccountMappingRow[];
   searchTerm: string;
   activeStatuses: MappingStatus[];
+  activeUploadId: string | null;
+  activeClientId: string | null;
+  activeCompanyIds: string[];
+  activePeriod: string | null;
   setSearchTerm: (term: string) => void;
   toggleStatusFilter: (status: MappingStatus) => void;
   clearStatusFilters: () => void;
@@ -203,6 +209,13 @@ interface MappingState {
   applyPresetToAccounts: (ids: string[], presetId: string | null) => void;
   bulkAccept: (ids: string[]) => void;
   finalizeMappings: (ids: string[]) => boolean;
+  loadImportedAccounts: (payload: {
+    uploadId: string;
+    clientId?: string | null;
+    companyIds?: string[];
+    period?: string | null;
+    rows: TrialBalanceRow[];
+  }) => void;
 }
 
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
@@ -211,6 +224,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   accounts: createInitialMappingAccounts(),
   searchTerm: '',
   activeStatuses: [],
+  activeUploadId: null,
+  activeClientId: null,
+  activeCompanyIds: [],
+  activePeriod: null,
   setSearchTerm: term => set({ searchTerm: term }),
   toggleStatusFilter: status =>
     set(state => {
@@ -462,6 +479,23 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       }));
     console.log('Finalize mappings', payload);
     return true;
+  },
+  loadImportedAccounts: ({ uploadId, clientId, companyIds, period, rows }) => {
+    const normalizedClientId = clientId && clientId.trim().length > 0 ? clientId : null;
+    const accounts = buildMappingRowsFromImport(rows, {
+      uploadId,
+      clientId: normalizedClientId,
+    });
+
+    set({
+      accounts,
+      searchTerm: '',
+      activeStatuses: [],
+      activeUploadId: uploadId,
+      activeClientId: normalizedClientId,
+      activeCompanyIds: companyIds ?? [],
+      activePeriod: period && period.trim().length > 0 ? period : null,
+    });
   },
 }));
 

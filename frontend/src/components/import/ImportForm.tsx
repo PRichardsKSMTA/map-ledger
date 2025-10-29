@@ -9,12 +9,13 @@ import {
 } from '../../utils/parseTrialBalanceWorkbook';
 import parseCurrencyValue from '../../utils/parseCurrencyValue';
 import ColumnMatcher from './ColumnMatcher';
-import ExcludeAccounts, { AccountRow } from './ExcludeAccounts';
+import ExcludeAccounts from './ExcludeAccounts';
 import {
   getClientTemplateMapping,
   ClientTemplateConfig,
 } from '../../utils/getClientTemplateMapping';
 import PreviewTable from './PreviewTable';
+import type { TrialBalanceRow } from '../../types';
 
 const templateHeaders = [
   'GL ID',
@@ -117,7 +118,7 @@ const normalizeGlMonth = (value: string): string => {
 
 const isValidNormalizedMonth = (value: string): boolean => /^\d{4}-\d{2}$/.test(value);
 
-const extractRowGlMonth = (row: AccountRow): string => {
+const extractRowGlMonth = (row: TrialBalanceRow): string => {
   const normalizeCandidate = (value: unknown): string => {
     if (typeof value !== 'string' && typeof value !== 'number') {
       return '';
@@ -151,7 +152,7 @@ const extractRowGlMonth = (row: AccountRow): string => {
   return normalizeCandidate(row.glMonth);
 };
 
-const filterRowsByGlMonth = (rows: AccountRow[], month: string): AccountRow[] => {
+const filterRowsByGlMonth = (rows: TrialBalanceRow[], month: string): TrialBalanceRow[] => {
   const normalizedMonth = normalizeGlMonth(month);
 
   return rows
@@ -172,7 +173,7 @@ const filterRowsByGlMonth = (rows: AccountRow[], month: string): AccountRow[] =>
 
 interface ImportFormProps {
   onImport: (
-    uploads: AccountRow[],
+    uploads: TrialBalanceRow[],
     clientId: string,
     companyIds: string[],
     headerMap: Record<string, string | null>,
@@ -188,7 +189,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const { companies } = useOrganizationStore();
   const [companyIds, setCompanyIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
-  const [mappedRowsBySheet, setMappedRowsBySheet] = useState<AccountRow[][]>([]);
+  const [mappedRowsBySheet, setMappedRowsBySheet] = useState<TrialBalanceRow[][]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [glMonth, setGlMonth] = useState('');
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
@@ -197,7 +198,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     string,
     string | null
   > | null>(null);
-  const [includedRows, setIncludedRows] = useState<AccountRow[] | null>(null);
+  const [includedRows, setIncludedRows] = useState<TrialBalanceRow[] | null>(null);
   const [, setAvailableCompanies] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -390,7 +391,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
             ...row,
           };
         })
-        .filter((row): row is AccountRow => row !== null);
+        .filter((row): row is TrialBalanceRow => row !== null);
     });
 
     setMappedRowsBySheet(mappedSheets);

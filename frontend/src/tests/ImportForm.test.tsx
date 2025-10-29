@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import ImportForm, {
   filterRowsByGlMonth,
 } from '../components/import/ImportForm';
-import type { AccountRow } from '../components/import/ExcludeAccounts';
+import type { TrialBalanceRow } from '../types';
 
 it('does not render operation selector', () => {
   render(<ImportForm onImport={jest.fn()} isImporting={false} />);
@@ -10,7 +10,7 @@ it('does not render operation selector', () => {
 });
 
 describe('filterRowsByGlMonth', () => {
-  const baseRows: AccountRow[] = [
+  const baseRows: TrialBalanceRow[] = [
     {
       accountId: '1000',
       description: 'Jan expense',

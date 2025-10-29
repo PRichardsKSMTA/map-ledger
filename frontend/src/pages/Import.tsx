@@ -6,10 +6,10 @@ import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
-import { AccountRow } from '../components/import/ExcludeAccounts';
 import TemplateGuide from '../components/import/TemplateGuide';
 import { fileToBase64 } from '../utils/file';
-import { ImportPreviewRow } from '../types';
+import { ImportPreviewRow, TrialBalanceRow } from '../types';
+import { useMappingStore } from '../store/mappingStore';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -34,8 +34,10 @@ export default function Import() {
     setSuccess('Import removed from history');
   };
 
+  const loadImportedAccounts = useMappingStore(state => state.loadImportedAccounts);
+
   const handleFileImport = async (
-    rows: AccountRow[],
+    rows: TrialBalanceRow[],
     clientId: string,
     _companyIds: string[],
     _headerMap: Record<string, string | null>,
@@ -76,6 +78,14 @@ export default function Import() {
         status: 'completed',
         rowCount: rows.length,
         importedBy: user.email,
+      });
+
+      loadImportedAccounts({
+        uploadId: importId,
+        clientId,
+        companyIds: _companyIds,
+        period: glMonth,
+        rows,
       });
 
       setSuccess('File imported successfully');

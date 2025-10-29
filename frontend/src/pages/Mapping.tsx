@@ -6,6 +6,7 @@ import SummaryCards from '../components/mapping/SummaryCards';
 import MappingTable from '../components/mapping/MappingTable';
 import DistributionTable from '../components/mapping/DistributionTable';
 import ReviewPane from '../components/mapping/ReviewPane';
+import { useMappingStore } from '../store/mappingStore';
 
 const stepParam = (value: string | null): MappingStep => {
   if (value === 'distribution' || value === 'review') {
@@ -17,6 +18,7 @@ const stepParam = (value: string | null): MappingStep => {
 export default function Mapping() {
   const { uploadId = 'demo' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const activeClientId = useMappingStore(state => state.activeClientId);
   const activeStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
 
   const updateStage = useCallback(
@@ -37,7 +39,7 @@ export default function Mapping() {
 
   return (
     <div data-testid="mapping-page" className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <MappingHeader glUploadId={uploadId} />
+      <MappingHeader clientId={activeClientId ?? undefined} glUploadId={uploadId} />
       <SummaryCards />
       <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
       <section
