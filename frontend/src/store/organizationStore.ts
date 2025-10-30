@@ -53,6 +53,45 @@ interface OrganizationState {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
+const shouldLog =
+  import.meta.env.DEV ||
+  (typeof import.meta.env.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
+    import.meta.env.VITE_ENABLE_DEBUG_LOGGING.toLowerCase() === 'true');
+
+const logPrefix = '[OrganizationStore]';
+
+const logDebug = (...args: unknown[]) => {
+  if (!shouldLog) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.debug(logPrefix, ...args);
+};
+
+const logInfo = (...args: unknown[]) => {
+  if (!shouldLog) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info(logPrefix, ...args);
+};
+
+const logWarn = (...args: unknown[]) => {
+  if (!shouldLog) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(logPrefix, ...args);
+};
+
+const logError = (...args: unknown[]) => {
+  if (!shouldLog) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(logPrefix, ...args);
+};
+
 const mergeMetadata = (
   existing: ClientMetadata | undefined,
   incoming: UserClientMetadata
@@ -194,13 +233,29 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
   fetchForUser: async (email: string) => {
     const normalizedEmail = email.trim().toLowerCase();
     const state = get();
+    logDebug('fetchForUser invoked', {
+      providedEmail: email,
+      normalizedEmail,
+      currentEmail: state.currentEmail,
+      isLoading: state.isLoading,
+      cachedAccessCount: state.clientAccess.length,
+    });
     if (
       (state.isLoading && state.currentEmail === normalizedEmail) ||
       (state.currentEmail === normalizedEmail && state.clientAccess.length > 0)
     ) {
+      logInfo('Skipping fetch because data is already loading or cached', {
+        normalizedEmail,
+        isLoading: state.isLoading,
+        cachedAccessCount: state.clientAccess.length,
+      });
       return;
     }
 
+    logInfo('Starting fetch for user clients', {
+      normalizedEmail,
+      apiBaseUrl: API_BASE_URL,
+    });
     set({ isLoading: true, error: null });
 
     try {
@@ -213,7 +268,17 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
         }
       );
 
+      logDebug('Received response from user-clients endpoint', {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText,
+      });
+
       if (!response.ok) {
+        logWarn('User clients fetch returned a non-OK status', {
+          status: response.status,
+          statusText: response.statusText,
+        });
         throw new Error(`Failed to load clients (${response.status})`);
       }
 
@@ -221,15 +286,27 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
         clients?: UserClientAccess[];
       };
 
+      logDebug('Parsed user clients payload', {
+        hasClientsArray: Array.isArray(data.clients),
+        clientCount: Array.isArray(data.clients) ? data.clients.length : 0,
+      });
+
       const accessList = Array.isArray(data.clients) ? data.clients : [];
+      const derivedCompanies = deriveCompaniesFromAccessList(accessList);
+      logInfo('Successfully processed user clients response', {
+        normalizedEmail,
+        clientAccessCount: accessList.length,
+        companyCount: derivedCompanies.length,
+      });
       set({
-        companies: deriveCompaniesFromAccessList(accessList),
+        companies: derivedCompanies,
         clientAccess: accessList,
         currentEmail: normalizedEmail,
         isLoading: false,
         error: null,
       });
     } catch (error) {
+      logError('Failed to fetch user clients', error);
       set({
         companies: [],
         clientAccess: [],

@@ -1,6 +1,40 @@
 import { runQuery } from '../utils/sqlClient';
 import createFallbackUserClientAccess from './userClientRepositoryFallback';
 
+const logPrefix = '[userClientRepository]';
+
+const logDebug = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.debug(logPrefix, ...args);
+};
+
+const logInfo = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info(logPrefix, ...args);
+};
+
+const logWarn = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(logPrefix, ...args);
+};
+
+const logError = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(logPrefix, ...args);
+};
+
 export interface UserClientOperation {
   id: string;
   name: string;
@@ -225,7 +259,10 @@ export const fetchUserClientAccess = async (
 ): Promise<UserClientAccessResult> => {
   const normalizedEmail = email.trim().toLowerCase();
 
+  logInfo('Fetching user client access', { normalizedEmail });
+
   if (!hasSqlConfiguration()) {
+    logWarn('SQL configuration missing; using fallback user client access data');
     return createFallbackUserClientAccess(normalizedEmail);
   }
 
@@ -252,6 +289,7 @@ export const fetchUserClientAccess = async (
   };
 
   const emailVariants = deriveEmailVariants(normalizedEmail);
+  logDebug('Derived email variants for lookup', { emailVariants });
 
   const placeholders: string[] = [];
   const parameters: Record<string, string> = {};
@@ -271,19 +309,26 @@ export const fetchUserClientAccess = async (
 
   let recordset: RawRow[] = [];
   try {
+    logDebug('Executing user client access query', {
+      placeholderCount: placeholders.length,
+      parameters,
+    });
     const result = await runQuery<RawRow>(
       `SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL IN (${placeholderList})`,
       parameters
     );
     recordset = result.recordset ?? [];
+    logInfo('Successfully executed user client access query', {
+      rowCount: recordset.length,
+    });
   } catch (error) {
     if (!shouldAllowFallback()) {
+      logError('User client access query failed without fallback allowance', error);
       throw error;
     }
 
-    // eslint-disable-next-line no-console
-    console.warn(
-      'Falling back to demo user client access data because the SQL query failed.',
+    logWarn(
+      'User client access query failed; falling back to demo data because fallback is allowed',
       error
     );
 
@@ -459,6 +504,11 @@ export const fetchUserClientAccess = async (
       },
     })
   );
+
+  logInfo('Assembled user client access response', {
+    clientCount: clients.length,
+    normalizedEmail,
+  });
 
   return {
     userEmail: normalizedEmail,
