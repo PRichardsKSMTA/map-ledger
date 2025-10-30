@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, Calculator, Layers } from 'lucide-react';
+import { AlertTriangle, Calculator, Layers, XCircle } from 'lucide-react';
 import type { GLAccountMappingRow } from '../../types';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
@@ -86,6 +86,7 @@ const DynamicAllocationRow = ({
     }
 
     return allocation.targetDatapoints.map(target => {
+      const isExclusion = Boolean(target.isExclusion);
       const group = target.groupId
         ? groups.find(item => item.id === target.groupId)
         : undefined;
@@ -101,6 +102,7 @@ const DynamicAllocationRow = ({
         metricName: target.ratioMetric.name,
         basisTotal,
         memberValues,
+        isExclusion,
       };
     });
   }, [allocation, basisAccounts, groups, selectedPeriod]);
@@ -294,67 +296,92 @@ const DynamicAllocationRow = ({
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                {summaryWithRatios.map(summary => (
-                  <article
-                    key={summary.id}
-                    className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-700 shadow-sm transition hover:border-blue-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
-                  >
-                    <header className="flex items-start justify-between gap-3">
-                      <div>
-                        <h5 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                          {summary.name}
-                        </h5>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Metric: {summary.metricName}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="block text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                          Share of total
-                        </span>
-                        <span className="text-lg font-semibold text-blue-700 dark:text-blue-300">
-                          {(summary.ratio * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    </header>
-                    <dl className="grid grid-cols-2 gap-3 text-xs text-slate-500 dark:text-slate-400">
-                      <div>
-                        <dt className="uppercase tracking-wide">Basis total</dt>
-                        <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-200">
-                          {basisFormatter.format(summary.basisTotal)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="uppercase tracking-wide">Members</dt>
-                        <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-200">
-                          {pluralize(summary.memberValues.length, 'datapoint')}
-                        </dd>
-                      </div>
-                    </dl>
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                      <div
-                        className="h-2 rounded-full bg-blue-500 transition-all dark:bg-blue-400"
-                        style={{ width: `${Math.min(summary.ratio * 100, 100)}%` }}
-                        aria-hidden="true"
-                      />
-                    </div>
-                    {summary.memberValues.length > 0 && (
-                      <ul className="divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-white text-xs text-slate-600 dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-                        {summary.memberValues.map(member => (
-                          <li
-                            key={member.accountId}
-                            className="flex items-center justify-between gap-3 px-3 py-2"
-                          >
-                            <span className="flex-1 truncate" title={member.accountName}>
-                              {member.accountName}
+                {summaryWithRatios.map(summary => {
+                  const isExclusion = summary.isExclusion;
+                  const articleClasses = `flex flex-col gap-3 rounded-lg p-4 text-sm shadow-sm transition ${
+                    isExclusion
+                      ? 'border border-rose-200 bg-rose-50/80 text-rose-900 hover:border-rose-300 hover:shadow-md dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100'
+                      : 'border border-slate-200 bg-slate-50/70 text-slate-700 hover:border-blue-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200'
+                  }`;
+                  const titleClasses = isExclusion
+                    ? 'text-base font-semibold text-rose-900 dark:text-rose-100'
+                    : 'text-base font-semibold text-slate-900 dark:text-slate-100';
+                  const percentageClasses = isExclusion
+                    ? 'text-lg font-semibold text-rose-600 dark:text-rose-300'
+                    : 'text-lg font-semibold text-blue-700 dark:text-blue-300';
+                  const basisValueClasses = isExclusion
+                    ? 'mt-1 text-sm font-medium text-rose-700 dark:text-rose-200'
+                    : 'mt-1 text-sm font-medium text-slate-900 dark:text-slate-200';
+                  const progressClasses = isExclusion
+                    ? 'h-2 rounded-full bg-rose-500 transition-all dark:bg-rose-400'
+                    : 'h-2 rounded-full bg-blue-500 transition-all dark:bg-blue-400';
+                  const memberValueClasses = isExclusion
+                    ? 'font-medium text-rose-700 tabular-nums dark:text-rose-200'
+                    : 'font-medium text-slate-700 tabular-nums dark:text-slate-200';
+
+                  return (
+                    <article key={summary.id} className={articleClasses}>
+                      <header className="flex items-start justify-between gap-3">
+                        <div>
+                          <h5 className={titleClasses}>{summary.name}</h5>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">Metric: {summary.metricName}</p>
+                          {isExclusion && (
+                            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">
+                              <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                              Excluded portion
                             </span>
-                            <span className="font-medium text-slate-700 tabular-nums dark:text-slate-200">
-                              {basisFormatter.format(member.value)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </article>
-                ))}
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className="block text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Share of total
+                          </span>
+                          <span className={percentageClasses}>
+                            {(summary.ratio * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </header>
+                      <dl className="grid grid-cols-2 gap-3 text-xs text-slate-500 dark:text-slate-400">
+                        <div>
+                          <dt className="uppercase tracking-wide">Basis total</dt>
+                          <dd className={basisValueClasses}>
+                            {basisFormatter.format(summary.basisTotal)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="uppercase tracking-wide">Members</dt>
+                          <dd className="mt-1 text-sm font-medium text-slate-900 dark:text-slate-200">
+                            {pluralize(summary.memberValues.length, 'datapoint')}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div
+                          className={progressClasses}
+                          style={{ width: `${Math.min(summary.ratio * 100, 100)}%` }}
+                          aria-hidden="true"
+                        />
+                      </div>
+                      {summary.memberValues.length > 0 && (
+                        <ul className="divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-white text-xs text-slate-600 dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                          {summary.memberValues.map(member => (
+                            <li
+                              key={member.accountId}
+                              className="flex items-center justify-between gap-3 px-3 py-2"
+                            >
+                              <span className="flex-1 truncate" title={member.accountName}>
+                                {member.accountName}
+                              </span>
+                              <span className={memberValueClasses}>
+                                {basisFormatter.format(member.value)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
             </div>
           )}
