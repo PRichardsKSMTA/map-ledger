@@ -16,6 +16,14 @@ const openApiSpec = {
     },
     '/mapping/suggest': {
       get: { summary: 'Suggest account mapping' }
+    },
+    '/user-clients': {
+      get: { summary: 'List clients available to the current user' }
+    },
+    '/datapoint-configs': {
+      get: { summary: 'List saved datapoint configurations' },
+      post: { summary: 'Create a new datapoint configuration' },
+      put: { summary: 'Update an existing datapoint configuration' }
     }
   }
 };

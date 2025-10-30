@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
@@ -10,6 +10,7 @@ import TemplateGuide from '../components/import/TemplateGuide';
 import { fileToBase64 } from '../utils/file';
 import { ImportPreviewRow, TrialBalanceRow } from '../types';
 import { useMappingStore } from '../store/mappingStore';
+import { useOrganizationStore } from '../store/organizationStore';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -23,6 +24,30 @@ export default function Import() {
   );
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const companies = useOrganizationStore((state) => state.companies);
+  const fetchOrganizations = useOrganizationStore((state) => state.fetchForUser);
+  const orgLoading = useOrganizationStore((state) => state.isLoading);
+  const orgError = useOrganizationStore((state) => state.error);
+
+  useEffect(() => {
+    if (user?.email) {
+      fetchOrganizations(user.email);
+    }
+  }, [fetchOrganizations, user?.email]);
+
+  const clientSummaries = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    companies.forEach((company) => {
+      company.clients.forEach((client) => {
+        if (!map.has(client.id)) {
+          map.set(client.id, { id: client.id, name: client.name });
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [companies]);
+
+  const singleClient = clientSummaries.length === 1 ? clientSummaries[0] : null;
 
   const handleDeleteImport = (importId: string) => {
     if (!userId) {
@@ -99,14 +124,29 @@ export default function Import() {
 
   return (
     <div className="py-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Data Import</h1>
           <p className="mt-1 text-sm text-gray-500">
             Import trial balance data from CSV files
           </p>
         </div>
+        {singleClient && (
+          <div className="inline-flex items-center rounded-md bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700">
+            Client: {singleClient.name}
+          </div>
+        )}
       </div>
+
+      {orgError && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          {orgError}
+        </div>
+      )}
+
+      {orgLoading && (
+        <p className="text-sm text-gray-500">Loading clients…</p>
+      )}
 
       {error && (
         <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-r-lg">

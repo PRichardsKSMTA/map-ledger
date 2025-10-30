@@ -1,14 +1,34 @@
 import { create } from 'zustand';
+import type {
+  DatapointConfiguration,
+  UserClientAccess,
+  UserClientMetadata,
+} from '../types';
 
 export interface Operation {
-  id: string; // SCAC
+  id: string;
   name: string;
+}
+
+export interface ClientMetadata {
+  sourceAccounts: {
+    id: string;
+    name: string;
+    description: string | null;
+  }[];
+  reportingPeriods: string[];
+  mappingTypes: string[];
+  targetSCoAs: string[];
+  polarities: string[];
+  presets: string[];
+  exclusions: string[];
 }
 
 export interface Client {
   id: string;
   name: string;
   operations: Operation[];
+  metadata: ClientMetadata;
 }
 
 export interface Company {
@@ -19,52 +39,212 @@ export interface Company {
 
 interface OrganizationState {
   companies: Company[];
+  clientAccess: UserClientAccess[];
+  configsByClient: Record<string, DatapointConfiguration[]>;
+  currentEmail: string | null;
+  isLoading: boolean;
+  error: string | null;
+  fetchForUser: (email: string) => Promise<void>;
+  setClientConfigurations: (
+    clientId: string,
+    configs: DatapointConfiguration[]
+  ) => void;
 }
 
-const sampleData: Company[] = [
-  {
-    id: 'ent1',
-    name: 'TMS',
-    clients: [
-      {
-        id: 'cli1',
-        name: 'CarrierOne',
-        operations: [{ id: 'CO1', name: 'Mainline' }],
-      },
-      {
-        id: 'cli2',
-        name: 'CarrierTwo',
-        operations: [
-          { id: 'CT1', name: 'Linehaul' },
-          { id: 'CT2', name: 'Intermodal' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'ent2',
-    name: 'TMS2',
-    clients: [
-      {
-        id: 'cli3',
-        name: 'CarrierThree',
-        operations: [{ id: 'C3P', name: 'Primary' }],
-      },
-    ],
-  },
-  {
-    id: 'ent3',
-    name: 'TMS3',
-    clients: [
-      {
-        id: 'cli4',
-        name: 'CarrierFour',
-        operations: [{ id: 'C4P', name: 'Primary' }],
-      },
-    ],
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
-export const useOrganizationStore = create<OrganizationState>(() => ({
-  companies: sampleData,
+const mergeMetadata = (
+  existing: ClientMetadata | undefined,
+  incoming: UserClientMetadata
+): ClientMetadata => {
+  const uniqueStrings = (values: string[]) =>
+    Array.from(new Set(values.filter((value) => value && value.length > 0))).sort(
+      (a, b) => a.localeCompare(b)
+    );
+
+  const mergeSourceAccounts = (
+    previous: ClientMetadata['sourceAccounts'],
+    next: ClientMetadata['sourceAccounts']
+  ) => {
+    const map = new Map<string, ClientMetadata['sourceAccounts'][number]>();
+    previous.forEach((account) => {
+      map.set(account.id || account.name, account);
+    });
+    next.forEach((account) => {
+      map.set(account.id || account.name, account);
+    });
+    return Array.from(map.values());
+  };
+
+  if (!existing) {
+    return {
+      sourceAccounts: incoming.sourceAccounts.map((account) => ({ ...account })),
+      reportingPeriods: uniqueStrings(incoming.reportingPeriods),
+      mappingTypes: uniqueStrings(incoming.mappingTypes),
+      targetSCoAs: uniqueStrings(incoming.targetSCoAs),
+      polarities: uniqueStrings(incoming.polarities),
+      presets: uniqueStrings(incoming.presets),
+      exclusions: uniqueStrings(incoming.exclusions),
+    };
+  }
+
+  return {
+    sourceAccounts: mergeSourceAccounts(
+      existing.sourceAccounts,
+      incoming.sourceAccounts as ClientMetadata['sourceAccounts']
+    ),
+    reportingPeriods: uniqueStrings(
+      existing.reportingPeriods.concat(incoming.reportingPeriods)
+    ),
+    mappingTypes: uniqueStrings(
+      existing.mappingTypes.concat(incoming.mappingTypes)
+    ),
+    targetSCoAs: uniqueStrings(
+      existing.targetSCoAs.concat(incoming.targetSCoAs)
+    ),
+    polarities: uniqueStrings(existing.polarities.concat(incoming.polarities)),
+    presets: uniqueStrings(existing.presets.concat(incoming.presets)),
+    exclusions: uniqueStrings(existing.exclusions.concat(incoming.exclusions)),
+  };
+};
+
+export const deriveCompaniesFromAccessList = (
+  accessList: UserClientAccess[]
+): Company[] => {
+  const companyMap = new Map<string, Company>();
+
+  accessList.forEach((clientAccess) => {
+    const associatedCompanies =
+      clientAccess.companies.length > 0
+        ? clientAccess.companies
+        : [
+            {
+              companyId: `${clientAccess.clientId}-default`,
+              companyName: clientAccess.clientName,
+              operations: [],
+            },
+          ];
+
+    associatedCompanies.forEach((company) => {
+      const companyId = company.companyId || `${clientAccess.clientId}-default`;
+      const companyName = company.companyName || companyId;
+      const existingCompany = companyMap.get(companyId);
+      const normalizedOperations: Operation[] = (company.operations ?? []).map((op) => ({
+        id: op.id || op.name,
+        name: op.name,
+      }));
+
+      if (!existingCompany) {
+        companyMap.set(companyId, {
+          id: companyId,
+          name: companyName,
+          clients: [
+            {
+              id: clientAccess.clientId,
+              name: clientAccess.clientName,
+              operations: normalizedOperations,
+              metadata: mergeMetadata(undefined, clientAccess.metadata),
+            },
+          ],
+        });
+        return;
+      }
+
+      const clientIndex = existingCompany.clients.findIndex(
+        (client) => client.id === clientAccess.clientId
+      );
+
+      if (clientIndex === -1) {
+        existingCompany.clients.push({
+          id: clientAccess.clientId,
+          name: clientAccess.clientName,
+          operations: normalizedOperations,
+          metadata: mergeMetadata(undefined, clientAccess.metadata),
+        });
+        return;
+      }
+
+      const client = existingCompany.clients[clientIndex];
+      const opMap = new Map<string, Operation>();
+      client.operations.forEach((op) => opMap.set(op.id, op));
+      normalizedOperations.forEach((op) => {
+        if (!opMap.has(op.id)) {
+          opMap.set(op.id, op);
+        }
+      });
+
+      existingCompany.clients[clientIndex] = {
+        ...client,
+        operations: Array.from(opMap.values()),
+        metadata: mergeMetadata(client.metadata, clientAccess.metadata),
+      };
+    });
+  });
+
+  return Array.from(companyMap.values());
+};
+
+export const useOrganizationStore = create<OrganizationState>((set, get) => ({
+  companies: [],
+  clientAccess: [],
+  configsByClient: {},
+  currentEmail: null,
+  isLoading: false,
+  error: null,
+  fetchForUser: async (email: string) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const state = get();
+    if (
+      (state.isLoading && state.currentEmail === normalizedEmail) ||
+      (state.currentEmail === normalizedEmail && state.clientAccess.length > 0)
+    ) {
+      return;
+    }
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/user-clients?email=${encodeURIComponent(normalizedEmail)}`,
+        {
+          headers: {
+            Accept: 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to load clients (${response.status})`);
+      }
+
+      const data = (await response.json()) as {
+        clients?: UserClientAccess[];
+      };
+
+      const accessList = Array.isArray(data.clients) ? data.clients : [];
+      set({
+        companies: deriveCompaniesFromAccessList(accessList),
+        clientAccess: accessList,
+        currentEmail: normalizedEmail,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error) {
+      set({
+        companies: [],
+        clientAccess: [],
+        isLoading: false,
+        currentEmail: null,
+        error: error instanceof Error ? error.message : 'Failed to load clients',
+      });
+    }
+  },
+  setClientConfigurations: (clientId, configs) => {
+    set((state) => ({
+      configsByClient: {
+        ...state.configsByClient,
+        [clientId]: configs,
+      },
+    }));
+  },
 }));

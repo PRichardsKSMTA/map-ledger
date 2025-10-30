@@ -186,7 +186,8 @@ interface ImportFormProps {
 
 export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { companies } = useOrganizationStore();
+  const companies = useOrganizationStore((state) => state.companies);
+  const isLoadingClients = useOrganizationStore((state) => state.isLoading);
   const [companyIds, setCompanyIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
   const [mappedRowsBySheet, setMappedRowsBySheet] = useState<TrialBalanceRow[][]>([]);
@@ -231,6 +232,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     );
   }, [companies]);
 
+  const singleClientId = clientOptions.length === 1 ? clientOptions[0].id : null;
+
   const companyOptions = useMemo(() => {
     if (!clientId) return [];
     return companies.filter((company) =>
@@ -245,10 +248,10 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   }, [companies]);
 
   useEffect(() => {
-    if (clientOptions.length === 1) {
-      setClientId(clientOptions[0].id);
+    if (singleClientId) {
+      setClientId(singleClientId);
     }
-  }, [clientOptions]);
+  }, [singleClientId]);
 
   useEffect(() => {
     const available = companyOptions.map((company) => company.id);
@@ -438,20 +441,29 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Select
-        label="Client"
-        value={clientId}
-        onChange={(e) => setClientId(e.target.value)}
-        required
-        disabled={clientOptions.length === 0}
-      >
-        {clientOptions.length > 1 && <option value="">Select a client</option>}
-        {clientOptions.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name}
-          </option>
-        ))}
-      </Select>
+          {clientOptions.length > 1 && (
+            <Select
+              label="Client"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              required
+              disabled={clientOptions.length === 0 || isLoadingClients}
+            >
+              <option value="">Select a client</option>
+              {clientOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          )}
+
+          {!isLoadingClients && clientOptions.length === 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              No clients are currently linked to your account. Please contact an
+              administrator to request access.
+            </div>
+          )}
 
       <MultiSelect
         label="Company"
@@ -461,7 +473,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         }))}
         value={companyIds}
         onChange={setCompanyIds}
-        disabled={!clientId}
+        disabled={!clientId || isLoadingClients}
       />
 
 
@@ -485,8 +497,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                 setAvailableCompanies([]);
                 setMappedRowsBySheet([]);
                 setGlMonth('');
-                setClientId('');
-                setCompanyIds(companies.length === 1 ? [companies[0].id] : []);
+                setClientId(singleClientId ?? '');
+                setCompanyIds([]);
               }}
                 className="text-gray-500 hover:text-red-500"
               >

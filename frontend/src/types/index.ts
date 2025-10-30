@@ -26,6 +26,61 @@ export interface ClientProfile {
   accountingSystem: string;
 }
 
+export interface UserClientOperation {
+  id: string;
+  name: string;
+}
+
+export interface UserClientCompany {
+  companyId: string;
+  companyName: string;
+  operations: UserClientOperation[];
+}
+
+export interface UserClientMetadata {
+  sourceAccounts: {
+    id: string;
+    name: string;
+    description: string | null;
+  }[];
+  reportingPeriods: string[];
+  mappingTypes: string[];
+  targetSCoAs: string[];
+  polarities: string[];
+  presets: string[];
+  exclusions: string[];
+}
+
+export interface UserClientAccess {
+  clientId: string;
+  clientName: string;
+  companies: UserClientCompany[];
+  metadata: UserClientMetadata;
+}
+
+export interface DatapointConfiguration {
+  id: string;
+  label: string | null;
+  userEmail: string;
+  userName: string | null;
+  clientId: string;
+  clientName: string;
+  companyName: string | null;
+  sourceAccountId: string | null;
+  sourceAccountName: string | null;
+  sourceAccountDescription: string | null;
+  reportingPeriod: string | null;
+  mappingType: string | null;
+  targetSCoA: string | null;
+  polarity: string | null;
+  preset: string | null;
+  operations: string[];
+  exclusions: string[];
+  configuration: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface COATemplate {
   id: string;
   name: string;
