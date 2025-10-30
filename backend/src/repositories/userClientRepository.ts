@@ -251,7 +251,7 @@ const hasSqlConfiguration = (): boolean =>
         process.env.SQL_PASSWORD)
   );
 
-const shouldAllowFallback = (): boolean =>
+export const isUserClientFallbackAllowed = (): boolean =>
   (process.env.ALLOW_DEV_SQL_FALLBACK ?? 'true').toLowerCase() !== 'false';
 
 export const fetchUserClientAccess = async (
