@@ -50,15 +50,15 @@ export const getSqlPool = async (): Promise<ConnectionPool> => {
     const config = resolveSqlConfig();
     connectionPromise = new sql.ConnectionPool(config)
       .connect()
-      .then((pool) => {
-        pool.on('error', (err) => {
+      .then((pool: ConnectionPool) => {
+        pool.on('error', (err: Error) => {
           // eslint-disable-next-line no-console
           console.error('SQL connection pool error', err);
           connectionPromise = null;
         });
         return pool;
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         connectionPromise = null;
         throw error;
       });
