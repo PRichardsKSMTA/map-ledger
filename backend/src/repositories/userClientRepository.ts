@@ -251,7 +251,7 @@ const hasSqlConfiguration = (): boolean =>
         process.env.SQL_PASSWORD)
   );
 
-const shouldAllowFallback = (): boolean =>
+export const isUserClientFallbackAllowed = (): boolean =>
   (process.env.ALLOW_DEV_SQL_FALLBACK ?? 'true').toLowerCase() !== 'false';
 
 export const fetchUserClientAccess = async (
@@ -266,49 +266,48 @@ export const fetchUserClientAccess = async (
     return createFallbackUserClientAccess(normalizedEmail);
   }
 
-  const deriveEmailVariants = (candidate: string): string[] => {
-    const aliases: Record<string, string[]> = {
-      'ksmcpa.com': ['ksmta.com'],
-      'ksmta.com': ['ksmcpa.com'],
+  try {
+    const deriveEmailVariants = (candidate: string): string[] => {
+      const aliases: Record<string, string[]> = {
+        'ksmcpa.com': ['ksmta.com'],
+        'ksmta.com': ['ksmcpa.com'],
+      };
+
+      const baseMatch = candidate.match(/^([^@]+)@([^@]+)$/);
+      if (!baseMatch) {
+        return [candidate];
+      }
+
+      const [, localPart, domain] = baseMatch;
+      const variantDomains = aliases[domain] ?? [];
+      const variants = new Set<string>([candidate]);
+
+      variantDomains.forEach((variantDomain) => {
+        variants.add(`${localPart}@${variantDomain}`);
+      });
+
+      return Array.from(variants);
     };
 
-    const baseMatch = candidate.match(/^([^@]+)@([^@]+)$/);
-    if (!baseMatch) {
-      return [candidate];
-    }
+    const emailVariants = deriveEmailVariants(normalizedEmail);
+    logDebug('Derived email variants for lookup', { emailVariants });
 
-    const [, localPart, domain] = baseMatch;
-    const variantDomains = aliases[domain] ?? [];
-    const variants = new Set<string>([candidate]);
+    const placeholders: string[] = [];
+    const parameters: Record<string, string> = {};
 
-    variantDomains.forEach((variantDomain) => {
-      variants.add(`${localPart}@${variantDomain}`);
+    emailVariants.forEach((value, index) => {
+      const key = `email${index}`;
+      placeholders.push(`@${key}`);
+      parameters[key] = value;
     });
 
-    return Array.from(variants);
-  };
+    if (placeholders.length === 0) {
+      placeholders.push('@email0');
+      parameters.email0 = normalizedEmail;
+    }
 
-  const emailVariants = deriveEmailVariants(normalizedEmail);
-  logDebug('Derived email variants for lookup', { emailVariants });
+    const placeholderList = placeholders.join(', ');
 
-  const placeholders: string[] = [];
-  const parameters: Record<string, string> = {};
-
-  emailVariants.forEach((value, index) => {
-    const key = `email${index}`;
-    placeholders.push(`@${key}`);
-    parameters[key] = value;
-  });
-
-  if (placeholders.length === 0) {
-    placeholders.push('@email0');
-    parameters.email0 = normalizedEmail;
-  }
-
-  const placeholderList = placeholders.join(', ');
-
-  let recordset: RawRow[] = [];
-  try {
     logDebug('Executing user client access query', {
       placeholderCount: placeholders.length,
       parameters,
@@ -317,202 +316,202 @@ export const fetchUserClientAccess = async (
       `SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL IN (${placeholderList})`,
       parameters
     );
-    recordset = result.recordset ?? [];
+    const recordset = result.recordset ?? [];
     logInfo('Successfully executed user client access query', {
       rowCount: recordset.length,
     });
+
+    const clientAggregates = new Map<string, {
+      clientId: string;
+      clientIdGenerated: boolean;
+      clientName: string;
+      companies: Map<
+        string,
+        {
+          companyId: string;
+          companyName: string;
+          operations: Map<string, UserClientOperation>;
+        }
+      >;
+      metadata: {
+        sourceAccounts: Map<string, UserClientSourceAccount>;
+        reportingPeriods: Set<string>;
+        mappingTypes: Set<string>;
+        targetSCoAs: Set<string>;
+        polarities: Set<string>;
+        presets: Set<string>;
+        exclusions: Set<string>;
+      };
+    }>();
+
+    let discoveredUserName: string | null = null;
+
+    recordset.forEach((row: RawRow, rowIndex: number) => {
+      const clientName = extractClientName(row);
+      if (!clientName) {
+        return;
+      }
+
+      const rawClientId = extractClientId(row);
+      const clientId = normalizeIdentifier(
+        rawClientId,
+        clientName,
+        `client-${rowIndex}`
+      );
+
+      const clientKey = clientName.trim().toLowerCase();
+      if (!clientAggregates.has(clientKey)) {
+        clientAggregates.set(clientKey, {
+          clientId,
+          clientIdGenerated: !rawClientId,
+          clientName,
+          companies: new Map(),
+          metadata: {
+            sourceAccounts: new Map(),
+            reportingPeriods: new Set(),
+            mappingTypes: new Set(),
+            targetSCoAs: new Set(),
+            polarities: new Set(),
+            presets: new Set(),
+            exclusions: new Set(),
+          },
+        });
+      }
+
+      const aggregate = clientAggregates.get(clientKey)!;
+
+      if (aggregate.clientIdGenerated && rawClientId) {
+        aggregate.clientId = clientId;
+        aggregate.clientIdGenerated = false;
+      }
+
+      const companyName = extractCompanyName(row);
+      const companyId = normalizeIdentifier(
+        extractCompanyId(row),
+        companyName,
+        `company-${rowIndex}`
+      );
+
+      if (companyName) {
+        if (!aggregate.companies.has(companyId)) {
+          aggregate.companies.set(companyId, {
+            companyId,
+            companyName,
+            operations: new Map(),
+          });
+        }
+
+        const operationName = extractOperationName(row);
+        if (operationName) {
+          const operationId = normalizeIdentifier(
+            extractOperationId(row),
+            operationName,
+            `operation-${rowIndex}`
+          );
+          const company = aggregate.companies.get(companyId)!;
+          if (!company.operations.has(operationId)) {
+            company.operations.set(operationId, {
+              id: operationId,
+              name: operationName,
+            });
+          }
+        }
+      }
+
+      const sourceAccountId = extractSourceAccountId(row);
+      const sourceAccountName = extractSourceAccountName(row);
+      const sourceAccountDescription = extractSourceAccountDescription(row);
+      if (sourceAccountId || sourceAccountName || sourceAccountDescription) {
+        const key = sourceAccountId || sourceAccountName || `account-${rowIndex}`;
+        if (!aggregate.metadata.sourceAccounts.has(key)) {
+          aggregate.metadata.sourceAccounts.set(key, {
+            id: sourceAccountId || key,
+            name: sourceAccountName || sourceAccountId || key,
+            description: sourceAccountDescription,
+          });
+        }
+      }
+
+      const reportingPeriod = extractReportingPeriod(row);
+      if (reportingPeriod) {
+        aggregate.metadata.reportingPeriods.add(reportingPeriod);
+      }
+
+      const mappingType = extractMappingType(row);
+      if (mappingType) {
+        aggregate.metadata.mappingTypes.add(mappingType);
+      }
+
+      const targetSCoA = extractTargetSCoA(row);
+      if (targetSCoA) {
+        aggregate.metadata.targetSCoAs.add(targetSCoA);
+      }
+
+      const polarity = extractPolarity(row);
+      if (polarity) {
+        aggregate.metadata.polarities.add(polarity);
+      }
+
+      const preset = extractPreset(row);
+      if (preset) {
+        aggregate.metadata.presets.add(preset);
+      }
+
+      const exclusion = extractExclusion(row);
+      if (exclusion) {
+        aggregate.metadata.exclusions.add(exclusion);
+      }
+
+      if (!discoveredUserName) {
+        const maybeUserName = extractUserName(row);
+        if (maybeUserName) {
+          discoveredUserName = maybeUserName;
+        }
+      }
+    });
+
+    const clients: UserClientAccess[] = Array.from(clientAggregates.values()).map(
+      (aggregate) => ({
+        clientId: aggregate.clientId,
+        clientName: aggregate.clientName,
+        companies: Array.from(aggregate.companies.values()).map((company) => ({
+          companyId: company.companyId,
+          companyName: company.companyName,
+          operations: Array.from(company.operations.values()),
+        })),
+        metadata: {
+          sourceAccounts: Array.from(aggregate.metadata.sourceAccounts.values()),
+          reportingPeriods: uniqueStringArray(aggregate.metadata.reportingPeriods),
+          mappingTypes: uniqueStringArray(aggregate.metadata.mappingTypes),
+          targetSCoAs: uniqueStringArray(aggregate.metadata.targetSCoAs),
+          polarities: uniqueStringArray(aggregate.metadata.polarities),
+          presets: uniqueStringArray(aggregate.metadata.presets),
+          exclusions: uniqueStringArray(aggregate.metadata.exclusions),
+        },
+      })
+    );
+
+    logInfo('Assembled user client access response', {
+      clientCount: clients.length,
+      normalizedEmail,
+    });
+
+    return {
+      userEmail: normalizedEmail,
+      userName: discoveredUserName,
+      clients,
+    };
   } catch (error) {
-    if (!shouldAllowFallback()) {
-      logError('User client access query failed without fallback allowance', error);
+    if (!isUserClientFallbackAllowed()) {
+      logError('User client access retrieval failed without fallback allowance', error);
       throw error;
     }
 
     logWarn(
-      'User client access query failed; falling back to demo data because fallback is allowed',
+      'User client access retrieval failed; falling back to demo data because fallback is allowed',
       error
     );
 
     return createFallbackUserClientAccess(normalizedEmail);
   }
-
-  const clientAggregates = new Map<string, {
-    clientId: string;
-    clientIdGenerated: boolean;
-    clientName: string;
-    companies: Map<
-      string,
-      {
-        companyId: string;
-        companyName: string;
-        operations: Map<string, UserClientOperation>;
-      }
-    >;
-    metadata: {
-      sourceAccounts: Map<string, UserClientSourceAccount>;
-      reportingPeriods: Set<string>;
-      mappingTypes: Set<string>;
-      targetSCoAs: Set<string>;
-      polarities: Set<string>;
-      presets: Set<string>;
-      exclusions: Set<string>;
-    };
-  }>();
-
-  let discoveredUserName: string | null = null;
-
-  recordset.forEach((row: RawRow, rowIndex: number) => {
-    const clientName = extractClientName(row);
-    if (!clientName) {
-      return;
-    }
-
-    const rawClientId = extractClientId(row);
-    const clientId = normalizeIdentifier(
-      rawClientId,
-      clientName,
-      `client-${rowIndex}`
-    );
-
-    const clientKey = clientName.trim().toLowerCase();
-    if (!clientAggregates.has(clientKey)) {
-      clientAggregates.set(clientKey, {
-        clientId,
-        clientIdGenerated: !rawClientId,
-        clientName,
-        companies: new Map(),
-        metadata: {
-          sourceAccounts: new Map(),
-          reportingPeriods: new Set(),
-          mappingTypes: new Set(),
-          targetSCoAs: new Set(),
-          polarities: new Set(),
-          presets: new Set(),
-          exclusions: new Set(),
-        },
-      });
-    }
-
-    const aggregate = clientAggregates.get(clientKey)!;
-
-    if (aggregate.clientIdGenerated && rawClientId) {
-      aggregate.clientId = clientId;
-      aggregate.clientIdGenerated = false;
-    }
-
-    const companyName = extractCompanyName(row);
-    const companyId = normalizeIdentifier(
-      extractCompanyId(row),
-      companyName,
-      `company-${rowIndex}`
-    );
-
-    if (companyName) {
-      if (!aggregate.companies.has(companyId)) {
-        aggregate.companies.set(companyId, {
-          companyId,
-          companyName,
-          operations: new Map(),
-        });
-      }
-
-      const operationName = extractOperationName(row);
-      if (operationName) {
-        const operationId = normalizeIdentifier(
-          extractOperationId(row),
-          operationName,
-          `operation-${rowIndex}`
-        );
-        const company = aggregate.companies.get(companyId)!;
-        if (!company.operations.has(operationId)) {
-          company.operations.set(operationId, {
-            id: operationId,
-            name: operationName,
-          });
-        }
-      }
-    }
-
-    const sourceAccountId = extractSourceAccountId(row);
-    const sourceAccountName = extractSourceAccountName(row);
-    const sourceAccountDescription = extractSourceAccountDescription(row);
-    if (sourceAccountId || sourceAccountName || sourceAccountDescription) {
-      const key = sourceAccountId || sourceAccountName || `account-${rowIndex}`;
-      if (!aggregate.metadata.sourceAccounts.has(key)) {
-        aggregate.metadata.sourceAccounts.set(key, {
-          id: sourceAccountId || key,
-          name: sourceAccountName || sourceAccountId || key,
-          description: sourceAccountDescription,
-        });
-      }
-    }
-
-    const reportingPeriod = extractReportingPeriod(row);
-    if (reportingPeriod) {
-      aggregate.metadata.reportingPeriods.add(reportingPeriod);
-    }
-
-    const mappingType = extractMappingType(row);
-    if (mappingType) {
-      aggregate.metadata.mappingTypes.add(mappingType);
-    }
-
-    const targetSCoA = extractTargetSCoA(row);
-    if (targetSCoA) {
-      aggregate.metadata.targetSCoAs.add(targetSCoA);
-    }
-
-    const polarity = extractPolarity(row);
-    if (polarity) {
-      aggregate.metadata.polarities.add(polarity);
-    }
-
-    const preset = extractPreset(row);
-    if (preset) {
-      aggregate.metadata.presets.add(preset);
-    }
-
-    const exclusion = extractExclusion(row);
-    if (exclusion) {
-      aggregate.metadata.exclusions.add(exclusion);
-    }
-
-    if (!discoveredUserName) {
-      const maybeUserName = extractUserName(row);
-      if (maybeUserName) {
-        discoveredUserName = maybeUserName;
-      }
-    }
-  });
-
-  const clients: UserClientAccess[] = Array.from(clientAggregates.values()).map(
-    (aggregate) => ({
-      clientId: aggregate.clientId,
-      clientName: aggregate.clientName,
-      companies: Array.from(aggregate.companies.values()).map((company) => ({
-        companyId: company.companyId,
-        companyName: company.companyName,
-        operations: Array.from(company.operations.values()),
-      })),
-      metadata: {
-        sourceAccounts: Array.from(aggregate.metadata.sourceAccounts.values()),
-        reportingPeriods: uniqueStringArray(aggregate.metadata.reportingPeriods),
-        mappingTypes: uniqueStringArray(aggregate.metadata.mappingTypes),
-        targetSCoAs: uniqueStringArray(aggregate.metadata.targetSCoAs),
-        polarities: uniqueStringArray(aggregate.metadata.polarities),
-        presets: uniqueStringArray(aggregate.metadata.presets),
-        exclusions: uniqueStringArray(aggregate.metadata.exclusions),
-      },
-    })
-  );
-
-  logInfo('Assembled user client access response', {
-    clientCount: clients.length,
-    normalizedEmail,
-  });
-
-  return {
-    userEmail: normalizedEmail,
-    userName: discoveredUserName,
-    clients,
-  };
 };
