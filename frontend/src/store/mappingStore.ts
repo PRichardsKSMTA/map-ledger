@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   GLAccountMappingRow,
+  MappingExclusion,
   MappingPolarity,
   MappingSplitDefinition,
   MappingStatus,
@@ -146,7 +147,104 @@ const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   ...row,
   companies: row.companies.map(company => ({ ...company })),
   splitDefinitions: row.splitDefinitions.map(split => ({ ...split })),
+  exclusion: row.exclusion ? { ...row.exclusion } : undefined,
 });
+
+const clampExclusionAmount = (
+  account: GLAccountMappingRow,
+  rawAmount: number,
+): number => {
+  if (!Number.isFinite(rawAmount)) {
+    return 0;
+  }
+  const available = Math.abs(account.netChange);
+  if (available === 0) {
+    return 0;
+  }
+  const safeMagnitude = Math.min(Math.max(rawAmount, 0), available);
+  return account.netChange >= 0 ? safeMagnitude : -safeMagnitude;
+};
+
+const normalizeExclusion = (
+  previous: MappingExclusion | undefined,
+  updates: Partial<MappingExclusion>,
+): MappingExclusion => {
+  const nextType = updates.type ?? previous?.type ?? 'none';
+
+  if (nextType === 'none') {
+    return { type: 'none' };
+  }
+
+  if (nextType === 'amount') {
+    const rawAmount = updates.amount ?? previous?.amount ?? 0;
+    const amount = Number.isFinite(rawAmount) ? Math.max(0, rawAmount) : 0;
+    return { type: 'amount', amount };
+  }
+
+  if (nextType === 'percentage') {
+    const rawPercentage = updates.percentage ?? previous?.percentage ?? 0;
+    const percentage = Number.isFinite(rawPercentage)
+      ? Math.min(Math.max(rawPercentage, 0), 100)
+      : 0;
+    return { type: 'percentage', percentage };
+  }
+
+  if (nextType === 'dynamic') {
+    const nextDatapointId = (updates.datapointId ?? previous?.datapointId ?? '').trim();
+    const datapointName = updates.datapointName ?? previous?.datapointName;
+    const hasDatapointChanged =
+      typeof updates.datapointId === 'string' && updates.datapointId.trim() !== (previous?.datapointId ?? '');
+    const resolvedAmount = hasDatapointChanged ? 0 : previous?.resolvedAmount;
+    return {
+      type: 'dynamic',
+      datapointId: nextDatapointId,
+      datapointName,
+      resolvedAmount,
+    };
+  }
+
+  return { type: 'none' };
+};
+
+const getAccountExcludedAmount = (account: GLAccountMappingRow): number => {
+  if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+    return account.netChange;
+  }
+
+  const exclusion = account.exclusion;
+  if (!exclusion || exclusion.type === 'none') {
+    return 0;
+  }
+
+  if (exclusion.type === 'amount') {
+    return clampExclusionAmount(account, Math.max(0, exclusion.amount ?? 0));
+  }
+
+  if (exclusion.type === 'percentage') {
+    const percentage = Math.min(Math.max(exclusion.percentage ?? 0, 0), 100);
+    const rawAmount = (Math.abs(account.netChange) * percentage) / 100;
+    return clampExclusionAmount(account, rawAmount);
+  }
+
+  if (exclusion.type === 'dynamic') {
+    const resolved = Math.max(0, exclusion.resolvedAmount ?? 0);
+    return clampExclusionAmount(account, resolved);
+  }
+
+  return 0;
+};
+
+const getAllocatableNetChange = (account: GLAccountMappingRow): number => {
+  if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+    return 0;
+  }
+  const excluded = getAccountExcludedAmount(account);
+  const remaining = account.netChange - excluded;
+  if (Math.abs(remaining) < 1e-6) {
+    return 0;
+  }
+  return remaining;
+};
 
 const getSplitPercentage = (
   account: GLAccountMappingRow,
@@ -156,7 +254,11 @@ const getSplitPercentage = (
     return split.allocationValue;
   }
   if (split.allocationType === 'amount' && account.netChange !== 0) {
-    return (split.allocationValue / account.netChange) * 100;
+    const allocatable = getAllocatableNetChange(account);
+    if (allocatable === 0) {
+      return 0;
+    }
+    return (Math.abs(split.allocationValue) / Math.abs(allocatable)) * 100;
   }
   return 0;
 };
@@ -164,7 +266,7 @@ const getSplitPercentage = (
 const getSplitAmount = (
   account: GLAccountMappingRow,
   percentage: number,
-): number => (account.netChange * percentage) / 100;
+): number => (getAllocatableNetChange(account) * percentage) / 100;
 
 const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
   if (account.mappingType === 'exclude' || account.status === 'Excluded') {
@@ -277,9 +379,7 @@ const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts.reduce((sum, account) => sum + account.netChange, 0);
 
 const calculateExcludedTotal = (accounts: GLAccountMappingRow[]): number =>
-  accounts
-    .filter(account => account.mappingType === 'exclude' || account.status === 'Excluded')
-    .reduce((sum, account) => sum + account.netChange, 0);
+  accounts.reduce((sum, account) => sum + getAccountExcludedAmount(account), 0);
 
 type SummarySelector = {
   totalAccounts: number;
@@ -306,6 +406,10 @@ interface MappingState {
   updateMappingType: (id: string, mappingType: MappingType) => void;
   updatePolarity: (id: string, polarity: MappingPolarity) => void;
   updateNotes: (id: string, notes: string) => void;
+  updateExclusion: (
+    id: string,
+    updates: Partial<MappingExclusion> & { type?: MappingExclusion['type'] },
+  ) => void;
   addSplitDefinition: (id: string) => void;
   updateSplitDefinition: (
     accountId: string,
@@ -392,30 +496,35 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           manualCOAId: isExcluded ? undefined : account.manualCOAId,
           presetId: isExcluded ? undefined : account.presetId,
           splitDefinitions: isExcluded ? [] : account.splitDefinitions,
+          exclusion: isExcluded ? undefined : account.exclusion,
         });
       }),
     })),
   updateMappingType: (id, mappingType) =>
     set(state => ({
-      accounts: state.accounts.map(account =>
-        account.id === id
-          ? applyDerivedStatus({
-              ...account,
-              mappingType,
-              status:
-                mappingType === 'exclude'
-                  ? 'Excluded'
-                  : account.status === 'Excluded'
-                    ? 'Unmapped'
-                    : account.status,
-              manualCOAId: mappingType === 'exclude' ? undefined : account.manualCOAId,
-          splitDefinitions:
-            mappingType === 'percentage'
-              ? account.splitDefinitions
-              : [],
-            })
-          : account
-      ),
+      accounts: state.accounts.map(account => {
+        if (account.id !== id) {
+          return account;
+        }
+
+        const nextSplitDefinitions =
+          mappingType === 'percentage' ? account.splitDefinitions : [];
+        const nextExclusion = mappingType === 'exclude' ? undefined : account.exclusion;
+
+        return applyDerivedStatus({
+          ...account,
+          mappingType,
+          status:
+            mappingType === 'exclude'
+              ? 'Excluded'
+              : account.status === 'Excluded'
+                ? 'Unmapped'
+                : account.status,
+          manualCOAId: mappingType === 'exclude' ? undefined : account.manualCOAId,
+          splitDefinitions: nextSplitDefinitions,
+          exclusion: nextExclusion,
+        });
+      }),
     })),
   updatePolarity: (id, polarity) =>
     set(state => ({
@@ -428,6 +537,29 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       accounts: state.accounts.map(account =>
         account.id === id ? { ...account, notes: notes || undefined } : account
       ),
+    })),
+  updateExclusion: (id, updates) =>
+    set(state => ({
+      accounts: state.accounts.map(account => {
+        if (account.id !== id) {
+          return account;
+        }
+
+        const normalized = normalizeExclusion(account.exclusion, updates);
+        if (normalized.type === 'none') {
+          if (!account.exclusion) {
+            return account;
+          }
+          const nextAccount = { ...account };
+          delete nextAccount.exclusion;
+          return nextAccount;
+        }
+
+        return {
+          ...account,
+          exclusion: normalized,
+        };
+      }),
     })),
   addSplitDefinition: id =>
     set(state => ({
@@ -502,6 +634,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             next.status = 'Excluded';
             next.manualCOAId = undefined;
             next.presetId = undefined;
+            delete next.exclusion;
           } else if (next.status === 'Excluded') {
             next.status = 'Unmapped';
           }
@@ -527,6 +660,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             next.manualCOAId = undefined;
             next.presetId = undefined;
             next.splitDefinitions = [];
+            delete next.exclusion;
           } else if (next.mappingType === 'exclude') {
             next.mappingType = 'direct';
           }
@@ -708,3 +842,82 @@ export const selectAccountsRequiringSplits = (state: MappingState) =>
     account =>
       account.mappingType === 'percentage' && account.splitDefinitions.length === 0
   );
+
+export { getAccountExcludedAmount, getAllocatableNetChange };
+
+useRatioAllocationStore.subscribe(
+  state => ({ results: state.results, selectedPeriod: state.selectedPeriod }),
+  ({ results, selectedPeriod }) => {
+    useMappingStore.setState(currentState => {
+      const dynamicAccounts = currentState.accounts.filter(
+        account => account.exclusion?.type === 'dynamic',
+      );
+
+      if (dynamicAccounts.length === 0) {
+        return currentState;
+      }
+
+      const targetPeriod = currentState.activePeriod ?? selectedPeriod ?? null;
+      const relevantResults =
+        targetPeriod !== null
+          ? results.filter(result => result.periodId === targetPeriod)
+          : results;
+
+      const accountById = new Map(dynamicAccounts.map(account => [account.id, account]));
+      const amountByAccount = new Map<string, number>();
+
+      relevantResults.forEach(result => {
+        const account = accountById.get(result.sourceAccountId);
+        if (!account || !account.exclusion) {
+          return;
+        }
+
+        const datapointId = account.exclusion.datapointId;
+        if (!datapointId) {
+          amountByAccount.set(account.id, 0);
+          return;
+        }
+
+        const target = result.allocations.find(
+          allocation => allocation.datapointId === datapointId,
+        );
+        if (!target) {
+          amountByAccount.set(account.id, 0);
+          return;
+        }
+
+        const adjustment =
+          result.adjustment?.targetId === datapointId ? result.adjustment.amount : 0;
+        const value = Math.max(0, target.value + adjustment);
+        amountByAccount.set(account.id, value);
+      });
+
+      let changed = false;
+      const nextAccounts = currentState.accounts.map(account => {
+        if (account.exclusion?.type !== 'dynamic') {
+          return account;
+        }
+
+        const resolvedAmount = amountByAccount.get(account.id) ?? 0;
+        if (Math.abs((account.exclusion.resolvedAmount ?? 0) - resolvedAmount) < 0.0001) {
+          return account;
+        }
+
+        changed = true;
+        return {
+          ...account,
+          exclusion: {
+            ...account.exclusion,
+            resolvedAmount,
+          },
+        };
+      });
+
+      if (!changed) {
+        return currentState;
+      }
+
+      return { accounts: nextAccounts };
+    });
+  },
+);
