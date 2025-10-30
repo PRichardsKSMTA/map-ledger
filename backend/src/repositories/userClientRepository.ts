@@ -502,7 +502,7 @@ export const fetchUserClientAccess = async (
       clients,
     };
   } catch (error) {
-    if (!isUserClientFallbackAllowed()) {
+    if (!shouldAllowFallback()) {
       logError('User client access retrieval failed without fallback allowance', error);
       throw error;
     }
