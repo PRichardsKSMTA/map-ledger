@@ -519,7 +519,9 @@ export default function MappingTable() {
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-4 align-middle">
+                    <td
+                      className={`px-3 py-4 align-middle ${COLUMN_WIDTH_CLASSES.exclusion ?? ''}`}
+                    >
                       <MappingExclusionCell account={account} />
                     </td>
                     <td className="px-3 py-4">
