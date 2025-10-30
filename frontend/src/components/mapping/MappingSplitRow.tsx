@@ -102,7 +102,7 @@ export default function MappingSplitRow({
   const splitRows = useMemo(() => {
     return account.splitDefinitions.map(split => {
       const percentage = calculateSplitPercentage(account, split);
-      const amount = calculateSplitAmount(account, percentage);
+      const amount = calculateSplitAmount(account, split);
       return {
         ...split,
         percentage,
@@ -162,6 +162,15 @@ export default function MappingSplitRow({
     onUpdateSplit(splitId, { notes: value || undefined });
   };
 
+  const handleExclusionToggle = (splitId: string, nextValue: boolean) => {
+    const updates: Partial<MappingSplitDefinition> = { isExclusion: nextValue };
+    if (nextValue) {
+      updates.targetId = '';
+      updates.targetName = '';
+    }
+    onUpdateSplit(splitId, updates);
+  };
+
   return (
     <tr>
       <td
@@ -195,6 +204,7 @@ export default function MappingSplitRow({
                 <thead className="bg-white dark:bg-slate-900/60">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Target</th>
+                    <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Exclude</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Percentage</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Amount</th>
                     <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Notes</th>
@@ -205,22 +215,41 @@ export default function MappingSplitRow({
                   {splitRows.map(split => (
                     <tr key={split.id}>
                       <td className="px-3 py-2">
-                        <label className="sr-only" htmlFor={`split-target-${split.id}`}>
-                          Select target datapoint
+                        {split.isExclusion ? (
+                          <div className="w-full rounded-md border border-dashed border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+                            Excluded from mapping
+                          </div>
+                        ) : (
+                          <>
+                            <label className="sr-only" htmlFor={`split-target-${split.id}`}>
+                              Select target datapoint
+                            </label>
+                            <select
+                              id={`split-target-${split.id}`}
+                              value={split.targetId}
+                              onChange={event => handleTargetChange(split.id, event.target.value)}
+                              className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                            >
+                              <option value="">Select target</option>
+                              {targetOptions.map(option => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500"
+                            checked={Boolean(split.isExclusion)}
+                            onChange={event => handleExclusionToggle(split.id, event.target.checked)}
+                          />
+                          Exclude
                         </label>
-                        <select
-                          id={`split-target-${split.id}`}
-                          value={split.targetId}
-                          onChange={event => handleTargetChange(split.id, event.target.value)}
-                          className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                        >
-                          <option value="">Select target</option>
-                          {targetOptions.map(option => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
                       </td>
                       <td className="px-3 py-2">
                         <label className="sr-only" htmlFor={`split-percentage-${split.id}`}>
@@ -272,6 +301,7 @@ export default function MappingSplitRow({
                 <tfoot>
                   <tr>
                     <td className="px-3 py-2 text-sm font-medium text-slate-600 dark:text-slate-300">Total</td>
+                    <td />
                     <td className="px-3 py-2 text-sm font-semibold text-slate-700 dark:text-slate-100">
                       {totals.percentageTotalLabel}
                     </td>

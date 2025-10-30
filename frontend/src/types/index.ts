@@ -192,6 +192,7 @@ export interface RatioAllocationTargetDatapoint {
     name: string;
     value: number;
   };
+  isExclusion?: boolean;
 }
 
 export interface RatioAllocation {
@@ -215,6 +216,7 @@ export interface AllocationResultTargetBreakdown {
   value: number;
   percentage: number;
   ratio: number;
+  isExclusion?: boolean;
 }
 
 export interface AllocationResultAdjustment {
@@ -359,22 +361,6 @@ export type MappingStatus = 'Mapped' | 'Unmapped' | 'New' | 'Excluded';
 
 export type MappingType = 'direct' | 'percentage' | 'dynamic' | 'exclude';
 
-export type MappingExclusionType = 'none' | 'amount' | 'percentage' | 'dynamic';
-
-export interface MappingExclusion {
-  type: MappingExclusionType;
-  amount?: number;
-  percentage?: number;
-  datapointId?: string;
-  datapointName?: string;
-  /**
-   * Cached amount resolved from dynamic allocation results. Stored as a
-   * positive value representing the absolute balance excluded from the
-   * account, regardless of polarity.
-   */
-  resolvedAmount?: number;
-}
-
 export type MappingPolarity = 'Debit' | 'Credit' | 'Absolute';
 
 export interface MappingSplitDefinition {
@@ -384,6 +370,7 @@ export interface MappingSplitDefinition {
   allocationType: 'percentage' | 'amount';
   allocationValue: number;
   notes?: string;
+  isExclusion?: boolean;
 }
 
 export type DistributionType = 'direct' | 'percentage' | 'dynamic';
@@ -429,7 +416,7 @@ export interface GLAccountMappingRow {
   notes?: string;
   splitDefinitions: MappingSplitDefinition[];
   companies: GLAccountCompanyBreakdown[];
-  exclusion?: MappingExclusion;
+  dynamicExclusionAmount?: number;
 }
 
 export interface GLUpload {
