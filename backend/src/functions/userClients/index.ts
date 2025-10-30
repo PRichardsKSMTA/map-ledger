@@ -1,15 +1,11 @@
 import { Request, Response } from 'express';
 import { fetchUserClientAccess } from '../../repositories/userClientRepository';
+import { getFirstStringValue } from '../../utils/requestParsers';
 
 export default async function userClients(req: Request, res: Response) {
   try {
     const emailParam = req.query.email ?? req.headers['x-user-email'];
-    const email =
-      typeof emailParam === 'string'
-        ? emailParam.trim()
-        : Array.isArray(emailParam)
-        ? emailParam[0]
-        : null;
+    const email = getFirstStringValue(emailParam);
 
     if (!email) {
       res.status(400).json({ message: 'Missing email query parameter' });

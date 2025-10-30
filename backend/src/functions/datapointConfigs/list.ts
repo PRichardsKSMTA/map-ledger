@@ -1,31 +1,25 @@
 import { Request, Response } from 'express';
 import { listDatapointConfigurations } from '../../repositories/datapointConfigurationRepository';
+import { getFirstStringValue } from '../../utils/requestParsers';
 
 export default async function listDatapointConfigs(req: Request, res: Response) {
   try {
     const emailParam = req.query.email ?? req.headers['x-user-email'];
     const clientIdParam = req.query.clientId ?? req.query.client_id;
 
-    const email =
-      typeof emailParam === 'string'
-        ? emailParam.trim()
-        : Array.isArray(emailParam)
-        ? emailParam[0]
-        : null;
+    const email = getFirstStringValue(emailParam);
 
     if (!email) {
       res.status(400).json({ message: 'Missing email query parameter' });
       return;
     }
 
-    const clientId =
-      typeof clientIdParam === 'string'
-        ? clientIdParam.trim()
-        : Array.isArray(clientIdParam)
-        ? clientIdParam[0]
-        : undefined;
+    const clientId = getFirstStringValue(clientIdParam);
 
-    const configs = await listDatapointConfigurations(email.toLowerCase(), clientId);
+    const configs = await listDatapointConfigurations(
+      email.toLowerCase(),
+      clientId
+    );
     res.json({ items: configs });
   } catch (error) {
     // eslint-disable-next-line no-console

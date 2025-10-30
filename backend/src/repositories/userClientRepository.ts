@@ -236,7 +236,7 @@ export const fetchUserClientAccess = async (
 
   let discoveredUserName: string | null = null;
 
-  recordset.forEach((row, rowIndex) => {
+  recordset.forEach((row: RawRow, rowIndex: number) => {
     const clientName = extractClientName(row);
     if (!clientName) {
       return;
