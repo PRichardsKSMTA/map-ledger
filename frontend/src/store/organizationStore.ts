@@ -5,6 +5,70 @@ import type {
   UserClientMetadata,
 } from '../types';
 
+// Temporary demo data used while the database connection is disabled.
+const demoClientAccess: UserClientAccess[] = [
+  {
+    clientId: 'demo-manufacturing',
+    clientName: 'Demo Manufacturing Co.',
+    companies: [
+      {
+        companyId: 'demo-manufacturing',
+        companyName: 'Demo Manufacturing Co.',
+        operations: [
+          { id: 'assembly', name: 'Assembly' },
+          { id: 'distribution', name: 'Distribution' },
+        ],
+      },
+    ],
+    metadata: {
+      sourceAccounts: [
+        {
+          id: '1000',
+          name: 'Cash',
+          description: 'Cash and cash equivalents',
+        },
+        {
+          id: '2100',
+          name: 'Accounts Payable',
+          description: null,
+        },
+      ],
+      reportingPeriods: ['2024-Q1', '2024-Q2'],
+      mappingTypes: ['Standard', 'Advanced'],
+      targetSCoAs: ['Manufacturing-Standard'],
+      polarities: ['Debit', 'Credit'],
+      presets: ['Default Manufacturing'],
+      exclusions: ['Legacy Accounts'],
+    },
+  },
+  {
+    clientId: 'demo-healthcare',
+    clientName: 'Demo Healthcare Group',
+    companies: [
+      {
+        companyId: 'demo-healthcare',
+        companyName: 'Demo Healthcare Group',
+        operations: [
+          { id: 'clinical', name: 'Clinical Services' },
+          { id: 'administration', name: 'Administration' },
+        ],
+      },
+    ],
+    metadata: {
+      sourceAccounts: [
+        { id: '4000', name: 'Patient Revenue', description: 'Net patient revenue' },
+        { id: '5200', name: 'Medical Supplies', description: null },
+      ],
+      reportingPeriods: ['2023-Q4', '2024-Q1'],
+      mappingTypes: ['Healthcare Template'],
+      targetSCoAs: ['Healthcare-Operating'],
+      polarities: ['Credit', 'Debit'],
+      presets: ['Default Healthcare'],
+      exclusions: ['Non-Operating'],
+    },
+  },
+];
+
 export interface Operation {
   id: string;
   name: string;
@@ -259,41 +323,42 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/user-clients?email=${encodeURIComponent(normalizedEmail)}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      // TODO: Re-enable the database-backed user client fetch when the backend is restored.
+      // const response = await fetch(
+      //   `${API_BASE_URL}/user-clients?email=${encodeURIComponent(normalizedEmail)}`,
+      //   {
+      //     headers: {
+      //       Accept: 'application/json',
+      //     },
+      //   }
+      // );
+      //
+      // logDebug('Received response from user-clients endpoint', {
+      //   status: response.status,
+      //   ok: response.ok,
+      //   statusText: response.statusText,
+      // });
+      //
+      // if (!response.ok) {
+      //   logWarn('User clients fetch returned a non-OK status', {
+      //     status: response.status,
+      //     statusText: response.statusText,
+      //   });
+      //   throw new Error(`Failed to load clients (${response.status})`);
+      // }
+      //
+      // const data = (await response.json()) as {
+      //   clients?: UserClientAccess[];
+      // };
+      //
+      // logDebug('Parsed user clients payload', {
+      //   hasClientsArray: Array.isArray(data.clients),
+      //   clientCount: Array.isArray(data.clients) ? data.clients.length : 0,
+      // });
 
-      logDebug('Received response from user-clients endpoint', {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText,
-      });
-
-      if (!response.ok) {
-        logWarn('User clients fetch returned a non-OK status', {
-          status: response.status,
-          statusText: response.statusText,
-        });
-        throw new Error(`Failed to load clients (${response.status})`);
-      }
-
-      const data = (await response.json()) as {
-        clients?: UserClientAccess[];
-      };
-
-      logDebug('Parsed user clients payload', {
-        hasClientsArray: Array.isArray(data.clients),
-        clientCount: Array.isArray(data.clients) ? data.clients.length : 0,
-      });
-
-      const accessList = Array.isArray(data.clients) ? data.clients : [];
+      const accessList = demoClientAccess;
       const derivedCompanies = deriveCompaniesFromAccessList(accessList);
-      logInfo('Successfully processed user clients response', {
+      logInfo('Using demo clients while database connection is disabled', {
         normalizedEmail,
         clientAccessCount: accessList.length,
         companyCount: derivedCompanies.length,
