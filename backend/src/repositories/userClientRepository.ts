@@ -207,13 +207,56 @@ const uniqueStringArray = (values: Iterable<string>) =>
 export const fetchUserClientAccess = async (
   email: string
 ): Promise<UserClientAccessResult> => {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const deriveEmailVariants = (candidate: string): string[] => {
+    const aliases: Record<string, string[]> = {
+      'ksmcpa.com': ['ksmta.com'],
+      'ksmta.com': ['ksmcpa.com'],
+    };
+
+    const baseMatch = candidate.match(/^([^@]+)@([^@]+)$/);
+    if (!baseMatch) {
+      return [candidate];
+    }
+
+    const [, localPart, domain] = baseMatch;
+    const variantDomains = aliases[domain] ?? [];
+    const variants = new Set<string>([candidate]);
+
+    variantDomains.forEach((variantDomain) => {
+      variants.add(`${localPart}@${variantDomain}`);
+    });
+
+    return Array.from(variants);
+  };
+
+  const emailVariants = deriveEmailVariants(normalizedEmail);
+
+  const placeholders: string[] = [];
+  const parameters: Record<string, string> = {};
+
+  emailVariants.forEach((value, index) => {
+    const key = `email${index}`;
+    placeholders.push(`@${key}`);
+    parameters[key] = value;
+  });
+
+  if (placeholders.length === 0) {
+    placeholders.push('@email0');
+    parameters.email0 = normalizedEmail;
+  }
+
+  const placeholderList = placeholders.join(', ');
+
   const { recordset = [] } = await runQuery<RawRow>(
-    'SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL = @email',
-    { email }
+    `SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL IN (${placeholderList})`,
+    parameters
   );
 
   const clientAggregates = new Map<string, {
     clientId: string;
+    clientIdGenerated: boolean;
     clientName: string;
     companies: Map<
       string,
@@ -242,16 +285,18 @@ export const fetchUserClientAccess = async (
       return;
     }
 
+    const rawClientId = extractClientId(row);
     const clientId = normalizeIdentifier(
-      extractClientId(row),
+      rawClientId,
       clientName,
       `client-${rowIndex}`
     );
 
-    const clientKey = `${clientId}::${clientName}`;
+    const clientKey = clientName.trim().toLowerCase();
     if (!clientAggregates.has(clientKey)) {
       clientAggregates.set(clientKey, {
         clientId,
+        clientIdGenerated: !rawClientId,
         clientName,
         companies: new Map(),
         metadata: {
@@ -267,6 +312,11 @@ export const fetchUserClientAccess = async (
     }
 
     const aggregate = clientAggregates.get(clientKey)!;
+
+    if (aggregate.clientIdGenerated && rawClientId) {
+      aggregate.clientId = clientId;
+      aggregate.clientIdGenerated = false;
+    }
 
     const companyName = extractCompanyName(row);
     const companyId = normalizeIdentifier(
@@ -375,7 +425,7 @@ export const fetchUserClientAccess = async (
   );
 
   return {
-    userEmail: email,
+    userEmail: normalizedEmail,
     userName: discoveredUserName,
     clients,
   };
