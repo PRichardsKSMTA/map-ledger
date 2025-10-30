@@ -30,6 +30,7 @@ import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import type {
   GLAccountMappingRow,
   MappingPolarity,
+  MappingStatus,
   MappingType,
   TargetScoaOption,
 } from '../../types';
@@ -38,6 +39,7 @@ import DynamicAllocationRow from './DynamicAllocationRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
 import RatioAllocationManager from './RatioAllocationManager';
+import { getGroupTotal } from '../../utils/dynamicAllocation';
 
 type SortKey =
   | 'companyName'
@@ -124,11 +126,19 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
 
 export default function MappingTable() {
-  const { allocations, validationErrors, selectedPeriod } = useRatioAllocationStore(
+  const {
+    allocations,
+    validationErrors,
+    selectedPeriod,
+    basisAccounts,
+    groups,
+  } = useRatioAllocationStore(
     (state) => ({
       allocations: state.allocations,
       validationErrors: state.validationErrors,
       selectedPeriod: state.selectedPeriod,
+      basisAccounts: state.basisAccounts,
+      groups: state.groups,
     })
   );
   const datapoints = useTemplateStore((state) => state.datapoints);
@@ -165,6 +175,7 @@ export default function MappingTable() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(
     () => new Set()
   );
+  const previousMappingTypesRef = useRef<Map<string, MappingType>>(new Map());
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(
     null
   );
@@ -192,16 +203,87 @@ export default function MappingTable() {
   }, [accounts, selectedIds, setSelection]);
 
   useEffect(() => {
+    const previousMappingTypes = previousMappingTypesRef.current;
+    const currentIds = new Set(accounts.map((account) => account.id));
+
     setExpandedRows((previous) => {
-      const next = new Set<string>();
+      let changed = false;
+      const next = new Set(previous);
+
       previous.forEach((id) => {
-        if (accounts.some((account) => account.id === id)) {
-          next.add(id);
+        if (!currentIds.has(id)) {
+          next.delete(id);
+          changed = true;
         }
       });
+
+      accounts.forEach((account) => {
+        const requiresSplit =
+          account.mappingType === 'percentage' ||
+          account.mappingType === 'dynamic';
+        const previousType = previousMappingTypes.get(account.id);
+        const previouslyRequired =
+          previousType === 'percentage' || previousType === 'dynamic';
+
+        if (requiresSplit && !previouslyRequired && !next.has(account.id)) {
+          next.add(account.id);
+          changed = true;
+        }
+
+        if (!requiresSplit && previouslyRequired && next.has(account.id)) {
+          next.delete(account.id);
+          changed = true;
+        }
+      });
+
+      if (!changed) {
+        return previous;
+      }
+
       return next;
     });
+
+    previousMappingTypesRef.current = new Map(
+      accounts.map((account) => [account.id, account.mappingType])
+    );
   }, [accounts]);
+
+  const dynamicStatusByAccount = useMemo(() => {
+    if (allocations.length === 0) {
+      return new Map<string, MappingStatus>();
+    }
+
+    const groupMap = new Map(groups.map((group) => [group.id, group]));
+
+    return allocations.reduce((accumulator, allocation) => {
+      const basisTotal = allocation.targetDatapoints.reduce((sum, target) => {
+        if (target.groupId) {
+          const group = groupMap.get(target.groupId);
+          if (!group) {
+            return sum;
+          }
+          return sum + getGroupTotal(group, basisAccounts, selectedPeriod);
+        }
+
+        return sum + target.ratioMetric.value;
+      }, 0);
+
+      accumulator.set(
+        allocation.sourceAccount.id,
+        basisTotal > 0 ? 'Mapped' : 'Unmapped'
+      );
+      return accumulator;
+    }, new Map<string, MappingStatus>());
+  }, [allocations, basisAccounts, groups, selectedPeriod]);
+
+  const getDisplayStatus = useMemo(() => {
+    return (account: GLAccountMappingRow): MappingStatus => {
+      if (account.mappingType === 'dynamic') {
+        return dynamicStatusByAccount.get(account.id) ?? 'Unmapped';
+      }
+      return account.status;
+    };
+  }, [dynamicStatusByAccount]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
@@ -219,11 +301,12 @@ export default function MappingTable() {
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery);
+      const displayStatus = getDisplayStatus(account);
       const matchesStatus =
-        activeStatuses.length === 0 || activeStatuses.includes(account.status);
+        activeStatuses.length === 0 || activeStatuses.includes(displayStatus);
       return matchesSearch && matchesStatus;
     });
-  }, [accounts, searchTerm, activeStatuses]);
+  }, [accounts, searchTerm, activeStatuses, getDisplayStatus]);
 
   const sortedAccounts = useMemo(() => {
     if (!sortConfig) {
@@ -232,8 +315,8 @@ export default function MappingTable() {
     const { key, direction } = sortConfig;
     const multiplier = direction === 'asc' ? 1 : -1;
     const safeCompare = (a: GLAccountMappingRow, b: GLAccountMappingRow) => {
-      const valueA = getSortValue(a, key);
-      const valueB = getSortValue(b, key);
+      const valueA = getSortValue(a, key, getDisplayStatus);
+      const valueB = getSortValue(b, key, getDisplayStatus);
       if (typeof valueA === 'number' && typeof valueB === 'number') {
         return (valueA - valueB) * multiplier;
       }
@@ -245,7 +328,7 @@ export default function MappingTable() {
       );
     };
     return [...filteredAccounts].sort(safeCompare);
-  }, [filteredAccounts, sortConfig]);
+  }, [filteredAccounts, sortConfig, getDisplayStatus]);
 
   useEffect(() => {
     if (!selectAllRef.current) return;
@@ -362,8 +445,9 @@ export default function MappingTable() {
                       (allocation) => allocation.sourceAccount.id === account.id
                     )
                   : account.splitDefinitions.length > 0 && !hasSplitIssue;
-              const statusLabel = STATUS_LABELS[account.status];
-              const StatusIcon = STATUS_ICONS[account.status];
+              const displayStatus = getDisplayStatus(account);
+              const statusLabel = STATUS_LABELS[displayStatus];
+              const StatusIcon = STATUS_ICONS[displayStatus];
               const isExpanded = expandedRows.has(account.id);
 
               return (
@@ -554,7 +638,7 @@ export default function MappingTable() {
                     <td className="px-3 py-4">
                       <div className="flex flex-col gap-2">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[account.status]}`}
+                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[displayStatus]}`}
                           role="status"
                           aria-label={`Status ${statusLabel}`}
                         >
@@ -667,9 +751,12 @@ export default function MappingTable() {
   );
 }
 
+type StatusResolver = (account: GLAccountMappingRow) => MappingStatus;
+
 function getSortValue(
   account: GLAccountMappingRow,
-  key: SortKey
+  key: SortKey,
+  resolveStatus?: StatusResolver
 ): string | number {
   switch (key) {
     case 'companyName':
@@ -681,7 +768,9 @@ function getSortValue(
     case 'netChange':
       return account.netChange;
     case 'status':
-      return STATUS_ORDER[account.status];
+      return STATUS_ORDER[
+        resolveStatus ? resolveStatus(account) : account.status
+      ];
     case 'mappingType':
       return account.mappingType;
     case 'targetScoa':
