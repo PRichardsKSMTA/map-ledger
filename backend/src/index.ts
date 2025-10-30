@@ -21,7 +21,10 @@ app.get('/mapping/suggest', mappingSuggest);
 app.get('/user-clients', userClients);
 app.get('/datapoint-configs', listDatapointConfigs);
 app.post('/datapoint-configs', createDatapointConfigs);
-app.put('/datapoint-configs/:id?', updateDatapointConfigs);
+app.put(
+  ['/datapoint-configs', '/datapoint-configs/:id'],
+  updateDatapointConfigs
+);
 
 export { app, openApiSpec };
 export default app;
