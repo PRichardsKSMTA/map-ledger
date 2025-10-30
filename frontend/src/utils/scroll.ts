@@ -3,13 +3,24 @@ export interface ScrollToTopOptions {
 }
 
 export const scrollPageToTop = (options?: ScrollToTopOptions) => {
-  if (typeof window === 'undefined' || typeof window.scrollTo !== 'function') {
+  if (typeof window === 'undefined') {
     return;
   }
 
   const { behavior = 'smooth' } = options ?? {};
 
-  window.scrollTo({ top: 0, left: 0, behavior });
+  if (typeof document !== 'undefined') {
+    const scrollContainer = document.getElementById('app-scroll-container');
+
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, left: 0, behavior });
+      return;
+    }
+  }
+
+  if (typeof window.scrollTo === 'function') {
+    window.scrollTo({ top: 0, left: 0, behavior });
+  }
 };
 
 export default scrollPageToTop;
