@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import {
   Users,
@@ -23,6 +23,8 @@ const getLinkClasses = (isActive: boolean) =>
 export default function Sidebar() {
   const { user } = useAuthStore();
   const isSuperUser = user?.role === 'super';
+  const location = useLocation();
+  const isMappingRoute = location.pathname.startsWith('/gl/mapping');
 
   return (
     <aside className="w-64 border-r border-gray-200 bg-gradient-sidebar shadow-soft transition-colors duration-300 dark:border-slate-800">
@@ -52,7 +54,10 @@ export default function Sidebar() {
             Data Import
           </NavLink>
 
-          <NavLink to="/gl/mapping/demo" className={({ isActive }) => getLinkClasses(isActive)}>
+          <NavLink
+            to="/gl/mapping/demo"
+            className={({ isActive }) => getLinkClasses(isActive || isMappingRoute)}
+          >
             <BarChart3 className="mr-3 h-5 w-5" />
             GL Mapping
           </NavLink>
