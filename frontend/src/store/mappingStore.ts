@@ -12,6 +12,11 @@ import {
   getStandardScoaOption,
 } from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
+import {
+  allocateDynamic,
+  getGroupTotal,
+  getSourceValue,
+} from '../utils/dynamicAllocation';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 
 const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
@@ -246,11 +251,15 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
       return 'Unmapped';
     }
 
-    const allSplitsMapped = account.splitDefinitions.every(split =>
-      STANDARD_SCOA_TARGET_ID_SET.has(split.targetId),
-    );
+    const allSplitsConfigured = account.splitDefinitions.every(split => {
+      if (split.isExclusion) {
+        return true;
+      }
+      const targetId = typeof split.targetId === 'string' ? split.targetId.trim() : '';
+      return targetId.length > 0 && STANDARD_SCOA_TARGET_ID_SET.has(targetId);
+    });
 
-    if (!allSplitsMapped) {
+    if (!allSplitsConfigured) {
       return 'Unmapped';
     }
 
@@ -792,8 +801,11 @@ useRatioAllocationStore.subscribe(
     results: state.results,
     selectedPeriod: state.selectedPeriod,
     allocations: state.allocations,
+    basisAccounts: state.basisAccounts,
+    groups: state.groups,
+    sourceAccounts: state.sourceAccounts,
   }),
-  ({ results, selectedPeriod, allocations }) => {
+  ({ results, selectedPeriod, allocations, basisAccounts, groups, sourceAccounts }) => {
     useMappingStore.setState(currentState => {
       const dynamicAccounts = currentState.accounts.filter(
         account => account.mappingType === 'dynamic',
@@ -848,6 +860,68 @@ useRatioAllocationStore.subscribe(
         }
 
         amountByAccount.set(result.sourceAccountId, Math.max(0, Math.abs(total)));
+      });
+
+      const groupById = new Map(groups.map(group => [group.id, group]));
+      const sourceAccountById = new Map(sourceAccounts.map(account => [account.id, account]));
+
+      dynamicAccounts.forEach(account => {
+        if (amountByAccount.has(account.id)) {
+          return;
+        }
+
+        const allocation = allocationBySource.get(account.id);
+        if (!allocation) {
+          return;
+        }
+
+        const hasExcludedTargets = allocation.targetDatapoints.some(target => target.isExclusion);
+        if (!hasExcludedTargets) {
+          amountByAccount.set(account.id, 0);
+          return;
+        }
+
+        const basisValues = allocation.targetDatapoints.map(target => {
+          if (target.groupId) {
+            const group = groupById.get(target.groupId);
+            if (group) {
+              return getGroupTotal(group, basisAccounts, targetPeriod);
+            }
+            return 0;
+          }
+          return target.ratioMetric.value;
+        });
+
+        const basisTotal = basisValues.reduce((sum, value) => sum + value, 0);
+        if (!(basisTotal > 0)) {
+          amountByAccount.set(account.id, 0);
+          return;
+        }
+
+        const sourceAccount = sourceAccountById.get(account.id);
+        const sourceAmount = sourceAccount
+          ? getSourceValue(sourceAccount, targetPeriod)
+          : account.netChange;
+        const allocationSource = Math.abs(sourceAmount);
+        if (!(allocationSource > 0)) {
+          amountByAccount.set(account.id, 0);
+          return;
+        }
+
+        try {
+          const computed = allocateDynamic(allocationSource, basisValues);
+          let excludedTotal = 0;
+          allocation.targetDatapoints.forEach((target, index) => {
+            if (target.isExclusion) {
+              const value = computed.allocations[index] ?? 0;
+              excludedTotal += Math.max(0, Math.abs(value));
+            }
+          });
+          amountByAccount.set(account.id, excludedTotal);
+        } catch (error) {
+          console.warn('Failed to derive fallback dynamic exclusion amount', error);
+          amountByAccount.set(account.id, 0);
+        }
       });
 
       let changed = false;

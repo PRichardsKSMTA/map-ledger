@@ -454,6 +454,9 @@ export default function MappingTable() {
               const statusLabel = STATUS_LABELS[displayStatus];
               const StatusIcon = STATUS_ICONS[displayStatus];
               const isExpanded = expandedRows.has(account.id);
+              const excludedAmount = getAccountExcludedAmount(account);
+              const adjustedActivity = account.netChange - excludedAmount;
+              const showOriginalActivity = Math.abs(excludedAmount) > 0.005;
 
               return (
                 <Fragment key={account.id}>
@@ -508,8 +511,13 @@ export default function MappingTable() {
                     </td>
                     <td className="px-3 py-4">
                       <div className="font-medium text-slate-900 dark:text-slate-100">
-                        {formatNetChange(account.netChange)}
+                        {formatNetChange(adjustedActivity)}
                       </div>
+                      {showOriginalActivity && (
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                          Original {formatNetChange(account.netChange)}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-4 align-middle">
                       <MappingExclusionCell account={account} />

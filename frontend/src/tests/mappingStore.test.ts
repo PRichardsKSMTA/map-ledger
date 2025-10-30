@@ -67,6 +67,11 @@ describe('mappingStore selectors', () => {
     const summary = selectSummaryMetrics(useMappingStore.getState());
     expect(summary.excludedTotal).toBe(15000 + 48000);
     expect(summary.netTotal).toBe(700000 - (15000 + 48000));
+
+    const percentageAccount = useMappingStore
+      .getState()
+      .accounts.find(account => account.id === 'acct-2');
+    expect(percentageAccount?.status).toBe('Mapped');
   });
 
   it('derives dynamic exclusion totals from allocation results', () => {
@@ -142,6 +147,60 @@ describe('mappingStore selectors', () => {
     const summary = selectSummaryMetrics(useMappingStore.getState());
     expect(summary.excludedTotal).toBe(15000 + 20000);
     expect(summary.netTotal).toBe(700000 - (15000 + 20000));
+  });
+
+  it('estimates dynamic exclusions when results are unavailable', () => {
+    act(() => {
+      useMappingStore.setState(state => ({ ...state, activePeriod: '2024-02' }));
+      useRatioAllocationStore.setState(state => ({
+        ...state,
+        selectedPeriod: '2024-02',
+        basisAccounts: [],
+        groups: [],
+        sourceAccounts: [
+          {
+            id: 'acct-3',
+            name: 'Fuel Expense',
+            number: '6100',
+            description: 'Fuel Expense',
+            value: 65000,
+            valuesByPeriod: { '2024-02': 65000 },
+          },
+        ],
+        allocations: [
+          {
+            id: 'alloc-preview',
+            name: 'Dynamic preview',
+            sourceAccount: {
+              id: 'acct-3',
+              number: '6100',
+              description: 'Fuel Expense',
+            },
+            targetDatapoints: [
+              {
+                datapointId: 'dp-exclude',
+                name: 'Excluded share',
+                ratioMetric: { id: 'metric-exclude', name: 'Metric exclude', value: 60 },
+                isExclusion: true,
+              },
+              {
+                datapointId: 'dp-mapped',
+                name: 'Mapped share',
+                ratioMetric: { id: 'metric-mapped', name: 'Metric mapped', value: 40 },
+                isExclusion: false,
+              },
+            ],
+            effectiveDate: '2024-02-01',
+            status: 'active',
+          },
+        ],
+        results: [],
+      }));
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.excludedTotal).toBeCloseTo(15000 + 39000, 5);
+    expect(summary.netTotal).toBeCloseTo(700000 - (15000 + 39000), 5);
   });
 
   it('tracks status counts across all mapping rows', () => {
