@@ -19,6 +19,7 @@ import {
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
+  getAccountExcludedAmount,
   selectAccounts,
   selectActiveStatuses,
   selectSearchTerm,
@@ -35,6 +36,7 @@ import type {
   TargetScoaOption,
 } from '../../types';
 import MappingSplitRow from './MappingSplitRow';
+import MappingExclusionCell from './MappingExclusionCell';
 import DynamicAllocationRow from './DynamicAllocationRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
@@ -46,6 +48,7 @@ type SortKey =
   | 'accountId'
   | 'accountName'
   | 'netChange'
+  | 'exclusion'
   | 'status'
   | 'mappingType'
   | 'targetScoa'
@@ -111,6 +114,7 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'netChange', label: 'Activity' },
+  { key: 'exclusion', label: 'Excluded' },
   { key: 'mappingType', label: 'Mapping Type' },
   { key: 'targetScoa', label: 'Target SCoA' },
   { key: 'polarity', label: 'Polarity' },
@@ -121,6 +125,7 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
 
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   targetScoa: 'w-48',
+  exclusion: 'w-56',
 };
 
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
@@ -506,6 +511,9 @@ export default function MappingTable() {
                         {formatNetChange(account.netChange)}
                       </div>
                     </td>
+                    <td className="px-3 py-4 align-top">
+                      <MappingExclusionCell account={account} />
+                    </td>
                     <td className="px-3 py-4">
                       <label
                         className="sr-only"
@@ -767,6 +775,8 @@ function getSortValue(
       return account.accountName;
     case 'netChange':
       return account.netChange;
+    case 'exclusion':
+      return Math.abs(getAccountExcludedAmount(account));
     case 'status':
       return STATUS_ORDER[
         resolveStatus ? resolveStatus(account) : account.status

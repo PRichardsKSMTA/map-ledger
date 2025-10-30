@@ -44,6 +44,56 @@ describe('mappingStore selectors', () => {
     expect(summary.netTotal).toBe(565000);
   });
 
+  it('applies amount-based exclusions to partially reduce balances', () => {
+    act(() => {
+      useMappingStore.getState().updateExclusion('acct-1', { type: 'amount', amount: 200000 });
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.excludedTotal).toBe(215000);
+    expect(summary.netTotal).toBe(485000);
+  });
+
+  it('applies percentage-based exclusions using the account balance as basis', () => {
+    act(() => {
+      useMappingStore.getState().updateExclusion('acct-2', { type: 'percentage', percentage: 25 });
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.excludedTotal).toBe(30000 + 15000); // 25% of 120000 plus seeded exclusion
+    expect(summary.netTotal).toBe(700000 - (30000 + 15000));
+  });
+
+  it('honors resolved amounts for dynamic exclusions', () => {
+    act(() => {
+      useMappingStore.getState().updateExclusion('acct-3', {
+        type: 'dynamic',
+        datapointId: 'dp-1',
+        datapointName: 'Dynamic datapoint 1',
+      });
+
+      useMappingStore.setState(state => ({
+        accounts: state.accounts.map(account =>
+          account.id === 'acct-3'
+            ? {
+                ...account,
+                exclusion: {
+                  type: 'dynamic',
+                  datapointId: 'dp-1',
+                  datapointName: 'Dynamic datapoint 1',
+                  resolvedAmount: 12000,
+                },
+              }
+            : account,
+        ),
+      }));
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.excludedTotal).toBe(15000 + 12000);
+    expect(summary.netTotal).toBe(700000 - (15000 + 12000));
+  });
+
   it('tracks status counts across all mapping rows', () => {
     const counts = selectStatusCounts(useMappingStore.getState());
     expect(counts).toEqual({
