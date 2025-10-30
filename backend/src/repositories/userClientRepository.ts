@@ -1,4 +1,5 @@
 import { runQuery } from '../utils/sqlClient';
+import createFallbackUserClientAccess from './userClientRepositoryFallback';
 
 export interface UserClientOperation {
   id: string;
@@ -204,10 +205,29 @@ const uniqueStringArray = (values: Iterable<string>) =>
     )
   ).sort((a, b) => a.localeCompare(b));
 
+const hasSqlConfiguration = (): boolean =>
+  Boolean(
+    process.env.SQL_CONN_STR ||
+      process.env.SQL_CONNECTION_STRING ||
+      process.env.SQL_CONN_STRINGS ||
+      process.env.SQL_CONN_STRING ||
+      (process.env.SQL_SERVER &&
+        process.env.SQL_DATABASE &&
+        (process.env.SQL_USERNAME || process.env.SQL_USER) &&
+        process.env.SQL_PASSWORD)
+  );
+
+const shouldAllowFallback = (): boolean =>
+  (process.env.ALLOW_DEV_SQL_FALLBACK ?? 'true').toLowerCase() !== 'false';
+
 export const fetchUserClientAccess = async (
   email: string
 ): Promise<UserClientAccessResult> => {
   const normalizedEmail = email.trim().toLowerCase();
+
+  if (!hasSqlConfiguration()) {
+    return createFallbackUserClientAccess(normalizedEmail);
+  }
 
   const deriveEmailVariants = (candidate: string): string[] => {
     const aliases: Record<string, string[]> = {
@@ -249,10 +269,26 @@ export const fetchUserClientAccess = async (
 
   const placeholderList = placeholders.join(', ');
 
-  const { recordset = [] } = await runQuery<RawRow>(
-    `SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL IN (${placeholderList})`,
-    parameters
-  );
+  let recordset: RawRow[] = [];
+  try {
+    const result = await runQuery<RawRow>(
+      `SELECT * FROM dbo.V_USER_CLIENT_COMPANY_OPERATIONS WHERE EMAIL IN (${placeholderList})`,
+      parameters
+    );
+    recordset = result.recordset ?? [];
+  } catch (error) {
+    if (!shouldAllowFallback()) {
+      throw error;
+    }
+
+    // eslint-disable-next-line no-console
+    console.warn(
+      'Falling back to demo user client access data because the SQL query failed.',
+      error
+    );
+
+    return createFallbackUserClientAccess(normalizedEmail);
+  }
 
   const clientAggregates = new Map<string, {
     clientId: string;
