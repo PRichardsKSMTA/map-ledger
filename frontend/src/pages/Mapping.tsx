@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import MappingHeader from '../components/mapping/MappingHeader';
 import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
@@ -20,6 +20,12 @@ export default function Mapping() {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeClientId = useMappingStore(state => state.activeClientId);
   const activeStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
+
+  useEffect(() => {
+    if (activeStep === 'mapping') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [activeStep]);
 
   const updateStage = useCallback(
     (step: MappingStep) => {
