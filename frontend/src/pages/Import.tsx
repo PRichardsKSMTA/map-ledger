@@ -11,6 +11,7 @@ import { fileToBase64 } from '../utils/file';
 import { ImportPreviewRow, TrialBalanceRow } from '../types';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
+import scrollPageToTop from '../utils/scroll';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -114,6 +115,7 @@ export default function Import() {
       });
 
       setSuccess('File imported successfully');
+      scrollPageToTop({ behavior: 'auto' });
       navigate(`/gl/mapping/${importId}?stage=mapping`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to import file');

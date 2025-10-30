@@ -8,6 +8,7 @@ import {
   ParsedUpload,
 } from '../../utils/parseTrialBalanceWorkbook';
 import parseCurrencyValue from '../../utils/parseCurrencyValue';
+import scrollPageToTop from '../../utils/scroll';
 import ColumnMatcher from './ColumnMatcher';
 import ExcludeAccounts from './ExcludeAccounts';
 import {
@@ -610,6 +611,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                   new Set(included.map((r) => r.entity).filter(Boolean))
                 );
                 setAvailableCompanies(uniqueIncluded);
+                scrollPageToTop();
               }}
             />
           )}

@@ -7,6 +7,7 @@ import MappingTable from '../components/mapping/MappingTable';
 import DistributionTable from '../components/mapping/DistributionTable';
 import ReviewPane from '../components/mapping/ReviewPane';
 import { useMappingStore } from '../store/mappingStore';
+import scrollPageToTop from '../utils/scroll';
 
 const stepParam = (value: string | null): MappingStep => {
   if (value === 'distribution' || value === 'review') {
@@ -23,7 +24,7 @@ export default function Mapping() {
 
   useEffect(() => {
     if (activeStep === 'mapping') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      scrollPageToTop({ behavior: 'auto' });
     }
   }, [activeStep]);
 
