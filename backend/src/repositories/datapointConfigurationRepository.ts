@@ -1,7 +1,30 @@
 import crypto from 'node:crypto';
 import { runQuery } from '../utils/sqlClient';
 
-const TABLE_NAME = 'UserDatapointConfigurations';
+const TABLE_NAME = 'MAPLEDGER_USER_DATAPOINTS';
+
+const SELECT_COLUMNS = `
+  ID AS id,
+  USER_EMAIL AS user_email,
+  USER_NAME AS user_name,
+  CLIENT_ID AS client_id,
+  CLIENT_NAME AS client_name,
+  CONFIGURATION_LABEL AS configuration_label,
+  COMPANY_NAME AS company_name,
+  SOURCE_ACCOUNT_ID AS source_account_id,
+  SOURCE_ACCOUNT_NAME AS source_account_name,
+  SOURCE_ACCOUNT_DESCRIPTION AS source_account_description,
+  REPORTING_PERIOD AS reporting_period,
+  MAPPING_TYPE AS mapping_type,
+  TARGET_SCOA AS target_scoa,
+  POLARITY AS polarity,
+  PRESET AS preset,
+  OPERATIONS_JSON AS operations_json,
+  EXCLUSIONS_JSON AS exclusions_json,
+  CONFIGURATION_JSON AS configuration_json,
+  CREATED_AT AS created_at,
+  UPDATED_AT AS updated_at
+`;
 
 interface RawDatapointConfigurationRow extends Record<string, unknown> {
   id: string;
@@ -72,29 +95,29 @@ const ensureTable = async () => {
     `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = '${TABLE_NAME}')
 BEGIN
   CREATE TABLE dbo.${TABLE_NAME} (
-    id UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
-    user_email NVARCHAR(256) NOT NULL,
-    user_name NVARCHAR(256) NULL,
-    client_id NVARCHAR(128) NOT NULL,
-    client_name NVARCHAR(256) NOT NULL,
-    configuration_label NVARCHAR(256) NULL,
-    company_name NVARCHAR(256) NULL,
-    source_account_id NVARCHAR(128) NULL,
-    source_account_name NVARCHAR(256) NULL,
-    source_account_description NVARCHAR(MAX) NULL,
-    reporting_period NVARCHAR(64) NULL,
-    mapping_type NVARCHAR(128) NULL,
-    target_scoa NVARCHAR(128) NULL,
-    polarity NVARCHAR(64) NULL,
-    preset NVARCHAR(128) NULL,
-    operations_json NVARCHAR(MAX) NULL,
-    exclusions_json NVARCHAR(MAX) NULL,
-    configuration_json NVARCHAR(MAX) NULL,
-    created_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
-    updated_at DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME()
+    ID UNIQUEIDENTIFIER NOT NULL PRIMARY KEY,
+    USER_EMAIL NVARCHAR(256) NOT NULL,
+    USER_NAME NVARCHAR(256) NULL,
+    CLIENT_ID NVARCHAR(128) NOT NULL,
+    CLIENT_NAME NVARCHAR(256) NOT NULL,
+    CONFIGURATION_LABEL NVARCHAR(256) NULL,
+    COMPANY_NAME NVARCHAR(256) NULL,
+    SOURCE_ACCOUNT_ID NVARCHAR(128) NULL,
+    SOURCE_ACCOUNT_NAME NVARCHAR(256) NULL,
+    SOURCE_ACCOUNT_DESCRIPTION NVARCHAR(MAX) NULL,
+    REPORTING_PERIOD NVARCHAR(64) NULL,
+    MAPPING_TYPE NVARCHAR(128) NULL,
+    TARGET_SCOA NVARCHAR(128) NULL,
+    POLARITY NVARCHAR(64) NULL,
+    PRESET NVARCHAR(128) NULL,
+    OPERATIONS_JSON NVARCHAR(MAX) NULL,
+    EXCLUSIONS_JSON NVARCHAR(MAX) NULL,
+    CONFIGURATION_JSON NVARCHAR(MAX) NULL,
+    CREATED_AT DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(),
+    UPDATED_AT DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME()
   );
-  CREATE INDEX IX_${TABLE_NAME}_EmailClient
-    ON dbo.${TABLE_NAME}(user_email, client_id);
+  CREATE INDEX IX_${TABLE_NAME}_USER_EMAIL_CLIENT_ID
+    ON dbo.${TABLE_NAME}(USER_EMAIL, CLIENT_ID);
 END;`
   );
 
@@ -174,18 +197,20 @@ export const listDatapointConfigurations = async (
 ): Promise<UserDatapointConfiguration[]> => {
   await ensureTable();
 
-  const filters: string[] = ['user_email = @email'];
+  const filters: string[] = ['USER_EMAIL = @email'];
   const parameters: Record<string, unknown> = { email };
 
   if (clientId) {
-    filters.push('client_id = @clientId');
+    filters.push('CLIENT_ID = @clientId');
     parameters.clientId = clientId;
   }
 
   const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
   const { recordset = [] } = await runQuery<RawDatapointConfigurationRow>(
-    `SELECT * FROM dbo.${TABLE_NAME} ${whereClause} ORDER BY updated_at DESC`,
+    `SELECT ${SELECT_COLUMNS}
+     FROM dbo.${TABLE_NAME} ${whereClause}
+     ORDER BY UPDATED_AT DESC`,
     parameters
   );
 
@@ -201,24 +226,24 @@ export const createDatapointConfiguration = async (
 
   await runQuery(
     `INSERT INTO dbo.${TABLE_NAME} (
-      id,
-      user_email,
-      user_name,
-      client_id,
-      client_name,
-      configuration_label,
-      company_name,
-      source_account_id,
-      source_account_name,
-      source_account_description,
-      reporting_period,
-      mapping_type,
-      target_scoa,
-      polarity,
-      preset,
-      operations_json,
-      exclusions_json,
-      configuration_json
+      ID,
+      USER_EMAIL,
+      USER_NAME,
+      CLIENT_ID,
+      CLIENT_NAME,
+      CONFIGURATION_LABEL,
+      COMPANY_NAME,
+      SOURCE_ACCOUNT_ID,
+      SOURCE_ACCOUNT_NAME,
+      SOURCE_ACCOUNT_DESCRIPTION,
+      REPORTING_PERIOD,
+      MAPPING_TYPE,
+      TARGET_SCOA,
+      POLARITY,
+      PRESET,
+      OPERATIONS_JSON,
+      EXCLUSIONS_JSON,
+      CONFIGURATION_JSON
     ) VALUES (
       @id,
       @userEmail,
@@ -272,24 +297,24 @@ export const updateDatapointConfiguration = async (
   await runQuery(
     `UPDATE dbo.${TABLE_NAME}
     SET
-      user_name = @userName,
-      client_id = @clientId,
-      client_name = @clientName,
-      configuration_label = @label,
-      company_name = @companyName,
-      source_account_id = @sourceAccountId,
-      source_account_name = @sourceAccountName,
-      source_account_description = @sourceAccountDescription,
-      reporting_period = @reportingPeriod,
-      mapping_type = @mappingType,
-      target_scoa = @targetSCoA,
-      polarity = @polarity,
-      preset = @preset,
-      operations_json = @operationsJson,
-      exclusions_json = @exclusionsJson,
-      configuration_json = @configurationJson,
-      updated_at = SYSUTCDATETIME()
-    WHERE id = @id AND user_email = @userEmail`,
+      USER_NAME = @userName,
+      CLIENT_ID = @clientId,
+      CLIENT_NAME = @clientName,
+      CONFIGURATION_LABEL = @label,
+      COMPANY_NAME = @companyName,
+      SOURCE_ACCOUNT_ID = @sourceAccountId,
+      SOURCE_ACCOUNT_NAME = @sourceAccountName,
+      SOURCE_ACCOUNT_DESCRIPTION = @sourceAccountDescription,
+      REPORTING_PERIOD = @reportingPeriod,
+      MAPPING_TYPE = @mappingType,
+      TARGET_SCOA = @targetSCoA,
+      POLARITY = @polarity,
+      PRESET = @preset,
+      OPERATIONS_JSON = @operationsJson,
+      EXCLUSIONS_JSON = @exclusionsJson,
+      CONFIGURATION_JSON = @configurationJson,
+      UPDATED_AT = SYSUTCDATETIME()
+    WHERE ID = @id AND USER_EMAIL = @userEmail`,
     {
       id: input.id,
       userEmail: input.userEmail,
@@ -321,7 +346,9 @@ export const getDatapointConfigurationById = async (
   await ensureTable();
 
   const { recordset = [] } = await runQuery<RawDatapointConfigurationRow>(
-    `SELECT * FROM dbo.${TABLE_NAME} WHERE id = @id`,
+    `SELECT ${SELECT_COLUMNS}
+     FROM dbo.${TABLE_NAME}
+     WHERE ID = @id`,
     { id }
   );
 
