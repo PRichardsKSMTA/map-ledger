@@ -25,7 +25,7 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col justify-center bg-gradient-custom py-12 transition-colors duration-300 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col justify-center overflow-auto bg-gradient-custom py-12 transition-colors duration-300 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
           <div className="rounded-xl border border-white/40 bg-white/90 p-3 backdrop-blur-sm shadow-sm transition-colors duration-300 dark:border-slate-700/60 dark:bg-slate-900/80">
