@@ -246,7 +246,7 @@ const DynamicAllocationRow = ({
             </button>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
               <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 Source balance {selectedPeriod ? `(${selectedPeriod})` : ''}
@@ -267,19 +267,6 @@ const DynamicAllocationRow = ({
               </div>
               <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {pluralize(targetSummaries.length, 'target')} · {pluralize(totalMemberCount, 'underlying datapoint')}
-              </div>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-              <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Allocation health
-              </div>
-              <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
-                {basisTotal > 0 ? 'Ready to preview' : 'Needs basis values'}
-              </div>
-              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {basisTotal > 0
-                  ? 'Basis coverage and ratios can be reviewed below.'
-                  : 'Add basis datapoint groups to enable the allocation.'}
               </div>
             </div>
           </div>
