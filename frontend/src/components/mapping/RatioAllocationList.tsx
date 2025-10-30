@@ -32,7 +32,9 @@ const RatioAllocationList = () => {
                     <Calculator className="mr-3 h-5 w-5 text-gray-400" />
                     <div>
                       <div className="font-medium text-gray-900">{target.name}</div>
-                      <div className="text-sm text-gray-500">via {target.ratioMetric.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {target.isExclusion ? 'Excluded from mapping' : `via ${target.ratioMetric.name}`}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -55,7 +57,10 @@ const RatioAllocationList = () => {
                       <h4 className="text-sm font-medium text-blue-900">Calculated allocation</h4>
                       {result.allocations.map(target => (
                         <div key={target.targetId} className="flex items-center justify-between text-sm">
-                          <span className="text-blue-700">{target.targetName}</span>
+                          <span className="text-blue-700">
+                            {target.targetName}
+                            {target.isExclusion ? ' • Excluded' : ''}
+                          </span>
                           <span className="font-medium text-blue-900">
                             {formatCurrency(target.value)} · {target.percentage.toFixed(2)}%
                           </span>

@@ -9,6 +9,7 @@ import {
   selectSummaryMetrics,
   useMappingStore,
 } from '../store/mappingStore';
+import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 import type { TrialBalanceRow } from '../types';
 
 describe('mappingStore selectors', () => {
@@ -17,6 +18,18 @@ describe('mappingStore selectors', () => {
       accounts: createInitialMappingAccounts(),
       searchTerm: '',
       activeStatuses: [],
+    });
+    useRatioAllocationStore.setState({
+      allocations: [],
+      basisAccounts: [],
+      groups: [],
+      sourceAccounts: [],
+      availablePeriods: [],
+      isProcessing: false,
+      selectedPeriod: null,
+      results: [],
+      validationErrors: [],
+      auditLog: [],
     });
   });
 
@@ -44,54 +57,91 @@ describe('mappingStore selectors', () => {
     expect(summary.netTotal).toBe(565000);
   });
 
-  it('applies amount-based exclusions to partially reduce balances', () => {
+  it('calculates exclusions from percentage splits marked as excluded', () => {
     act(() => {
-      useMappingStore.getState().updateExclusion('acct-1', { type: 'amount', amount: 200000 });
+      useMappingStore
+        .getState()
+        .updateSplitDefinition('acct-2', 'split-2', { isExclusion: true });
     });
 
     const summary = selectSummaryMetrics(useMappingStore.getState());
-    expect(summary.excludedTotal).toBe(215000);
-    expect(summary.netTotal).toBe(485000);
+    expect(summary.excludedTotal).toBe(15000 + 48000);
+    expect(summary.netTotal).toBe(700000 - (15000 + 48000));
   });
 
-  it('applies percentage-based exclusions using the account balance as basis', () => {
+  it('derives dynamic exclusion totals from allocation results', () => {
     act(() => {
-      useMappingStore.getState().updateExclusion('acct-2', { type: 'percentage', percentage: 25 });
-    });
-
-    const summary = selectSummaryMetrics(useMappingStore.getState());
-    expect(summary.excludedTotal).toBe(30000 + 15000); // 25% of 120000 plus seeded exclusion
-    expect(summary.netTotal).toBe(700000 - (30000 + 15000));
-  });
-
-  it('honors resolved amounts for dynamic exclusions', () => {
-    act(() => {
-      useMappingStore.getState().updateExclusion('acct-3', {
-        type: 'dynamic',
-        datapointId: 'dp-1',
-        datapointName: 'Dynamic datapoint 1',
-      });
-
-      useMappingStore.setState(state => ({
-        accounts: state.accounts.map(account =>
-          account.id === 'acct-3'
-            ? {
-                ...account,
-                exclusion: {
-                  type: 'dynamic',
-                  datapointId: 'dp-1',
-                  datapointName: 'Dynamic datapoint 1',
-                  resolvedAmount: 12000,
-                },
-              }
-            : account,
-        ),
+      useMappingStore.setState(state => ({ ...state, activePeriod: '2024-01' }));
+      useRatioAllocationStore.setState(state => ({
+        ...state,
+        selectedPeriod: '2024-01',
+        allocations: [
+          {
+            id: 'alloc-1',
+            name: 'Dynamic test',
+            sourceAccount: {
+              id: 'acct-3',
+              number: '6100',
+              description: 'Fuel Expense',
+            },
+            targetDatapoints: [
+              {
+                datapointId: 'dp-1',
+                name: 'Exclude Pool',
+                ratioMetric: { id: 'metric-1', name: 'Metric 1', value: 1 },
+                isExclusion: true,
+              },
+              {
+                datapointId: 'dp-2',
+                name: 'Mapped Pool',
+                ratioMetric: { id: 'metric-2', name: 'Metric 2', value: 1 },
+                isExclusion: false,
+              },
+            ],
+            effectiveDate: '2024-01-01',
+            status: 'active',
+          },
+        ],
+        results: [
+          {
+            allocationId: 'alloc-1',
+            allocationName: 'Dynamic test',
+            periodId: '2024-01',
+            sourceAccountId: 'acct-3',
+            sourceAccountName: 'Fuel Expense',
+            sourceValue: 65000,
+            basisTotal: 2,
+            runAt: new Date().toISOString(),
+            allocations: [
+              {
+                datapointId: 'dp-1',
+                targetId: 'dp-1',
+                targetName: 'Exclude Pool',
+                basisValue: 1,
+                value: 20000,
+                percentage: 50,
+                ratio: 0.5,
+                isExclusion: true,
+              },
+              {
+                datapointId: 'dp-2',
+                targetId: 'dp-2',
+                targetName: 'Mapped Pool',
+                basisValue: 1,
+                value: 45000,
+                percentage: 50,
+                ratio: 0.5,
+                isExclusion: false,
+              },
+            ],
+          },
+        ],
       }));
     });
 
     const summary = selectSummaryMetrics(useMappingStore.getState());
-    expect(summary.excludedTotal).toBe(15000 + 12000);
-    expect(summary.netTotal).toBe(700000 - (15000 + 12000));
+    expect(summary.excludedTotal).toBe(15000 + 20000);
+    expect(summary.netTotal).toBe(700000 - (15000 + 20000));
   });
 
   it('tracks status counts across all mapping rows', () => {

@@ -30,6 +30,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     updateGroup,
     setGroupMembers,
     toggleAllocationGroupTarget,
+    toggleTargetExclusion,
   } = useRatioAllocationStore();
 
   const [selectedAllocationId, setSelectedAllocationId] = useState<string | null>(null);
@@ -617,6 +618,9 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                       Target account
                     </th>
                     <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                      Exclude
+                    </th>
+                    <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                       Basis total
                     </th>
                     <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -630,7 +634,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                 <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-950">
                   {targetDetails.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
+                      <td colSpan={5} className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
                         Add target datapoints to preview the dynamic allocation.
                       </td>
                     </tr>
@@ -638,6 +642,9 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                     targetDetails.map((detail, index) => {
                       const ratio = basisTotal > 0 ? detail.basisValue / basisTotal : 0;
                       const allocatedValue = previewComputation.allocations[index] ?? 0;
+                      const targetDatapoint = selectedAllocation?.targetDatapoints[index];
+                      const isExcluded = targetDatapoint?.isExclusion ?? false;
+                      const datapointId = targetDatapoint?.datapointId;
                       return (
                         <tr key={detail.targetId}>
                           <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-100">
@@ -645,6 +652,23 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden="true" />
                               <span>{detail.name}</span>
                             </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500"
+                                checked={isExcluded}
+                                disabled={!selectedAllocation || !datapointId}
+                                onChange={() => {
+                                  if (!selectedAllocation || !datapointId) {
+                                    return;
+                                  }
+                                  toggleTargetExclusion(selectedAllocation.id, datapointId);
+                                }}
+                              />
+                              Exclude
+                            </label>
                           </td>
                           <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{formatCurrency(detail.basisValue)}</td>
                           <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{(ratio * 100).toFixed(2)}%</td>

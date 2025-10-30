@@ -42,6 +42,7 @@ const buildTargetDatapoint = (
   group: DynamicDatapointGroup,
   basisAccounts: DynamicBasisAccount[],
   periodId?: string | null,
+  previous?: RatioAllocationTargetDatapoint,
 ): RatioAllocationTargetDatapoint => ({
   datapointId: group.targetId || group.id,
   name: group.targetName || group.label,
@@ -51,6 +52,7 @@ const buildTargetDatapoint = (
     name: `${group.label} total`,
     value: getGroupTotal(group, basisAccounts, periodId),
   },
+  isExclusion: previous?.isExclusion ?? false,
 });
 
 const normalizeGroup = (
@@ -87,7 +89,7 @@ const synchronizeAllocationTargets = (
     if (!group) {
       return target;
     }
-    return buildTargetDatapoint(group, basisAccounts, periodId);
+    return buildTargetDatapoint(group, basisAccounts, periodId, target);
   }),
 });
 
@@ -136,6 +138,7 @@ type RatioAllocationState = {
   setGroupMembers: (groupId: string, memberAccountIds: string[]) => void;
   toggleGroupMember: (groupId: string, accountId: string) => void;
   toggleAllocationGroupTarget: (allocationId: string, groupId: string) => void;
+  toggleTargetExclusion: (allocationId: string, datapointId: string) => void;
 };
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
@@ -232,7 +235,9 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
               return target;
             }
             const group = state.groups.find(groupItem => groupItem.id === target.groupId);
-            return group ? buildTargetDatapoint(group, state.basisAccounts, state.selectedPeriod) : target;
+            return group
+              ? buildTargetDatapoint(group, state.basisAccounts, state.selectedPeriod, target)
+              : target;
           });
         }
         return synchronizeAllocationTargets(merged, state.groups, state.basisAccounts, state.selectedPeriod);
@@ -463,6 +468,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
             value: computed.allocations[index] ?? 0,
             percentage: ratio * 100,
             ratio,
+            isExclusion: allocation.targetDatapoints[index]?.isExclusion ?? false,
           };
         });
 
@@ -690,5 +696,35 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
 
       return { allocations };
     });
+  },
+  toggleTargetExclusion: (allocationId, datapointId) => {
+    set(state => ({
+      allocations: state.allocations.map(allocation => {
+        if (allocation.id !== allocationId) {
+          return allocation;
+        }
+
+        const exists = allocation.targetDatapoints.some(target => target.datapointId === datapointId);
+        if (!exists) {
+          return allocation;
+        }
+
+        const nextTargets = allocation.targetDatapoints.map(target =>
+          target.datapointId === datapointId
+            ? { ...target, isExclusion: !target.isExclusion }
+            : target,
+        );
+
+        return synchronizeAllocationTargets(
+          {
+            ...allocation,
+            targetDatapoints: nextTargets,
+          },
+          state.groups,
+          state.basisAccounts,
+          state.selectedPeriod,
+        );
+      }),
+    }));
   },
 }));

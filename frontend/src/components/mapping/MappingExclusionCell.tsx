@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import type { GLAccountMappingRow, MappingExclusionType } from '../../types';
+import type { GLAccountMappingRow } from '../../types';
 import {
+  calculateSplitAmount,
+  calculateSplitPercentage,
   getAccountExcludedAmount,
   getAllocatableNetChange,
-  useMappingStore,
 } from '../../store/mappingStore';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 
@@ -20,73 +21,39 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 const formatCurrency = (value: number): string => currencyFormatter.format(value);
 
 const MappingExclusionCell = ({ account }: MappingExclusionCellProps) => {
-  const updateExclusion = useMappingStore(state => state.updateExclusion);
-  const { allocations } = useRatioAllocationStore(state => ({ allocations: state.allocations }));
+  const { allocations, selectedPeriod } = useRatioAllocationStore(state => ({
+    allocations: state.allocations,
+    selectedPeriod: state.selectedPeriod,
+  }));
 
-  const exclusionType: MappingExclusionType = account.exclusion?.type ?? 'none';
-  const excludedAmount = getAccountExcludedAmount(account);
-  const remainingAmount = getAllocatableNetChange(account);
+  const excludedAmount = Math.abs(getAccountExcludedAmount(account));
+  const remainingAmount = Math.abs(getAllocatableNetChange(account));
   const isFullyExcluded = account.mappingType === 'exclude' || account.status === 'Excluded';
 
+  const percentageExclusions = useMemo(() => {
+    return account.splitDefinitions
+      .filter(split => split.isExclusion)
+      .map(split => ({
+        id: split.id,
+        percentage: Math.round(calculateSplitPercentage(account, split)),
+        amount: calculateSplitAmount(account, split),
+        notes: split.notes,
+      }));
+  }, [account]);
+
   const allocation = useMemo(
-    () => allocations.find(item => item.sourceAccount.id === account.id),
+    () => allocations.find(item => item.sourceAccount.id === account.id) ?? null,
     [account.id, allocations],
   );
 
-  const dynamicOptions = useMemo(
-    () =>
-      allocation
-        ? allocation.targetDatapoints.map(target => ({ id: target.datapointId, label: target.name }))
-        : [],
-    [allocation],
-  );
-
-  const handleTypeChange = (type: MappingExclusionType) => {
-    if (type === 'none') {
-      updateExclusion(account.id, { type: 'none' });
-      return;
+  const dynamicExclusions = useMemo(() => {
+    if (!allocation) {
+      return [] as { id: string; name: string }[];
     }
-
-    if (type === 'amount') {
-      updateExclusion(account.id, { type: 'amount', amount: account.exclusion?.amount ?? 0 });
-      return;
-    }
-
-    if (type === 'percentage') {
-      updateExclusion(account.id, {
-        type: 'percentage',
-        percentage: account.exclusion?.percentage ?? 0,
-      });
-      return;
-    }
-
-    updateExclusion(account.id, {
-      type: 'dynamic',
-      datapointId: account.exclusion?.datapointId ?? (dynamicOptions[0]?.id ?? ''),
-      datapointName: account.exclusion?.datapointName ?? dynamicOptions[0]?.label,
-    });
-  };
-
-  const handleAmountChange = (value: string) => {
-    const numeric = Number(value);
-    const safeAmount = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
-    updateExclusion(account.id, { type: 'amount', amount: safeAmount });
-  };
-
-  const handlePercentageChange = (value: string) => {
-    const numeric = Number(value);
-    const safePercentage = Number.isFinite(numeric) ? Math.min(Math.max(numeric, 0), 100) : 0;
-    updateExclusion(account.id, { type: 'percentage', percentage: safePercentage });
-  };
-
-  const handleDynamicOptionChange = (datapointId: string) => {
-    const selected = dynamicOptions.find(option => option.id === datapointId);
-    updateExclusion(account.id, {
-      type: 'dynamic',
-      datapointId,
-      datapointName: selected?.label,
-    });
-  };
+    return allocation.targetDatapoints
+      .filter(target => target.isExclusion)
+      .map(target => ({ id: target.datapointId, name: target.name }));
+  }, [allocation]);
 
   if (isFullyExcluded) {
     return (
@@ -99,107 +66,107 @@ const MappingExclusionCell = ({ account }: MappingExclusionCellProps) => {
     );
   }
 
-  return (
-    <div className="space-y-3">
-      <div>
-        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-          Excluding {formatCurrency(excludedAmount)}
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Remaining balance {formatCurrency(remainingAmount)}
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <label className="text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`exclusion-type-${account.id}`}>
-            Exclusion type
-          </label>
-          <select
-            id={`exclusion-type-${account.id}`}
-            value={exclusionType}
-            onChange={event => handleTypeChange(event.target.value as MappingExclusionType)}
-            className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="none">No exclusion</option>
-            <option value="amount">Fixed amount</option>
-            <option value="percentage">Percentage of balance</option>
-            <option value="dynamic" disabled={dynamicOptions.length === 0}>
-              Dynamic datapoint
-            </option>
-          </select>
+  if (account.mappingType === 'percentage') {
+    if (account.splitDefinitions.length === 0) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No splits configured</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Add percentage splits below and mark any rows that should be excluded instead of mapped to a target account.
+          </p>
         </div>
+      );
+    }
 
-        {exclusionType === 'amount' && (
-          <div>
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`exclusion-amount-${account.id}`}>
-              Amount to exclude
-            </label>
-            <input
-              id={`exclusion-amount-${account.id}`}
-              type="number"
-              min="0"
-              step="100"
-              value={account.exclusion?.amount ?? ''}
-              onChange={event => handleAmountChange(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
-        )}
+    if (percentageExclusions.length === 0) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No exclusions selected</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Use the split editor to mark specific allocation rows as “Exclude” when part of this balance should be dropped from mapping.
+          </p>
+        </div>
+      );
+    }
 
-        {exclusionType === 'percentage' && (
-          <div>
-            <label
-              className="text-xs font-medium text-slate-600 dark:text-slate-300"
-              htmlFor={`exclusion-percentage-${account.id}`}
-            >
-              Percentage to exclude
-            </label>
-            <input
-              id={`exclusion-percentage-${account.id}`}
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={account.exclusion?.percentage ?? ''}
-              onChange={event => handlePercentageChange(event.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
-        )}
-
-        {exclusionType === 'dynamic' && (
-          <div>
-            <label className="text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`exclusion-dynamic-${account.id}`}>
-              Dynamic datapoint
-            </label>
-            <select
-              id={`exclusion-dynamic-${account.id}`}
-              value={account.exclusion?.datapointId ?? ''}
-              onChange={event => handleDynamicOptionChange(event.target.value)}
-              disabled={dynamicOptions.length === 0}
-              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800"
-            >
-              <option value="">Select datapoint</option>
-              {dynamicOptions.map(option => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            {dynamicOptions.length === 0 && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Add dynamic allocation targets to enable exclusion by datapoint.
-              </p>
-            )}
-            {account.exclusion?.datapointName && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Resolved from {account.exclusion.datapointName}.
-              </p>
-            )}
-          </div>
-        )}
+    return (
+      <div className="space-y-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            Excluding {formatCurrency(excludedAmount)}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Remaining balance {formatCurrency(remainingAmount)}
+          </p>
+        </div>
+        <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
+          {percentageExclusions.map(split => (
+            <li key={split.id}>
+              <span className="font-medium">{split.percentage}%</span> · {formatCurrency(split.amount)}
+              {split.notes ? ` — ${split.notes}` : ''}
+            </li>
+          ))}
+        </ul>
       </div>
+    );
+  }
+
+  if (account.mappingType === 'dynamic') {
+    if (!allocation) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No dynamic allocation configured</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Launch the dynamic allocation builder to define datapoints and mark any exclusions.
+          </p>
+        </div>
+      );
+    }
+
+    if (dynamicExclusions.length === 0) {
+      return (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No datapoints excluded</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Open the dynamic allocation builder and mark one or more datapoints as excluded to remove them from the mapped results.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+            Excluding {formatCurrency(excludedAmount)}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Remaining balance {formatCurrency(remainingAmount)}
+          </p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Excluded datapoints</p>
+          <ul className="space-y-1 text-xs text-slate-600 dark:text-slate-300">
+            {dynamicExclusions.map(target => (
+              <li key={target.id}>{target.name}</li>
+            ))}
+          </ul>
+          {excludedAmount === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-300">
+              Run the dynamic allocation for {selectedPeriod ?? 'the selected period'} to resolve exclusion totals.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No partial exclusions</p>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        Switch the mapping type to Percentage or Dynamic to exclude only part of this balance.
+      </p>
     </div>
   );
 };
