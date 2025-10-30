@@ -17,7 +17,9 @@ load environment variables from `local.settings.json` if present.
 
 ### Required environment variables
 
-- `SQL_CONNECTION_STRING` – database connection string
+- `SQL_CONNECTION_STRING` or `SQL_CONN_STR` – database connection string. You can
+  also provide the server components individually via `SQL_SERVER`,
+  `SQL_DATABASE`, `SQL_USERNAME`, and `SQL_PASSWORD`.
 - `BLOB_CONNECTION_STRING` – Azure Storage connection string
 
 Secrets must be stored in Azure Key Vault and referenced from these variables
