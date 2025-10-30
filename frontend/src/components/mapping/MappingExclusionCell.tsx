@@ -18,7 +18,9 @@ const MappingExclusionCell = ({ account }: MappingExclusionCellProps) => {
 
   if (isFullyExcluded) {
     return (
-      <span className="text-sm font-medium text-slate-900 dark:text-slate-100">100%</span>
+      <div className="flex h-full items-center justify-center">
+        <span className="text-sm font-medium text-slate-900 dark:text-slate-100">100%</span>
+      </div>
     );
   }
 
@@ -26,16 +28,22 @@ const MappingExclusionCell = ({ account }: MappingExclusionCellProps) => {
   const totalAmount = Math.abs(account.netChange);
 
   if (excludedAmount <= 0 || totalAmount <= 0) {
-    return <span className="text-sm text-slate-500 dark:text-slate-400">—</span>;
+    return (
+      <div className="flex h-full items-center justify-center">
+        <span className="text-sm text-slate-500 dark:text-slate-400">—</span>
+      </div>
+    );
   }
 
   const ratio = Math.min(1, excludedAmount / totalAmount);
   const formattedPercentage = formatPercentage(ratio);
 
   return (
-    <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-      {formattedPercentage}
-    </span>
+    <div className="flex h-full items-center justify-center">
+      <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+        {formattedPercentage}
+      </span>
+    </div>
   );
 };
 

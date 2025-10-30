@@ -511,7 +511,7 @@ export default function MappingTable() {
                         {formatNetChange(account.netChange)}
                       </div>
                     </td>
-                    <td className="px-3 py-4 align-top">
+                    <td className="px-3 py-4 align-middle">
                       <MappingExclusionCell account={account} />
                     </td>
                     <td className="px-3 py-4">
