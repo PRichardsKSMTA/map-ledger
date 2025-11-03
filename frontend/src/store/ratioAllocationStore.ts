@@ -121,6 +121,7 @@ type RatioAllocationState = {
   validationErrors: DynamicAllocationValidationIssue[];
   auditLog: DynamicAllocationAuditRecord[];
   hydrate: (payload: RatioAllocationHydrationPayload) => void;
+  setBasisAccounts: (basisAccounts: DynamicBasisAccount[]) => void;
   getOrCreateAllocation: (sourceAccountId: string) => RatioAllocation;
   addAllocation: (allocation: Omit<RatioAllocation, 'id'>) => void;
   updateAllocation: (id: string, allocation: Partial<RatioAllocation>) => void;
@@ -172,6 +173,20 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         sourceAccounts: payload.sourceAccounts ?? state.sourceAccounts,
         availablePeriods,
         selectedPeriod,
+      };
+    });
+  },
+
+  setBasisAccounts: basisAccounts => {
+    set(state => {
+      const groups = state.groups.map(group => normalizeGroup(group, basisAccounts));
+      const allocations = state.allocations.map(allocation =>
+        synchronizeAllocationTargets(allocation, groups, basisAccounts, state.selectedPeriod),
+      );
+      return {
+        basisAccounts,
+        groups,
+        allocations,
       };
     });
   },

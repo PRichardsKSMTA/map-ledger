@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  DynamicBasisAccount,
   GLAccountMappingRow,
   MappingPolarity,
   MappingSplitDefinition,
@@ -202,6 +203,100 @@ const getSplitAmount = (
   split: MappingSplitDefinition,
 ): number => Math.abs(getSplitSignedAmount(account, split));
 
+type BasisAccumulator = {
+  id: string;
+  label: string;
+  value: number;
+};
+
+const findStandardScoaOption = (targetId?: string | null) => {
+  if (!targetId) {
+    return null;
+  }
+  const normalized = targetId.trim();
+  if (!normalized) {
+    return null;
+  }
+  return (
+    STANDARD_CHART_OF_ACCOUNTS.find(option => option.id === normalized) ??
+    STANDARD_CHART_OF_ACCOUNTS.find(option => option.value === normalized) ??
+    null
+  );
+};
+
+const buildBasisAccountsFromMappings = (
+  accounts: GLAccountMappingRow[],
+): DynamicBasisAccount[] => {
+  const accumulator = new Map<string, BasisAccumulator>();
+
+  accounts.forEach(account => {
+    if (account.status !== 'Mapped') {
+      return;
+    }
+
+    if (account.mappingType === 'direct') {
+      const normalizedTarget = account.manualCOAId?.trim();
+      if (!normalizedTarget) {
+        return;
+      }
+      const option = findStandardScoaOption(normalizedTarget);
+      const targetId = option?.id ?? normalizedTarget;
+      const label = option?.label ?? normalizedTarget;
+      const amount = Math.abs(account.netChange);
+      if (amount <= 0) {
+        return;
+      }
+      const existing = accumulator.get(targetId);
+      if (existing) {
+        existing.value += amount;
+      } else {
+        accumulator.set(targetId, { id: targetId, label, value: amount });
+      }
+      return;
+    }
+
+    if (account.mappingType === 'percentage') {
+      account.splitDefinitions.forEach(split => {
+        if (split.isExclusion) {
+          return;
+        }
+        const normalizedTarget = split.targetId?.trim();
+        if (!normalizedTarget) {
+          return;
+        }
+        const option = findStandardScoaOption(normalizedTarget);
+        const targetId = option?.id ?? normalizedTarget;
+        const label = option?.label ?? split.targetName ?? normalizedTarget;
+        const amount = getSplitAmount(account, split);
+        if (amount <= 0) {
+          return;
+        }
+        const existing = accumulator.get(targetId);
+        if (existing) {
+          existing.value += amount;
+        } else {
+          accumulator.set(targetId, { id: targetId, label, value: amount });
+        }
+      });
+    }
+  });
+
+  return Array.from(accumulator.values())
+    .map(({ id, label, value }) => ({
+      id,
+      name: label,
+      description: label,
+      value,
+      mappedTargetId: id,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const updateDynamicBasisAccounts = (accounts: GLAccountMappingRow[]) => {
+  const basisAccounts = buildBasisAccountsFromMappings(accounts);
+  useRatioAllocationStore.getState().setBasisAccounts(basisAccounts);
+};
+
 const getAccountExcludedAmount = (account: GLAccountMappingRow): number => {
   if (account.mappingType === 'exclude' || account.status === 'Excluded') {
     return account.netChange;
@@ -301,13 +396,7 @@ const syncDynamicAllocationState = (
   rows: TrialBalanceRow[] = [],
   requestedPeriod?: string | null,
 ) => {
-  const basisAccounts = accounts.map(account => ({
-    id: account.id,
-    name: `${account.accountId} — ${account.accountName}`,
-    description: account.accountName,
-    value: Math.abs(account.netChange),
-    mappedTargetId: account.manualCOAId ?? account.suggestedCOAId ?? '',
-  }));
+  const basisAccounts = buildBasisAccountsFromMappings(accounts);
 
   const sourceAccounts = accounts.map(account => ({
     id: account.id,
@@ -429,24 +518,28 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     }),
   clearStatusFilters: () => set({ activeStatuses: [] }),
   updateTarget: (id, coaId) =>
-    set(state => ({
-      accounts: state.accounts.map(account =>
+    set(state => {
+      const accounts = state.accounts.map(account =>
         account.id === id
           ? applyDerivedStatus({ ...account, manualCOAId: coaId || undefined })
-          : account
-      ),
-    })),
+          : account,
+      );
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   updatePreset: (id, presetId) =>
-    set(state => ({
-      accounts: state.accounts.map(account =>
+    set(state => {
+      const accounts = state.accounts.map(account =>
         account.id === id
           ? applyDerivedStatus({ ...account, presetId: presetId || undefined })
-          : account
-      ),
-    })),
+          : account,
+      );
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   updateStatus: (id, status) =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (account.id !== id) {
           return account;
         }
@@ -467,11 +560,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           splitDefinitions: isExcluded ? [] : account.splitDefinitions,
           dynamicExclusionAmount: isExcluded ? undefined : account.dynamicExclusionAmount,
         });
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   updateMappingType: (id, mappingType) =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (account.id !== id) {
           return account;
         }
@@ -493,8 +588,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           splitDefinitions: nextSplitDefinitions,
           dynamicExclusionAmount: nextDynamicExclusion,
         });
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   updatePolarity: (id, polarity) =>
     set(state => ({
       accounts: state.accounts.map(account =>
@@ -508,8 +605,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       ),
     })),
   addSplitDefinition: id =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (account.id !== id) {
           return account;
         }
@@ -529,11 +626,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           ...account,
           splitDefinitions: [...account.splitDefinitions, nextSplit],
         });
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   updateSplitDefinition: (accountId, splitId, updates) =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (account.id !== accountId) {
           return account;
         }
@@ -545,14 +644,16 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                   ...split,
                   ...updates,
                 }
-              : split
+              : split,
           ),
         });
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   removeSplitDefinition: (accountId, splitId) =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (account.id !== accountId) {
           return account;
         }
@@ -560,11 +661,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           ...account,
           splitDefinitions: account.splitDefinitions.filter(split => split.id !== splitId),
         });
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   applyBatchMapping: (ids, updates) =>
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (!ids.includes(account.id)) {
           return account;
         }
@@ -622,11 +725,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           next.dynamicExclusionAmount = undefined;
         }
         return applyDerivedStatus(next);
-      }),
-    })),
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    }),
   applyPresetToAccounts: (ids, presetId) => {
-    set(state => ({
-      accounts: state.accounts.map(account => {
+    set(state => {
+      const accounts = state.accounts.map(account => {
         if (!ids.includes(account.id)) {
           return account;
         }
@@ -640,30 +745,32 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           presetId,
           status: nextStatus,
         });
-      }),
-    }));
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
+    });
   },
   bulkAccept: ids =>
     set(state => {
       if (!ids.length) {
         return state;
       }
-      return {
-        accounts: state.accounts.map(account => {
-          if (!ids.includes(account.id) || !account.suggestedCOAId) {
-            return account;
-          }
-          if (account.mappingType === 'exclude' || account.status === 'Excluded') {
-            return account;
-          }
-          return applyDerivedStatus({
-            ...account,
-            manualCOAId: account.suggestedCOAId,
-            status: 'Mapped',
-            mappingType: account.mappingType === 'direct' ? account.mappingType : 'direct',
-          });
-        }),
-      };
+      const accounts = state.accounts.map(account => {
+        if (!ids.includes(account.id) || !account.suggestedCOAId) {
+          return account;
+        }
+        if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+          return account;
+        }
+        return applyDerivedStatus({
+          ...account,
+          manualCOAId: account.suggestedCOAId,
+          status: 'Mapped',
+          mappingType: account.mappingType === 'direct' ? account.mappingType : 'direct',
+        });
+      });
+      updateDynamicBasisAccounts(accounts);
+      return { accounts };
     }),
   finalizeMappings: ids => {
     const sourceIds = ids.length ? ids : get().accounts.map(account => account.id);
