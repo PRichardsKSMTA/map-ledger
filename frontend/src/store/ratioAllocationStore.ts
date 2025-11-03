@@ -45,7 +45,7 @@ const buildPresetTargetDatapoint = (
   const targetAccountId = normalizeAccountId(row.targetAccountId);
   const basisAccount = basisAccounts.find(account => account.id === dynamicAccountId) ?? null;
   const ratioValue = basisAccount ? getBasisValue(basisAccount, periodId) : 0;
-  const ratioName = basisAccount?.name ?? dynamicAccountId || `${preset.name} basis`;
+  const ratioName = basisAccount?.name ?? (dynamicAccountId || `${preset.name} basis`);
   const datapointId = targetAccountId || `${preset.id}:${dynamicAccountId || createId()}`;
   return {
     datapointId,
