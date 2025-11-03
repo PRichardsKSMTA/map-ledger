@@ -177,6 +177,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
         name: string;
         basisValue: number;
         isExcluded: boolean;
+        groupId: string | null;
       }[];
     }
     return selectedAllocation.targetDatapoints.map(target => {
@@ -189,6 +190,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
           name: target.name,
           basisValue,
           isExcluded,
+          groupId: target.groupId,
         };
       }
       const basisAccount = basisAccounts.find(account => account.id === target.ratioMetric.id);
@@ -202,6 +204,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
         name: target.name,
         basisValue,
         isExcluded,
+        groupId: null,
       };
     });
   }, [basisAccounts, excludedTargetIds, groups, selectedAllocation, selectedPeriod]);
@@ -722,10 +725,12 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                       const targetDatapoint = selectedAllocation?.targetDatapoints[index];
                       const isExcluded = detail.isExcluded;
                       const datapointId = targetDatapoint?.datapointId ?? detail.targetId;
+                      const groupId = targetDatapoint?.groupId ?? detail.groupId ?? null;
                       const TargetIcon = isExcluded ? XCircle : CheckCircle2;
                       const iconClass = isExcluded ? 'text-rose-500 dark:text-rose-300' : 'text-emerald-500';
+                      const rowKey = groupId ? `${detail.targetId}-${groupId}` : detail.targetId;
                       return (
-                        <tr key={detail.targetId}>
+                        <tr key={rowKey}>
                           <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-slate-100">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-2">
@@ -748,7 +753,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                                   if (!selectedAllocation || !datapointId) {
                                     return;
                                   }
-                                  toggleTargetExclusion(selectedAllocation.id, datapointId);
+                                  toggleTargetExclusion(selectedAllocation.id, datapointId, groupId);
                                 }}
                               />
                               Exclude
