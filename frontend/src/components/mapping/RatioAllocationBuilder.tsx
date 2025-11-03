@@ -82,30 +82,22 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
   ]);
 
   const targetOptions = useMemo(() => {
-    const optionMap = new Map<string, string>();
-    const labelFor = (targetId: string) =>
-      STANDARD_CHART_OF_ACCOUNTS.find(item => item.id === targetId)?.label ?? targetId;
-
-    basisAccounts.forEach(account => {
-      if (account.mappedTargetId) {
-        optionMap.set(account.mappedTargetId, labelFor(account.mappedTargetId));
-      }
-    });
-    groups.forEach(group => {
-      optionMap.set(group.targetId, group.targetName);
-    });
-
-    STANDARD_CHART_OF_ACCOUNTS.forEach(option => {
-      if (!optionMap.has(option.id)) {
-        optionMap.set(option.id, option.label);
-      }
-    });
-
-    return Array.from(optionMap.entries()).map(([value, label]) => ({ value, label }));
-  }, [basisAccounts, groups]);
+    const excludedIds = new Set(basisAccounts.map(account => account.id));
+    return STANDARD_CHART_OF_ACCOUNTS.filter(option => !excludedIds.has(option.id))
+      .map(option => ({ value: option.id, label: option.label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [basisAccounts]);
 
   useEffect(() => {
-    if (!newGroupTargetId && targetOptions.length > 0) {
+    if (targetOptions.length === 0) {
+      if (newGroupTargetId) {
+        setNewGroupTargetId('');
+      }
+      return;
+    }
+
+    const hasCurrent = targetOptions.some(option => option.value === newGroupTargetId);
+    if (!hasCurrent) {
       setNewGroupTargetId(targetOptions[0].value);
     }
   }, [newGroupTargetId, targetOptions]);
@@ -269,14 +261,17 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     });
     setIsCreatingGroup(false);
     setNewGroupName('');
+    setNewGroupTargetId('');
     setNewGroupMembers([]);
   };
 
   const beginEditGroup = (group: DynamicDatapointGroup) => {
     setEditingGroupId(group.id);
+    const allowedTargetIds = new Set(targetOptions.map(option => option.value));
     setGroupDraft({
       label: group.label,
-      targetId: group.targetId,
+      targetId:
+        group.targetId && allowedTargetIds.has(group.targetId) ? group.targetId : '',
       memberIds: group.members.map(member => member.accountId),
     });
     setEditError(null);
@@ -299,6 +294,11 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     }
     if (groupDraft.memberIds.length === 0) {
       setEditError('Select at least one source account.');
+      return;
+    }
+    const requiresTarget = !excludedGroupIds.has(editingGroupId);
+    if (requiresTarget && !groupDraft.targetId) {
+      setEditError('Select a target SCoA account.');
       return;
     }
     updateGroup(editingGroupId, { label: trimmedLabel, targetId: groupDraft.targetId });
@@ -334,7 +334,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
 
           {basisAccounts.length === 0 && (
             <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
-              Import a trial balance to add basis datapoints before creating dynamic groups.
+              Complete your direct and percentage mappings to add basis datapoints before creating dynamic groups.
             </p>
           )}
 
@@ -355,14 +355,24 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                   <select
                     value={newGroupTargetId}
                     onChange={event => setNewGroupTargetId(event.target.value)}
-                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:disabled:bg-slate-800"
+                    disabled={targetOptions.length === 0}
                   >
-                    {targetOptions.map(option => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
+                    {targetOptions.length === 0 ? (
+                      <option value="">No eligible targets available</option>
+                    ) : (
+                      targetOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))
+                    )}
                   </select>
+                  {targetOptions.length === 0 && (
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      All mapped SCoA accounts are already used as basis datapoints. Map additional accounts to unlock more targets.
+                    </p>
+                  )}
                 </label>
               </div>
               <div className="mt-4">
@@ -400,7 +410,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                 <button
                   type="submit"
                   className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                  disabled={!newGroupName.trim() || newGroupMembers.length === 0}
+                  disabled={!newGroupName.trim() || newGroupMembers.length === 0 || !newGroupTargetId}
                 >
                   Save datapoint
                 </button>
@@ -527,6 +537,11 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                                 Excluded datapoints do not require a target account.
                               </p>
                             )}
+                            {!isExcludedForAllocation && targetOptions.length === 0 && (
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                All mapped SCoA accounts are already used as basis datapoints. Map additional accounts to unlock more targets.
+                              </p>
+                            )}
                           </label>
                         </div>
                         <div>
@@ -589,7 +604,11 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                             type="button"
                             onClick={handleSaveGroup}
                             className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400 dark:focus:ring-offset-slate-900"
-                            disabled={!draft.label.trim() || draft.memberIds.length === 0}
+                            disabled={
+                              !draft.label.trim() ||
+                              draft.memberIds.length === 0 ||
+                              (!isExcludedForAllocation && !draft.targetId)
+                            }
                           >
                             Save changes
                           </button>

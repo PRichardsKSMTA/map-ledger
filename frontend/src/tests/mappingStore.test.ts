@@ -11,6 +11,7 @@ import {
 } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 import type { TrialBalanceRow } from '../types';
+import { getStandardScoaOption } from '../data/standardChartOfAccounts';
 
 describe('mappingStore selectors', () => {
   beforeEach(() => {
@@ -72,6 +73,26 @@ describe('mappingStore selectors', () => {
       .getState()
       .accounts.find(account => account.id === 'acct-2');
     expect(percentageAccount?.status).toBe('Mapped');
+  });
+
+  it('exposes mapped SCoA accounts to the dynamic allocation basis list', () => {
+    const payrollTarget = getStandardScoaOption(
+      'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
+    );
+
+    act(() => {
+      useMappingStore.getState().updateTarget('acct-1', payrollTarget.value);
+      useMappingStore.getState().updateStatus('acct-1', 'Mapped');
+      useMappingStore.getState().updateStatus('acct-2', 'Mapped');
+    });
+
+    const basisAccounts = useRatioAllocationStore.getState().basisAccounts;
+
+    expect(basisAccounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: payrollTarget.id, name: payrollTarget.label }),
+      ]),
+    );
   });
 
   it('derives dynamic exclusion totals from allocation results', () => {
