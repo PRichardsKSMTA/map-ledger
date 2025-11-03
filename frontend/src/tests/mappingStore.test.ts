@@ -95,6 +95,42 @@ describe('mappingStore selectors', () => {
     );
   });
 
+  it('includes percentage split targets in the basis selection before status is finalized', () => {
+    const driverTarget = getStandardScoaOption(
+      'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
+    );
+    const nonDriverTarget = getStandardScoaOption(
+      'NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS',
+    );
+
+    if (!driverTarget || !nonDriverTarget) {
+      throw new Error('Expected standard chart of accounts targets to be available');
+    }
+
+    act(() => {
+      useMappingStore
+        .getState()
+        .updateSplitDefinition('acct-2', 'split-1', { allocationValue: 70 });
+      useMappingStore
+        .getState()
+        .updateSplitDefinition('acct-2', 'split-2', { allocationValue: 20 });
+    });
+
+    const basisAccounts = useRatioAllocationStore.getState().basisAccounts;
+
+    expect(basisAccounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: driverTarget.id, name: driverTarget.label }),
+        expect.objectContaining({ id: nonDriverTarget.id, name: nonDriverTarget.label }),
+      ]),
+    );
+
+    const driverEntry = basisAccounts.find(account => account.id === driverTarget.id);
+    const nonDriverEntry = basisAccounts.find(account => account.id === nonDriverTarget.id);
+    expect(driverEntry?.value).toBeCloseTo((120000 * 70) / 100, 5);
+    expect(nonDriverEntry?.value).toBeCloseTo((120000 * 20) / 100, 5);
+  });
+
   it('derives dynamic exclusion totals from allocation results', () => {
     act(() => {
       useMappingStore.setState(state => ({ ...state, activePeriod: '2024-01' }));

@@ -230,11 +230,10 @@ const buildBasisAccountsFromMappings = (
   const accumulator = new Map<string, BasisAccumulator>();
 
   accounts.forEach(account => {
-    if (account.status !== 'Mapped') {
-      return;
-    }
-
     if (account.mappingType === 'direct') {
+      if (account.status !== 'Mapped') {
+        return;
+      }
       const normalizedTarget = account.manualCOAId?.trim();
       if (!normalizedTarget) {
         return;
@@ -268,16 +267,15 @@ const buildBasisAccountsFromMappings = (
         const targetId = option?.id ?? normalizedTarget;
         const label = option?.label ?? split.targetName ?? normalizedTarget;
         const amount = getSplitAmount(account, split);
-        if (amount <= 0) {
-          return;
-        }
+        const value = amount > 0 ? amount : 0;
         const existing = accumulator.get(targetId);
         if (existing) {
-          existing.value += amount;
+          existing.value += value;
         } else {
-          accumulator.set(targetId, { id: targetId, label, value: amount });
+          accumulator.set(targetId, { id: targetId, label, value });
         }
       });
+      return;
     }
   });
 
@@ -296,6 +294,8 @@ const updateDynamicBasisAccounts = (accounts: GLAccountMappingRow[]) => {
   const basisAccounts = buildBasisAccountsFromMappings(accounts);
   useRatioAllocationStore.getState().setBasisAccounts(basisAccounts);
 };
+
+type RatioAllocationStoreState = ReturnType<typeof useRatioAllocationStore.getState>;
 
 const getAccountExcludedAmount = (account: GLAccountMappingRow): number => {
   if (account.mappingType === 'exclude' || account.status === 'Excluded') {
@@ -929,15 +929,21 @@ export const selectAccountsRequiringSplits = (state: MappingState) =>
 export { getAccountExcludedAmount, getAllocatableNetChange };
 
 useRatioAllocationStore.subscribe(
-  state => ({
-    results: state.results,
-    selectedPeriod: state.selectedPeriod,
-    allocations: state.allocations,
-    basisAccounts: state.basisAccounts,
-    groups: state.groups,
-    sourceAccounts: state.sourceAccounts,
-  }),
-  ({ results, selectedPeriod, allocations, basisAccounts, groups, sourceAccounts }) => {
+  (state: RatioAllocationStoreState, previousState?: RatioAllocationStoreState) => {
+    const prevState = previousState ?? state;
+    if (
+      state.results === prevState.results &&
+      state.selectedPeriod === prevState.selectedPeriod &&
+      state.allocations === prevState.allocations &&
+      state.basisAccounts === prevState.basisAccounts &&
+      state.groups === prevState.groups &&
+      state.sourceAccounts === prevState.sourceAccounts
+    ) {
+      return;
+    }
+
+    const { results, selectedPeriod, allocations, basisAccounts, groups, sourceAccounts } = state;
+
     useMappingStore.setState(currentState => {
       const dynamicAccounts = currentState.accounts.filter(
         account => account.mappingType === 'dynamic',

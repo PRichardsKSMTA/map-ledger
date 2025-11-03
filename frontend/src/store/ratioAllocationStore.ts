@@ -109,7 +109,7 @@ export type RatioAllocationHydrationPayload = {
   selectedPeriod?: string | null;
 };
 
-type RatioAllocationState = {
+export type RatioAllocationState = {
   allocations: RatioAllocation[];
   basisAccounts: DynamicBasisAccount[];
   groups: DynamicDatapointGroup[];
