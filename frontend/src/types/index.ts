@@ -277,17 +277,15 @@ export interface DynamicBasisAccount {
   valuesByPeriod?: Record<string, number>;
 }
 
-export interface DynamicDatapointGroupMember {
-  accountId: string;
-  accountName: string;
+export interface DynamicAllocationPresetRow {
+  dynamicAccountId: string;
+  targetAccountId: string;
 }
 
-export interface DynamicDatapointGroup {
+export interface DynamicAllocationPreset {
   id: string;
-  label: string;
-  targetId: string;
-  targetName: string;
-  members: DynamicDatapointGroupMember[];
+  name: string;
+  rows: DynamicAllocationPresetRow[];
   notes?: string;
 }
 

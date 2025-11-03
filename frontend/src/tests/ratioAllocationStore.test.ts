@@ -1,11 +1,12 @@
 import { act } from '@testing-library/react';
+import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 
 const resetStore = () => {
   useRatioAllocationStore.setState({
     allocations: [],
     basisAccounts: [],
-    groups: [],
+    presets: [],
     sourceAccounts: [],
     availablePeriods: [],
     isProcessing: false,
@@ -21,7 +22,7 @@ describe('ratioAllocationStore', () => {
     resetStore();
   });
 
-  it('toggles dynamic datapoint groups on an allocation', () => {
+  it('toggles dynamic allocation presets on an allocation', () => {
     const basisAccount = {
       id: 'basis-1',
       name: 'Operations hours',
@@ -30,12 +31,13 @@ describe('ratioAllocationStore', () => {
       mappedTargetId: 'ops-target',
       valuesByPeriod: { '2024-01': 1200 },
     };
-    const group = {
-      id: 'group-1',
-      label: 'Operations ratio',
-      targetId: '6000',
-      targetName: 'Operations expense',
-      members: [{ accountId: basisAccount.id, accountName: basisAccount.name }],
+    const targetOption = STANDARD_CHART_OF_ACCOUNTS[0];
+    const preset = {
+      id: 'preset-1',
+      name: 'Operations preset',
+      rows: [
+        { dynamicAccountId: basisAccount.id, targetAccountId: targetOption.id },
+      ],
     };
     const allocation = {
       id: 'allocation-1',
@@ -54,30 +56,34 @@ describe('ratioAllocationStore', () => {
       useRatioAllocationStore.setState(state => ({
         ...state,
         basisAccounts: [basisAccount],
-        groups: [group],
+        presets: [preset],
         allocations: [allocation],
       }));
     });
 
     act(() => {
-      useRatioAllocationStore.getState().toggleAllocationGroupTarget('allocation-1', 'group-1');
+      useRatioAllocationStore
+        .getState()
+        .toggleAllocationPresetTargets('allocation-1', 'preset-1');
     });
 
     let updatedAllocation = useRatioAllocationStore.getState().allocations[0];
     expect(updatedAllocation.targetDatapoints).toHaveLength(1);
     expect(updatedAllocation.targetDatapoints[0]).toMatchObject({
-      datapointId: group.targetId,
-      groupId: group.id,
-      name: group.targetName,
+      datapointId: targetOption.id,
+      groupId: preset.id,
+      name: targetOption.label,
     });
     expect(updatedAllocation.targetDatapoints[0].ratioMetric).toMatchObject({
-      id: group.id,
-      name: `${group.label} total`,
+      id: basisAccount.id,
+      name: basisAccount.name,
       value: 1200,
     });
 
     act(() => {
-      useRatioAllocationStore.getState().toggleAllocationGroupTarget('allocation-1', 'group-1');
+      useRatioAllocationStore
+        .getState()
+        .toggleAllocationPresetTargets('allocation-1', 'preset-1');
     });
 
     updatedAllocation = useRatioAllocationStore.getState().allocations[0];
@@ -104,20 +110,21 @@ describe('ratioAllocationStore', () => {
       },
     ];
 
-    const groups = [
+    const targetOption = STANDARD_CHART_OF_ACCOUNTS[0];
+    const presets = [
       {
-        id: 'group-1',
-        label: 'Operations ratio A',
-        targetId: '6000',
-        targetName: 'Operations expense',
-        members: [{ accountId: basisAccounts[0].id, accountName: basisAccounts[0].name }],
+        id: 'preset-1',
+        name: 'Operations preset A',
+        rows: [
+          { dynamicAccountId: basisAccounts[0].id, targetAccountId: targetOption.id },
+        ],
       },
       {
-        id: 'group-2',
-        label: 'Operations ratio B',
-        targetId: '6000',
-        targetName: 'Operations expense',
-        members: [{ accountId: basisAccounts[1].id, accountName: basisAccounts[1].name }],
+        id: 'preset-2',
+        name: 'Operations preset B',
+        rows: [
+          { dynamicAccountId: basisAccounts[1].id, targetAccountId: targetOption.id },
+        ],
       },
     ];
 
@@ -138,15 +145,15 @@ describe('ratioAllocationStore', () => {
       useRatioAllocationStore.setState(state => ({
         ...state,
         basisAccounts,
-        groups,
+        presets,
         allocations: [allocation],
       }));
     });
 
     act(() => {
       const store = useRatioAllocationStore.getState();
-      store.toggleAllocationGroupTarget('allocation-1', 'group-1');
-      store.toggleAllocationGroupTarget('allocation-1', 'group-2');
+      store.toggleAllocationPresetTargets('allocation-1', 'preset-1');
+      store.toggleAllocationPresetTargets('allocation-1', 'preset-2');
     });
 
     let updatedAllocation = useRatioAllocationStore.getState().allocations[0];
@@ -155,15 +162,15 @@ describe('ratioAllocationStore', () => {
     act(() => {
       useRatioAllocationStore
         .getState()
-        .toggleTargetExclusion('allocation-1', '6000', 'group-1');
+        .toggleTargetExclusion('allocation-1', targetOption.id, 'preset-1');
     });
 
     updatedAllocation = useRatioAllocationStore.getState().allocations[0];
     const firstTarget = updatedAllocation.targetDatapoints.find(
-      target => target.groupId === 'group-1',
+      target => target.groupId === 'preset-1',
     );
     const secondTarget = updatedAllocation.targetDatapoints.find(
-      target => target.groupId === 'group-2',
+      target => target.groupId === 'preset-2',
     );
 
     expect(firstTarget?.isExclusion).toBe(true);
@@ -172,15 +179,15 @@ describe('ratioAllocationStore', () => {
     act(() => {
       useRatioAllocationStore
         .getState()
-        .toggleTargetExclusion('allocation-1', '6000', 'group-2');
+        .toggleTargetExclusion('allocation-1', targetOption.id, 'preset-2');
     });
 
     updatedAllocation = useRatioAllocationStore.getState().allocations[0];
     const refreshedFirst = updatedAllocation.targetDatapoints.find(
-      target => target.groupId === 'group-1',
+      target => target.groupId === 'preset-1',
     );
     const refreshedSecond = updatedAllocation.targetDatapoints.find(
-      target => target.groupId === 'group-2',
+      target => target.groupId === 'preset-2',
     );
 
     expect(refreshedFirst?.isExclusion).toBe(true);
