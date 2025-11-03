@@ -1,4 +1,3 @@
-import React from 'react';
 import { Datapoint, COATemplate } from '../../types';
 import { Edit, Trash2, GripVertical, Calculator, Info } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';

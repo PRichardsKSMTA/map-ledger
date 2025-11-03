@@ -1,4 +1,3 @@
-import React from 'react';
 import { COATemplate } from '../../types';
 import { FileSpreadsheet, Edit, Trash2 } from 'lucide-react';
 

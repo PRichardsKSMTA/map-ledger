@@ -1,4 +1,3 @@
-import React from 'react';
 import { FileSpreadsheet, AlertCircle, Download } from 'lucide-react';
 
 export default function TemplateGuide() {

@@ -1,4 +1,4 @@
-import { allocateDynamic } from './dynamicAllocation';
+import { allocateDynamic } from '../utils/dynamicAllocation';
 
 describe('allocateDynamic', () => {
   it('distributes amounts according to basis proportions', () => {

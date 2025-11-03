@@ -1,4 +1,3 @@
-import React from 'react';
 import { User } from '../../types';
 import { Edit, Trash2, Shield, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Card } from '../ui/Card';
