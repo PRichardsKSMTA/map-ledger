@@ -32,6 +32,28 @@ describe('MappingTable', () => {
     expect(mappingTypeSelect).toHaveValue('direct');
   });
 
+  test('initializes two blank splits when switching to percentage mapping', () => {
+    render(<MappingTable />);
+
+    const linehaulSelect = screen.getByLabelText('Select mapping type for Linehaul Revenue');
+    expect(linehaulSelect).toHaveValue('direct');
+
+    fireEvent.change(linehaulSelect, { target: { value: 'percentage' } });
+
+    const updatedAccount = useMappingStore
+      .getState()
+      .accounts.find(account => account.accountName === 'Linehaul Revenue');
+
+    expect(updatedAccount).toBeDefined();
+    expect(updatedAccount?.mappingType).toBe('percentage');
+    expect(updatedAccount?.splitDefinitions).toHaveLength(2);
+    updatedAccount?.splitDefinitions.forEach(split => {
+      expect(split.targetId).toBe('');
+      expect(split.allocationType).toBe('percentage');
+      expect(split.allocationValue).toBe(0);
+    });
+  });
+
   test('lists all COA datapoints in the target selector', () => {
     render(<MappingTable />);
 

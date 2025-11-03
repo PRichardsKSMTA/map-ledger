@@ -572,7 +572,9 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
 
         const nextSplitDefinitions =
-          mappingType === 'percentage' ? account.splitDefinitions : [];
+          mappingType === 'percentage'
+            ? ensureMinimumPercentageSplits(account.splitDefinitions)
+            : [];
         const nextDynamicExclusion = mappingType === 'dynamic' ? account.dynamicExclusionAmount : undefined;
 
         return applyDerivedStatus({
@@ -613,15 +615,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (account.mappingType !== 'percentage') {
           return account;
         }
-        const nextSplit: MappingSplitDefinition = {
-          id: createId(),
-          targetId: '',
-          targetName: '',
-          allocationType: 'percentage',
-          allocationValue: 0,
-          notes: '',
-          isExclusion: false,
-        };
+        const nextSplit: MappingSplitDefinition = createBlankSplitDefinition();
         return applyDerivedStatus({
           ...account,
           splitDefinitions: [...account.splitDefinitions, nextSplit],
@@ -685,6 +679,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             next.manualCOAId = undefined;
             next.presetId = undefined;
             next.dynamicExclusionAmount = undefined;
+          } else if (updates.mappingType === 'percentage') {
+            next.splitDefinitions = ensureMinimumPercentageSplits(
+              next.splitDefinitions,
+            );
           } else if (next.status === 'Excluded') {
             next.status = 'Unmapped';
           }
@@ -742,6 +740,9 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return applyDerivedStatus({
           ...account,
           mappingType: 'percentage',
+          splitDefinitions: ensureMinimumPercentageSplits(
+            account.splitDefinitions,
+          ),
           presetId,
           status: nextStatus,
         });
@@ -821,6 +822,30 @@ const createId = (): string => {
     return crypto.randomUUID();
   }
   return Math.random().toString(36).slice(2, 10);
+};
+
+const createBlankSplitDefinition = (): MappingSplitDefinition => ({
+  id: createId(),
+  targetId: '',
+  targetName: '',
+  allocationType: 'percentage',
+  allocationValue: 0,
+  notes: '',
+  isExclusion: false,
+});
+
+const ensureMinimumPercentageSplits = (
+  splits: MappingSplitDefinition[],
+  minimum = 2,
+): MappingSplitDefinition[] => {
+  const preserved = splits.map(split => ({ ...split }));
+  if (preserved.length >= minimum) {
+    return preserved;
+  }
+  const placeholders = Array.from({ length: minimum - preserved.length }, () =>
+    createBlankSplitDefinition(),
+  );
+  return [...preserved, ...placeholders];
 };
 
 const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
