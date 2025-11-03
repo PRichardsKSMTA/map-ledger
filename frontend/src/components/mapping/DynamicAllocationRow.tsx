@@ -47,6 +47,7 @@ const DynamicAllocationRow = ({
     selectedPeriod,
     results,
     validationErrors,
+    toggleTargetExclusion,
   } = useRatioAllocationStore(state => ({
     allocations: state.allocations,
     groups: state.groups,
@@ -55,6 +56,7 @@ const DynamicAllocationRow = ({
     selectedPeriod: state.selectedPeriod,
     results: state.results,
     validationErrors: state.validationErrors,
+    toggleTargetExclusion: state.toggleTargetExclusion,
   }));
 
   const allocation = useMemo(
@@ -78,10 +80,12 @@ const DynamicAllocationRow = ({
     if (!allocation) {
       return [] as {
         id: string;
+        groupId: string | null;
         name: string;
         metricName: string;
         basisTotal: number;
         memberValues: ReturnType<typeof getGroupMembersWithValues>;
+        isExclusion: boolean;
       }[];
     }
 
@@ -98,6 +102,7 @@ const DynamicAllocationRow = ({
         : target.ratioMetric.value;
       return {
         id: target.datapointId,
+        groupId: target.groupId ?? null,
         name: target.name,
         metricName: target.ratioMetric.name,
         basisTotal,
@@ -320,10 +325,12 @@ const DynamicAllocationRow = ({
                   const memberValueClasses = isExclusion
                     ? 'font-medium text-rose-700 tabular-nums dark:text-rose-200'
                     : 'font-medium text-slate-700 tabular-nums dark:text-slate-200';
+                  const summaryKey = summary.groupId ? `${summary.id}-${summary.groupId}` : summary.id;
+                  const allocationId = allocation?.id ?? null;
 
                   return (
-                    <article key={summary.id} className={articleClasses}>
-                      <header className="flex items-start justify-between gap-3">
+                    <article key={summaryKey} className={articleClasses}>
+                      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <h5 className={titleClasses}>{summary.name}</h5>
                           <p className="text-xs text-slate-500 dark:text-slate-400">Metric: {summary.metricName}</p>
@@ -334,13 +341,28 @@ const DynamicAllocationRow = ({
                             </span>
                           )}
                         </div>
-                        <div className="text-right">
-                          <span className="block text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                            Share of total
-                          </span>
-                          <span className={percentageClasses}>
-                            {(summary.ratio * 100).toFixed(1)}%
-                          </span>
+                        <div className="flex flex-col items-end gap-2 text-right">
+                          <div>
+                            <span className="block text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              Share of total
+                            </span>
+                            <span className={percentageClasses}>
+                              {(summary.ratio * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          {allocationId && (
+                            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
+                                checked={isExclusion}
+                                onChange={() =>
+                                  toggleTargetExclusion(allocationId, summary.id, summary.groupId ?? undefined)
+                                }
+                              />
+                              {isExclusion ? 'Excluded from mapping' : 'Exclude from mapping'}
+                            </label>
+                          )}
                         </div>
                       </header>
                       <dl className="grid grid-cols-2 gap-3 text-xs text-slate-500 dark:text-slate-400">

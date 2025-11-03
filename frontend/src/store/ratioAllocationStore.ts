@@ -139,7 +139,11 @@ export type RatioAllocationState = {
   setGroupMembers: (groupId: string, memberAccountIds: string[]) => void;
   toggleGroupMember: (groupId: string, accountId: string) => void;
   toggleAllocationGroupTarget: (allocationId: string, groupId: string) => void;
-  toggleTargetExclusion: (allocationId: string, datapointId: string) => void;
+  toggleTargetExclusion: (
+    allocationId: string,
+    datapointId: string,
+    groupId?: string | null,
+  ) => void;
 };
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
@@ -712,22 +716,27 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       return { allocations };
     });
   },
-  toggleTargetExclusion: (allocationId, datapointId) => {
+  toggleTargetExclusion: (allocationId, datapointId, groupId) => {
     set(state => ({
       allocations: state.allocations.map(allocation => {
         if (allocation.id !== allocationId) {
           return allocation;
         }
 
-        const exists = allocation.targetDatapoints.some(target => target.datapointId === datapointId);
+        const matchesTarget = (target: RatioAllocationTargetDatapoint) => {
+          if (groupId) {
+            return target.groupId === groupId;
+          }
+          return target.datapointId === datapointId;
+        };
+
+        const exists = allocation.targetDatapoints.some(matchesTarget);
         if (!exists) {
           return allocation;
         }
 
         const nextTargets = allocation.targetDatapoints.map(target =>
-          target.datapointId === datapointId
-            ? { ...target, isExclusion: !target.isExclusion }
-            : target,
+          matchesTarget(target) ? { ...target, isExclusion: !target.isExclusion } : target,
         );
 
         return synchronizeAllocationTargets(
