@@ -1,6 +1,6 @@
 import type {
+  DynamicAllocationPreset,
   DynamicBasisAccount,
-  DynamicDatapointGroup,
   DynamicSourceAccount,
 } from '../types';
 
@@ -45,26 +45,26 @@ export const getSourceValue = (
 };
 
 export const getGroupMembersWithValues = (
-  group: DynamicDatapointGroup,
+  preset: DynamicAllocationPreset,
   basisAccounts: DynamicBasisAccount[],
   periodId?: string | null,
 ): GroupMemberValue[] =>
-  group.members.map(member => {
-    const account = basisAccounts.find(item => item.id === member.accountId);
+  preset.rows.map(row => {
+    const account = basisAccounts.find(item => item.id === row.dynamicAccountId);
     const value = account ? getBasisValue(account, periodId) : 0;
     return {
-      accountId: member.accountId,
-      accountName: account?.name ?? member.accountName ?? member.accountId,
+      accountId: row.dynamicAccountId,
+      accountName: account?.name ?? row.dynamicAccountId,
       value,
     };
   });
 
 export const getGroupTotal = (
-  group: DynamicDatapointGroup,
+  preset: DynamicAllocationPreset,
   basisAccounts: DynamicBasisAccount[],
   periodId?: string | null,
 ): number =>
-  getGroupMembersWithValues(group, basisAccounts, periodId).reduce(
+  getGroupMembersWithValues(preset, basisAccounts, periodId).reduce(
     (sum, member) => sum + member.value,
     0,
   );
