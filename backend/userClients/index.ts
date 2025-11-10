@@ -42,6 +42,28 @@ const logError = (message: string, details?: unknown) => {
   console.error(logPrefix, message, details ?? '');
 };
 
+const parseFlag = (value?: string): boolean => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return ['1', 'true', 'yes', 'y', 'on'].includes(normalized);
+};
+
+const isDevelopmentLikeEnvironment = (): boolean => {
+  const nodeEnv = (process.env.NODE_ENV ?? '').trim().toLowerCase();
+  if (['development', 'dev', 'local'].includes(nodeEnv)) {
+    return true;
+  }
+
+  const functionsEnv = (process.env.AZURE_FUNCTIONS_ENVIRONMENT ?? '')
+    .trim()
+    .toLowerCase();
+  return ['development', 'developmentenvironment', 'local'].includes(
+    functionsEnv
+  );
+};
+
 const normalizeEmail = (value?: unknown): string | undefined => {
   if (typeof value === 'string') {
     const trimmed = value.trim();
@@ -53,6 +75,51 @@ const normalizeEmail = (value?: unknown): string | undefined => {
 
   if (Array.isArray(value) && value.length > 0) {
     return normalizeEmail(value[0]);
+  }
+
+  return undefined;
+};
+
+const maskEmail = (email: string): string => {
+  const [local, domain] = email.split('@');
+  if (!domain) {
+    return email;
+  }
+  if (local.length <= 2) {
+    return `${local[0] ?? '*'}***@${domain}`;
+  }
+  return `${local.slice(0, 2)}***@${domain}`;
+};
+
+const resolveDevOverrideEmail = (): { email: string; source: string } | undefined => {
+  const allowBypass = parseFlag(
+    process.env.ENABLE_DEV_AUTH_BYPASS ??
+      process.env.USER_CLIENTS_ALLOW_DEV_BYPASS ??
+      ''
+  );
+
+  const autoBypass = parseFlag(
+    process.env.USER_CLIENTS_AUTO_DEV_BYPASS ?? 'true'
+  );
+
+  if (!allowBypass && !(autoBypass && isDevelopmentLikeEnvironment())) {
+    return undefined;
+  }
+
+  const candidateKeys = [
+    'USER_CLIENTS_DEV_EMAIL',
+    'DEV_USER_EMAIL',
+    'LOCAL_USER_EMAIL',
+    'LOCAL_DEV_USER_EMAIL',
+    'USER_CLIENTS_DEFAULT_EMAIL',
+  ] as const;
+
+  for (const key of candidateKeys) {
+    const envValue = process.env[key];
+    const normalized = normalizeEmail(envValue);
+    if (normalized) {
+      return { email: normalized, source: key };
+    }
   }
 
   return undefined;
@@ -172,7 +239,18 @@ export default async function (req: HttpRequest, _ctx: InvocationContext) {
     const emailFromQuery = extractEmailFromQuery(req);
     const emailFromHeader = extractEmailFromHeaders(req);
 
-    const email = emailFromPrincipal || emailFromQuery || emailFromHeader;
+    let email = emailFromPrincipal || emailFromQuery || emailFromHeader;
+
+    if (!email) {
+      const override = resolveDevOverrideEmail();
+      if (override) {
+        logWarn('No authenticated email resolved; using development override', {
+          overrideSource: override.source,
+          maskedOverrideEmail: maskEmail(override.email),
+        });
+        email = override.email;
+      }
+    }
 
     logInfo('Resolved email for user clients request', {
       hasPrincipalEmail: Boolean(emailFromPrincipal),
