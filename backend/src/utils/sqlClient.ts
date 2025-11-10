@@ -32,7 +32,111 @@ let connectionPromise: Promise<ConnectionPool> | null = null;
 
 const toBool = (v?: string) => (typeof v === 'string' ? v.toLowerCase() === 'true' : false);
 const toInt = (v: string | undefined, fallback: number) => {
-  const n = Number(v); return Number.isFinite(n) ? n : fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const toOptionalBool = (value?: string): boolean | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const normalised = value.trim().toLowerCase();
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalised)) {
+    return true;
+  }
+  if (['false', '0', 'no', 'n', 'off'].includes(normalised)) {
+    return false;
+  }
+  return undefined;
+};
+
+const normaliseKey = (key: string) => key.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const parseKeyValueConnectionString = (connectionString: string) => {
+  const segments = connectionString
+    .split(';')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  const result: Record<string, string> = {};
+  segments.forEach((segment) => {
+    const [rawKey, ...rawValueParts] = segment.split('=');
+    if (!rawKey || rawValueParts.length === 0) {
+      return;
+    }
+    const value = rawValueParts.join('=').trim();
+    const key = normaliseKey(rawKey);
+    if (!key) {
+      return;
+    }
+    result[key] = value.replace(/^{|}$/g, '');
+  });
+  return result;
+};
+
+const parseSqlConfigFromConnectionString = (
+  connectionString: string,
+  defaults: { encrypt: boolean; trustServerCertificate: boolean },
+): SqlConfig | null => {
+  if (!connectionString.includes('=')) {
+    return null;
+  }
+
+  const kv = parseKeyValueConnectionString(connectionString);
+  if (!Object.keys(kv).length) {
+    return null;
+  }
+
+  const server =
+    kv.SERVER ||
+    kv.DATASOURCE ||
+    kv.ADDR ||
+    kv.ADDRESS ||
+    kv.NETWORKADDRESS ||
+    kv.HOSTNAME ||
+    kv.HOST;
+  const database = kv.DATABASE || kv.INITIALCATALOG;
+  const user = kv.UID || kv.USER || kv.USERID || kv.USERNAME || kv.LOGIN;
+  const password = kv.PWD || kv.PASSWORD;
+
+  if (!server || !database) {
+    return null;
+  }
+
+  const port = Number(kv.PORT || kv.PORTNUMBER);
+  const encrypt = toOptionalBool(kv.ENCRYPT);
+  const trust =
+    toOptionalBool(kv.TRUSTSERVERCERTIFICATE) ||
+    toOptionalBool(kv.TRUSTEDCONNECTION) ||
+    toOptionalBool(kv.TRUSTSERVERCERT) ||
+    toOptionalBool(kv.TRUSTCERTIFICATE);
+
+  const options = {
+    encrypt: encrypt ?? defaults.encrypt,
+    trustServerCertificate: trust ?? defaults.trustServerCertificate,
+    enableArithAbort: true,
+  };
+
+  const pool = {
+    max: toInt(process.env.SQL_POOL_MAX, 10),
+    min: toInt(process.env.SQL_POOL_MIN, 0),
+    idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000),
+  };
+
+  const config: SqlConfig = {
+    server,
+    database,
+    user,
+    password,
+    options,
+    pool,
+  };
+
+  if (Number.isFinite(port)) {
+    (config as SqlConfig & { port?: number }).port = port;
+  }
+
+  return config;
 };
 
 const resolveSqlConfig = (): SqlConfig => {
@@ -50,10 +154,32 @@ const resolveSqlConfig = (): SqlConfig => {
     logInfo('Using SQL connection string from environment', {
       connectionString: cs,
     });
+
+    const parsed = parseSqlConfigFromConnectionString(cs, {
+      encrypt,
+      trustServerCertificate: trust,
+    });
+
+    if (parsed) {
+      logInfo('Parsed SQL connection string into discrete configuration', {
+        server: parsed.server,
+        database: parsed.database,
+        hasUser: Boolean(parsed.user),
+        hasPassword: Boolean(parsed.password),
+        encrypt: parsed.options?.encrypt,
+        trustServerCertificate: parsed.options?.trustServerCertificate,
+      });
+      return parsed;
+    }
+
     return {
       connectionString: cs,
       options: { encrypt, trustServerCertificate: trust, enableArithAbort: true },
-      pool: { max: toInt(process.env.SQL_POOL_MAX, 10), min: toInt(process.env.SQL_POOL_MIN, 0), idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000) }
+      pool: {
+        max: toInt(process.env.SQL_POOL_MAX, 10),
+        min: toInt(process.env.SQL_POOL_MIN, 0),
+        idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000),
+      },
     } as SqlConfig;
   }
 
