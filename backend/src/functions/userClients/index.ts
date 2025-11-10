@@ -4,6 +4,7 @@ import {
   isUserClientFallbackAllowed,
 } from '../../repositories/userClientRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
+import { getClientPrincipalFromHeaders } from '../../utils/auth';
 import createFallbackUserClientAccess from '../../repositories/userClientRepositoryFallback';
 
 const logPrefix = '[userClients]';
@@ -40,26 +41,47 @@ const logError = (...args: unknown[]) => {
   console.error(logPrefix, ...args);
 };
 
+const normalizeEmail = (value: unknown): string | undefined => {
+  const candidate = getFirstStringValue(value);
+  if (!candidate) {
+    return undefined;
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return trimmed.toLowerCase();
+};
+
 export default async function userClients(req: Request, res: Response) {
-  const emailParam = req.query.email ?? req.headers['x-user-email'];
   logDebug('Received request for user clients', {
     queryEmail: req.query.email,
     headerEmail: req.headers['x-user-email'],
     originalUrl: req.originalUrl,
   });
-  const email = getFirstStringValue(emailParam);
 
-  if (!email) {
-    logWarn('Missing email query parameter in user clients request');
-    res.status(400).json({ message: 'Missing email query parameter' });
-    return;
-  }
+  const clientPrincipal = getClientPrincipalFromHeaders(
+    req.headers as Record<string, string | string[] | undefined>
+  );
 
-  const normalizedEmail = email.trim().toLowerCase();
+  const emailFromPrincipal = normalizeEmail(clientPrincipal?.userDetails);
+  const emailFromHeader = normalizeEmail(req.headers['x-user-email']);
+  const emailFromQuery = normalizeEmail(req.query.email);
+
+  const normalizedEmail = emailFromPrincipal ?? emailFromHeader ?? emailFromQuery;
+
+  logInfo('Resolved email for user clients request', {
+    hasPrincipalEmail: Boolean(emailFromPrincipal),
+    hasHeaderEmail: Boolean(emailFromHeader),
+    hasQueryEmail: Boolean(emailFromQuery),
+    normalizedEmail: normalizedEmail ?? null,
+  });
 
   if (!normalizedEmail) {
-    logWarn('Email parameter was provided but empty after trimming in user clients request');
-    res.status(400).json({ message: 'Missing email query parameter' });
+    logWarn('Missing user identity for user clients request');
+    res.status(401).json({ message: 'Missing user identity' });
     return;
   }
 
