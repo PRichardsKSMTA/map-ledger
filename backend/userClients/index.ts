@@ -80,6 +80,132 @@ const normalizeEmail = (value?: unknown): string | undefined => {
   return undefined;
 };
 
+const candidateEmailKeySet = new Set(
+  [
+    'email',
+    'useremail',
+    'user_email',
+    'x-user-email',
+    'principalemail',
+    'preferredemail',
+    'preferred_email',
+  ].map((key) => key.toLowerCase())
+);
+
+const getFirstStringValue = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (typeof entry === 'string') {
+        return entry;
+      }
+    }
+  }
+
+  return undefined;
+};
+
+interface KeyedValueLookupResult {
+  key: string;
+  value: unknown;
+}
+
+const lookupValueByCandidateKeys = (
+  bag: unknown,
+  candidateKeys: string[]
+): KeyedValueLookupResult | undefined => {
+  if (!bag) {
+    return undefined;
+  }
+
+  const normalizedCandidates = candidateKeys.map((key) => key.toLowerCase());
+
+  const bagWithGet = bag as { get?: unknown };
+  if (typeof bagWithGet?.get === 'function') {
+    const accessor = bagWithGet as {
+      get: (key: string) => string | null | undefined;
+    };
+    for (const key of candidateKeys) {
+      const value = accessor.get(key);
+      if (value !== undefined && value !== null) {
+        return { key, value };
+      }
+    }
+  }
+
+  if (typeof bag === 'object') {
+    const entries = Object.entries(bag as Record<string, unknown>);
+    for (const [rawKey, rawValue] of entries) {
+      const normalizedKey = rawKey.toLowerCase();
+      const candidateIndex = normalizedCandidates.indexOf(normalizedKey);
+      if (candidateIndex === -1) {
+        continue;
+      }
+
+      if (rawValue === undefined || rawValue === null) {
+        continue;
+      }
+
+      const candidateKey = candidateKeys[candidateIndex];
+      if (Array.isArray(rawValue)) {
+        for (const entry of rawValue) {
+          if (entry !== undefined && entry !== null) {
+            return { key: candidateKey, value: entry };
+          }
+        }
+        continue;
+      }
+
+      return { key: candidateKey, value: rawValue };
+    }
+  }
+
+  return undefined;
+};
+
+const resolveFromSearchParams = (
+  params: URLSearchParams,
+  source: string
+): string | undefined => {
+  for (const key of params.keys()) {
+    const normalizedKey = key.toLowerCase();
+    if (!candidateEmailKeySet.has(normalizedKey)) {
+      continue;
+    }
+
+    const normalized = normalizeEmail(params.get(key) ?? undefined);
+    if (normalized) {
+      logDebug('Resolved email from search parameters', { source, key });
+      return normalized;
+    }
+  }
+
+  return undefined;
+};
+
+const extractEmailFromUrlLike = (
+  value: unknown,
+  source: string
+): string | undefined => {
+  const candidate = getFirstStringValue(value);
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    const parsed = candidate.startsWith('http://') || candidate.startsWith('https://')
+      ? new URL(candidate)
+      : new URL(candidate, 'http://localhost');
+
+    return resolveFromSearchParams(parsed.searchParams, source);
+  } catch {
+    return undefined;
+  }
+};
+
 const maskEmail = (email: string): string => {
   const [local, domain] = email.split('@');
   if (!domain) {
@@ -126,42 +252,78 @@ const resolveDevOverrideEmail = (): { email: string; source: string } | undefine
 };
 
 const extractEmailFromQuery = (req: HttpRequest): string | undefined => {
-  const queryAny = req.query as unknown;
+  const queryAny = (req as any).query as unknown;
   if (!queryAny) {
     return undefined;
   }
 
-  const queryWithGet = queryAny as { get?: unknown };
+  const queryWithGet = queryAny as { get?: unknown; keys?: unknown };
   if (typeof queryWithGet?.get === 'function') {
     const params = queryWithGet as {
       get: (key: string) => string | null | undefined;
+      keys?: () => IterableIterator<string>;
     };
-    const keys = ['email', 'Email', 'userEmail', 'UserEmail'];
-    for (const key of keys) {
+
+    if (typeof params.keys === 'function') {
+      for (const key of params.keys()) {
+        if (!candidateEmailKeySet.has(key.toLowerCase())) {
+          continue;
+        }
+        const candidate = params.get(key);
+        const normalized = normalizeEmail(candidate ?? undefined);
+        if (normalized) {
+          logDebug('Resolved email from iterable query bag', { key });
+          return normalized;
+        }
+      }
+    }
+
+    const fallbackKeys = [
+      'email',
+      'Email',
+      'EMAIL',
+      'userEmail',
+      'UserEmail',
+      'USEREMAIL',
+      'user_email',
+      'User_Email',
+      'x-user-email',
+      'X-User-Email',
+    ];
+    for (const key of fallbackKeys) {
       const candidate = params.get(key);
       const normalized = normalizeEmail(candidate ?? undefined);
       if (normalized) {
-        logDebug('Resolved email from URLSearchParams query bag', { key });
+        logDebug('Resolved email from URLSearchParams-style query bag', { key });
         return normalized;
       }
     }
   }
 
+  if (queryAny instanceof URLSearchParams) {
+    const normalized = resolveFromSearchParams(queryAny, 'query URLSearchParams instance');
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  if (typeof queryAny === 'string') {
+    const normalized = resolveFromSearchParams(
+      new URLSearchParams(queryAny.startsWith('?') ? queryAny.slice(1) : queryAny),
+      'query string value'
+    );
+    if (normalized) {
+      return normalized;
+    }
+  }
+
   if (typeof queryAny === 'object') {
     const record = queryAny as Record<string, unknown>;
-    const keys = [
-      'email',
-      'Email',
-      'userEmail',
-      'UserEmail',
-      'x-user-email',
-      'X-User-Email',
-    ];
-    for (const key of keys) {
-      if (!(key in record)) {
+    for (const [key, value] of Object.entries(record)) {
+      if (!candidateEmailKeySet.has(key.toLowerCase())) {
         continue;
       }
-      const normalized = normalizeEmail(record[key]);
+      const normalized = normalizeEmail(value);
       if (normalized) {
         logDebug('Resolved email from object-style query parameters', { key });
         return normalized;
@@ -173,45 +335,59 @@ const extractEmailFromQuery = (req: HttpRequest): string | undefined => {
 };
 
 const extractEmailFromHeaders = (req: HttpRequest): string | undefined => {
-  const headersAny = req.headers as unknown;
-
-  const headersWithGet = headersAny as { get?: unknown };
-  if (typeof headersWithGet?.get === 'function') {
-    const headers = headersWithGet as {
-      get: (key: string) => string | null | undefined;
-    };
-    const candidate =
-      headers.get('x-user-email') ??
-      headers.get('X-User-Email') ??
-      headers.get('user-email') ??
-      headers.get('User-Email');
-    const normalized = normalizeEmail(candidate ?? undefined);
+  const headersAny = (req as any).headers as unknown;
+  const headerCandidates = [
+    'x-user-email',
+    'X-User-Email',
+    'user-email',
+    'User-Email',
+    'userEmail',
+    'UserEmail',
+  ];
+  const lookup = lookupValueByCandidateKeys(headersAny, headerCandidates);
+  if (lookup) {
+    const normalized = normalizeEmail(lookup.value);
     if (normalized) {
-      logDebug('Resolved email from Headers bag');
+      logDebug('Resolved email from explicit header', { key: lookup.key });
       return normalized;
     }
   }
 
-  if (headersAny && typeof headersAny === 'object') {
-    const record = headersAny as Record<string, unknown>;
-    const keys = [
-      'x-user-email',
-      'X-User-Email',
-      'user-email',
-      'User-Email',
-      'userEmail',
-      'UserEmail',
-    ];
-    for (const key of keys) {
-      if (!(key in record)) {
-        continue;
-      }
-      const normalized = normalizeEmail(record[key]);
-      if (normalized) {
-        logDebug('Resolved email from object-style headers', { key });
-        return normalized;
-      }
+  const azureLookup = lookupValueByCandidateKeys(headersAny, [
+    'x-ms-client-principal-name',
+    'x-ms-client-principal-email',
+  ]);
+  if (azureLookup) {
+    const normalized = normalizeEmail(azureLookup.value);
+    if (normalized) {
+      logDebug('Resolved email from Azure authentication headers', {
+        key: azureLookup.key,
+      });
+      return normalized;
     }
+  }
+
+  return undefined;
+};
+
+const extractEmailFromOriginalUrlHeader = (req: HttpRequest): string | undefined => {
+  const headersAny = (req as any).headers as unknown;
+  const lookup = lookupValueByCandidateKeys(headersAny, [
+    'x-ms-original-url',
+    'X-MS-ORIGINAL-URL',
+    'x-original-url',
+    'X-Original-URL',
+    'x-appservice-original-url',
+    'x-forwarded-url',
+  ]);
+
+  if (!lookup) {
+    return undefined;
+  }
+
+  const normalized = extractEmailFromUrlLike(lookup.value, `header:${lookup.key}`);
+  if (normalized) {
+    return normalized;
   }
 
   return undefined;
@@ -236,10 +412,17 @@ export default async function (req: HttpRequest, _ctx: InvocationContext) {
     });
 
     const emailFromPrincipal = normalizeEmail(principal?.userDetails ?? undefined);
-    const emailFromQuery = extractEmailFromQuery(req);
     const emailFromHeader = extractEmailFromHeaders(req);
+    const emailFromQuery = extractEmailFromQuery(req);
+    const emailFromRequestUrl = extractEmailFromUrlLike(req.url, 'request.url');
+    const emailFromOriginalUrl = extractEmailFromOriginalUrlHeader(req);
 
-    let email = emailFromPrincipal || emailFromQuery || emailFromHeader;
+    let email =
+      emailFromPrincipal ||
+      emailFromHeader ||
+      emailFromQuery ||
+      emailFromRequestUrl ||
+      emailFromOriginalUrl;
 
     if (!email) {
       const override = resolveDevOverrideEmail();
@@ -254,8 +437,10 @@ export default async function (req: HttpRequest, _ctx: InvocationContext) {
 
     logInfo('Resolved email for user clients request', {
       hasPrincipalEmail: Boolean(emailFromPrincipal),
-      hasQueryEmail: Boolean(emailFromQuery),
       hasHeaderEmail: Boolean(emailFromHeader),
+      hasQueryEmail: Boolean(emailFromQuery),
+      hasRequestUrlEmail: Boolean(emailFromRequestUrl),
+      hasOriginalUrlEmail: Boolean(emailFromOriginalUrl),
       normalizedEmail: email ?? null,
     });
 
