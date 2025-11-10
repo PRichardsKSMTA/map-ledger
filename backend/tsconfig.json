@@ -15,6 +15,7 @@
     "health/**/*.ts",
     "aiGenerate/**/*.ts",
     "userClients/**/*.ts",
+    "dbPing/**/*.ts",
     "tests/**/*.ts"
   ],
   "exclude": [
