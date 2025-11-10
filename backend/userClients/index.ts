@@ -7,7 +7,29 @@ import createFallbackUserClientAccess from '../src/repositories/userClientReposi
 export default async function (req: HttpRequest, _ctx: InvocationContext) {
   try {
     const principal = getClientPrincipal(req);
-    const email = principal?.userDetails?.toLowerCase() || '';
+
+    const normalizeEmail = (value?: string | null) => {
+      if (!value) {
+        return undefined;
+      }
+      const trimmed = value.trim();
+      return trimmed ? trimmed.toLowerCase() : undefined;
+    };
+
+    const emailFromPrincipal = normalizeEmail(principal?.userDetails ?? null);
+    const emailFromQuery = normalizeEmail(
+      typeof req.query?.get === 'function'
+        ? req.query.get('email') ?? req.query.get('Email')
+        : undefined
+    );
+    const emailFromHeader = normalizeEmail(
+      typeof req.headers?.get === 'function'
+        ? req.headers.get('x-user-email') ?? req.headers.get('X-User-Email')
+        : undefined
+    );
+
+    const email = emailFromPrincipal || emailFromQuery || emailFromHeader || '';
+
     if (!email) return json({ message: 'Missing user identity' }, 401);
 
     try {
