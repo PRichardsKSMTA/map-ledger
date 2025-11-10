@@ -46,6 +46,7 @@ export default async function dbPing(
     });
   } catch (error) {
     const durationMs = Date.now() - startedAt;
+
     logError('Database ping failed', {
       durationMs,
       error,

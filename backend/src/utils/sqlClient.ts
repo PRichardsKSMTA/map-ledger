@@ -29,8 +29,6 @@ const logError = (...args: unknown[]) => {
 };
 
 let connectionPromise: Promise<ConnectionPool> | null = null;
-
-const toBool = (v?: string) => (typeof v === 'string' ? v.toLowerCase() === 'true' : false);
 const toInt = (v: string | undefined, fallback: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -74,9 +72,70 @@ const parseKeyValueConnectionString = (connectionString: string) => {
   return result;
 };
 
+const maskConnectionString = (value: string): string =>
+  value
+    .replace(/(PWD|PASSWORD)=([^;]+)/gi, '$1=***')
+    .replace(/(UID|USER|USERID|USERNAME|LOGIN)=([^;]+)/gi, '$1=***');
+
+const extractServerDetails = (rawServer: string): {
+  server: string;
+  port?: number;
+} => {
+  let server = rawServer.trim();
+  if (!server) {
+    return { server };
+  }
+
+  if (server.toLowerCase().startsWith('tcp:')) {
+    server = server.slice(4);
+  }
+
+  if (server.toLowerCase().startsWith('sqlserver://')) {
+    server = server.slice('sqlserver://'.length);
+  }
+
+  let port: number | undefined;
+  const ipv6Match = server.match(/^\[(.*)](?::(\d+))?$/);
+  if (ipv6Match) {
+    server = ipv6Match[1];
+    if (ipv6Match[2]) {
+      const parsed = Number(ipv6Match[2]);
+      if (Number.isFinite(parsed)) {
+        port = parsed;
+      }
+    }
+    return { server, port };
+  }
+
+  const portFromComma = server.match(/,(\d+)$/);
+  if (portFromComma) {
+    const parsed = Number(portFromComma[1]);
+    if (Number.isFinite(parsed)) {
+      port = parsed;
+    }
+    server = server.slice(0, -portFromComma[0].length);
+    return { server, port };
+  }
+
+  const portFromColon = server.match(/:(\d+)$/);
+  if (portFromColon) {
+    const parsed = Number(portFromColon[1]);
+    if (Number.isFinite(parsed)) {
+      port = parsed;
+    }
+    server = server.slice(0, -portFromColon[0].length);
+  }
+
+  return { server, port };
+};
+
 const parseSqlConfigFromConnectionString = (
   connectionString: string,
-  defaults: { encrypt: boolean; trustServerCertificate: boolean },
+  defaults: {
+    encrypt: boolean;
+    trustServerCertificate: boolean;
+    connectionTimeoutMs?: number;
+  },
 ): SqlConfig | null => {
   if (!connectionString.includes('=')) {
     return null;
@@ -87,7 +146,7 @@ const parseSqlConfigFromConnectionString = (
     return null;
   }
 
-  const server =
+  const rawServer =
     kv.SERVER ||
     kv.DATASOURCE ||
     kv.ADDR ||
@@ -95,6 +154,9 @@ const parseSqlConfigFromConnectionString = (
     kv.NETWORKADDRESS ||
     kv.HOSTNAME ||
     kv.HOST;
+  const { server, port: derivedPort } = rawServer
+    ? extractServerDetails(rawServer)
+    : { server: undefined, port: undefined };
   const database = kv.DATABASE || kv.INITIALCATALOG;
   const user = kv.UID || kv.USER || kv.USERID || kv.USERNAME || kv.LOGIN;
   const password = kv.PWD || kv.PASSWORD;
@@ -110,6 +172,10 @@ const parseSqlConfigFromConnectionString = (
     toOptionalBool(kv.TRUSTEDCONNECTION) ||
     toOptionalBool(kv.TRUSTSERVERCERT) ||
     toOptionalBool(kv.TRUSTCERTIFICATE);
+
+  const connectionTimeoutSeconds = Number(
+    kv.CONNECTIONTIMEOUT || kv.CONNECTTIMEOUT || kv.CONNECT_TIMEOUT
+  );
 
   const options = {
     encrypt: encrypt ?? defaults.encrypt,
@@ -134,30 +200,85 @@ const parseSqlConfigFromConnectionString = (
 
   if (Number.isFinite(port)) {
     (config as SqlConfig & { port?: number }).port = port;
+  } else if (Number.isFinite(derivedPort)) {
+    (config as SqlConfig & { port?: number }).port = derivedPort;
+  }
+
+  if (Number.isFinite(connectionTimeoutSeconds) && connectionTimeoutSeconds > 0) {
+    (config as SqlConfig & { connectionTimeout?: number }).connectionTimeout =
+      Math.round(connectionTimeoutSeconds * 1000);
+  }
+
+  if (defaults.connectionTimeoutMs && defaults.connectionTimeoutMs > 0) {
+    (config as SqlConfig & { connectionTimeout?: number }).connectionTimeout =
+      defaults.connectionTimeoutMs;
   }
 
   return config;
 };
 
 const resolveSqlConfig = (): SqlConfig => {
-  const cs =
-    process.env.SQL_CONN_STR ||
-    process.env.SQL_CONNECTION_STRING ||
-    process.env.SQL_CONN_STRINGS ||
-    process.env.SQL_CONN_STRING;
+  const explicitKeys = [
+    'SQL_CONN_STR',
+    'SQL_CONNECTION_STRING',
+    'SQL_CONN_STRINGS',
+    'SQL_CONN_STRING',
+  ];
 
-  const encrypt = toBool(process.env.SQL_ENCRYPT ?? 'true');
-  const trust = toBool(process.env.SQL_TRUST_CERT);
+  let connectionString: string | undefined;
+  let connectionStringSource: string | undefined;
 
-  if (cs) {
-    logInfo('Resolved SQL configuration from connection string');
+  explicitKeys.some((key) => {
+    const value = process.env[key];
+    if (value) {
+      connectionString = value;
+      connectionStringSource = key;
+      return true;
+    }
+    return false;
+  });
+
+  if (!connectionString) {
+    const azurePrefixes = ['SQLCONNSTR_', 'SQLAZURECONNSTR_', 'CUSTOMCONNSTR_'];
+    Object.keys(process.env).some((envKey) => {
+      const matchesPrefix = azurePrefixes.some((candidate) => envKey.startsWith(candidate));
+      if (matchesPrefix) {
+        connectionString = process.env[envKey];
+        connectionStringSource = envKey;
+        return true;
+      }
+      return false;
+    });
+  }
+
+  const encrypt = toOptionalBool(process.env.SQL_ENCRYPT) ?? true;
+  const trust = toOptionalBool(process.env.SQL_TRUST_CERT) ?? false;
+
+  const connectionTimeoutMsFromEnv = (() => {
+    const explicitMs = toInt(process.env.SQL_CONNECT_TIMEOUT_MS, -1);
+    if (explicitMs > 0) {
+      return explicitMs;
+    }
+    const seconds = toInt(process.env.SQL_CONNECT_TIMEOUT, -1);
+    if (seconds > 0) {
+      return seconds * 1000;
+    }
+    return undefined;
+  })();
+
+  if (connectionString) {
+    logInfo('Resolved SQL configuration from connection string', {
+      source: connectionStringSource,
+    });
     logInfo('Using SQL connection string from environment', {
-      connectionString: cs,
+      source: connectionStringSource,
+      connectionString: maskConnectionString(connectionString),
     });
 
-    const parsed = parseSqlConfigFromConnectionString(cs, {
+    const parsed = parseSqlConfigFromConnectionString(connectionString, {
       encrypt,
       trustServerCertificate: trust,
+      connectionTimeoutMs: connectionTimeoutMsFromEnv,
     });
 
     if (parsed) {
@@ -168,19 +289,32 @@ const resolveSqlConfig = (): SqlConfig => {
         hasPassword: Boolean(parsed.password),
         encrypt: parsed.options?.encrypt,
         trustServerCertificate: parsed.options?.trustServerCertificate,
+        port: (parsed as { port?: number }).port,
+        connectionTimeout: (parsed as { connectionTimeout?: number }).connectionTimeout,
       });
       return parsed;
     }
 
-    return {
-      connectionString: cs,
-      options: { encrypt, trustServerCertificate: trust, enableArithAbort: true },
+    const fallbackConfig: SqlConfig = {
+      connectionString,
+      options: {
+        enableArithAbort: true,
+        encrypt,
+        trustServerCertificate: trust,
+      },
       pool: {
         max: toInt(process.env.SQL_POOL_MAX, 10),
         min: toInt(process.env.SQL_POOL_MIN, 0),
         idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000),
       },
-    } as SqlConfig;
+    };
+
+    if (connectionTimeoutMsFromEnv) {
+      (fallbackConfig as SqlConfig & { connectionTimeout?: number }).connectionTimeout =
+        connectionTimeoutMsFromEnv;
+    }
+
+    return fallbackConfig;
   }
 
   const { SQL_SERVER: server, SQL_DATABASE: database, SQL_USERNAME: user, SQL_PASSWORD: password } = process.env as Record<string,string>;
@@ -196,11 +330,25 @@ const resolveSqlConfig = (): SqlConfig => {
     trustServerCertificate: trust,
   });
 
-  return {
-    server, database, user, password,
+  const config = {
+    server,
+    database,
+    user,
+    password,
     options: { encrypt, trustServerCertificate: trust, enableArithAbort: true },
-    pool: { max: toInt(process.env.SQL_POOL_MAX, 10), min: toInt(process.env.SQL_POOL_MIN, 0), idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000) }
+    pool: {
+      max: toInt(process.env.SQL_POOL_MAX, 10),
+      min: toInt(process.env.SQL_POOL_MIN, 0),
+      idleTimeoutMillis: toInt(process.env.SQL_POOL_IDLE_TIMEOUT, 30000),
+    },
   } as SqlConfig;
+
+  if (connectionTimeoutMsFromEnv) {
+    (config as SqlConfig & { connectionTimeout?: number }).connectionTimeout =
+      connectionTimeoutMsFromEnv;
+  }
+
+  return config;
 };
 
 export const getSqlPool = async (): Promise<ConnectionPool> => {
@@ -221,7 +369,7 @@ export const getSqlPool = async (): Promise<ConnectionPool> => {
 
     if (connectionString) {
       logInfo('Attempting SQL connection with connection string', {
-        connectionString,
+        connectionString: maskConnectionString(connectionString),
       });
     } else {
       logInfo('Attempting SQL connection with discrete configuration', {
@@ -237,7 +385,7 @@ export const getSqlPool = async (): Promise<ConnectionPool> => {
         logInfo('SQL connection pool established', { durationMs });
         if (connectionString) {
           logInfo('SQL connection established using connection string', {
-            connectionString,
+            connectionString: maskConnectionString(connectionString),
           });
         } else {
           logInfo('SQL connection established using discrete configuration', {
