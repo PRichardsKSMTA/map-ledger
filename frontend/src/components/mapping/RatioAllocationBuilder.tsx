@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, Trash2, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
@@ -9,6 +9,7 @@ import {
   getBasisValue,
   getGroupMembersWithValues,
   getGroupTotal,
+  normalizePercentages,
 } from '../../utils/dynamicAllocation';
 
 const formatCurrency = (value: number): string =>
@@ -43,9 +44,11 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
   const [isCreatingPreset, setIsCreatingPreset] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [newPresetRows, setNewPresetRows] = useState<DynamicAllocationPresetRow[]>([]);
-  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
-  const [presetNameDraft, setPresetNameDraft] = useState('');
-  const [presetEditError, setPresetEditError] = useState<string | null>(null);
+
+  const newPresetBasisHeaderId = useId();
+  const newPresetTargetHeaderId = useId();
+  const newPresetAmountHeaderId = useId();
+  const newPresetActionsHeaderId = useId();
 
   const targetLabelById = useMemo(() => {
     const map = new Map<string, string>();
@@ -59,7 +62,9 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     (excludeIndex?: number) => {
       const usedIds = new Set(
         newPresetRows
-          .map((row, index) => (index === excludeIndex ? null : row.dynamicAccountId))
+          .flatMap((row, index) =>
+            index === excludeIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
+          )
           .filter((value): value is string => Boolean(value)),
       );
       return basisAccounts
@@ -73,7 +78,9 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     (excludeIndex?: number) => {
       const usedIds = new Set(
         newPresetRows
-          .map((row, index) => (index === excludeIndex ? null : row.targetAccountId))
+          .flatMap((row, index) =>
+            index === excludeIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
+          )
           .filter((value): value is string => Boolean(value)),
       );
       return STANDARD_CHART_OF_ACCOUNTS.filter(option => !usedIds.has(option.id))
@@ -237,32 +244,6 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     setNewPresetRows([]);
   };
 
-  const beginEditPreset = (presetId: string, presetName: string) => {
-    setEditingPresetId(presetId);
-    setPresetNameDraft(presetName);
-    setPresetEditError(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingPresetId(null);
-    setPresetNameDraft('');
-    setPresetEditError(null);
-  };
-
-  const handleSavePreset = () => {
-    if (!editingPresetId) {
-      return;
-    }
-    const trimmedName = presetNameDraft.trim();
-    if (!trimmedName) {
-      setPresetEditError('Enter a preset name.');
-      return;
-    }
-    updatePreset(editingPresetId, { name: trimmedName });
-    setEditingPresetId(null);
-    setPresetNameDraft('');
-    setPresetEditError(null);
-  };
 
   const targetDetails = useMemo(() => {
     if (!selectedAllocation) {
@@ -308,6 +289,15 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     [targetDetails],
   );
 
+  const previewPercentages = useMemo(() => {
+    if (targetDetails.length === 0 || basisTotal <= 0) {
+      return targetDetails.map(() => 0);
+    }
+    return normalizePercentages(
+      targetDetails.map(detail => detail.basisValue / basisTotal),
+    );
+  }, [basisTotal, targetDetails]);
+
   const allocationIssues = useMemo(() => {
     if (!selectedAllocation) {
       return [];
@@ -350,7 +340,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-medium">Dynamic allocation presets</h3>
+          <h3 className="text-lg font-medium">Presets</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Pair each basis datapoint with a target account to reuse across dynamic allocations.
           </p>
@@ -389,96 +379,121 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                   />
                 </label>
               </div>
-              <div className="mt-4 space-y-3">
-                {newPresetRows.map((row, index) => {
-                  const dynamicOptions = computeNewPresetDynamicOptions(index);
-                  const targetOptions = computeNewPresetTargetOptions(index);
-                  return (
-                    <div
-                      key={`new-preset-row-${index}`}
-                      className="grid gap-3 rounded-md border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950 md:grid-cols-12 md:items-center"
-                    >
-                      <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300 md:col-span-4">
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full border-separate border-spacing-y-2">
+                  <thead className="bg-slate-100 dark:bg-slate-800/40">
+                    <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      <th id={newPresetBasisHeaderId} scope="col" className="px-3 py-2">
                         Basis datapoint
-                        <select
-                          value={row.dynamicAccountId}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setNewPresetRows(previous =>
-                              previous.map((current, currentIndex) =>
-                                currentIndex === index
-                                  ? { ...current, dynamicAccountId: value }
-                                  : current,
-                              ),
-                            );
-                          }}
-                          className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                        >
-                          {dynamicOptions.length === 0 ? (
-                            <option value="">No basis accounts available</option>
-                          ) : (
-                            dynamicOptions.map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </label>
-                      <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300 md:col-span-4">
+                      </th>
+                      <th id={newPresetTargetHeaderId} scope="col" className="px-3 py-2">
                         Target account
-                        <select
-                          value={row.targetAccountId}
-                          onChange={event => {
-                            const value = event.target.value;
-                            setNewPresetRows(previous =>
-                              previous.map((current, currentIndex) =>
-                                currentIndex === index
-                                  ? { ...current, targetAccountId: value }
-                                  : current,
-                              ),
-                            );
-                          }}
-                          className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                        >
-                          {targetOptions.length === 0 ? (
-                            <option value="">No targets available</option>
-                          ) : (
-                            targetOptions.map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </label>
-                      <div className="md:col-span-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                          Basis amount
-                        </span>
-                        <div className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                          {row.dynamicAccountId
-                            ? formatCurrency(resolveBasisValue(row.dynamicAccountId))
-                            : formatCurrency(0)}
-                        </div>
-                      </div>
-                      <div className="md:col-span-1 md:flex md:justify-end">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNewPresetRows(previous =>
-                              previous.filter((_, currentIndex) => currentIndex !== index),
-                            )
-                          }
-                          className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                      </th>
+                      <th id={newPresetAmountHeaderId} scope="col" className="px-3 py-2">
+                        Basis amount
+                      </th>
+                      <th id={newPresetActionsHeaderId} scope="col" className="px-3 py-2 text-right">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {newPresetRows.map((row, index) => {
+                      const dynamicOptions = computeNewPresetDynamicOptions(index);
+                      const targetOptions = computeNewPresetTargetOptions(index);
+                      const basisSelectId = `new-preset-row-${index}-basis`;
+                      const targetSelectId = `new-preset-row-${index}-target`;
+
+                      return (
+                        <tr key={`new-preset-row-${index}`} className="rounded-md shadow-sm">
+                          <td className="rounded-l-md border-y border-l border-slate-200 bg-white px-3 py-3 align-top text-sm dark:border-slate-700 dark:bg-slate-950">
+                            <label htmlFor={basisSelectId} className="sr-only">
+                              Basis datapoint
+                            </label>
+                            <select
+                              id={basisSelectId}
+                              aria-labelledby={newPresetBasisHeaderId}
+                              value={row.dynamicAccountId}
+                              onChange={event => {
+                                const value = event.target.value;
+                                setNewPresetRows(previous =>
+                                  previous.map((current, currentIndex) =>
+                                    currentIndex === index
+                                      ? { ...current, dynamicAccountId: value }
+                                      : current,
+                                  ),
+                                );
+                              }}
+                              className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                            >
+                              {dynamicOptions.length === 0 ? (
+                                <option value="">No basis accounts available</option>
+                              ) : (
+                                dynamicOptions.map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </td>
+                          <td className="border-y border-l border-slate-200 bg-white px-3 py-3 align-top text-sm dark:border-slate-700 dark:bg-slate-950">
+                            <label htmlFor={targetSelectId} className="sr-only">
+                              Target account
+                            </label>
+                            <select
+                              id={targetSelectId}
+                              aria-labelledby={newPresetTargetHeaderId}
+                              value={row.targetAccountId}
+                              onChange={event => {
+                                const value = event.target.value;
+                                setNewPresetRows(previous =>
+                                  previous.map((current, currentIndex) =>
+                                    currentIndex === index
+                                      ? { ...current, targetAccountId: value }
+                                      : current,
+                                  ),
+                                );
+                              }}
+                              className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                            >
+                              {targetOptions.length === 0 ? (
+                                <option value="">No targets available</option>
+                              ) : (
+                                targetOptions.map(option => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </td>
+                          <td className="border-y border-l border-slate-200 bg-white px-3 py-3 align-top text-sm dark:border-slate-700 dark:bg-slate-950">
+                            <div aria-labelledby={newPresetAmountHeaderId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                              {row.dynamicAccountId
+                                ? formatCurrency(resolveBasisValue(row.dynamicAccountId))
+                                : formatCurrency(0)}
+                            </div>
+                          </td>
+                          <td className="rounded-r-md border-y border-l border-r border-slate-200 bg-white px-3 py-3 align-top text-right text-sm dark:border-slate-700 dark:bg-slate-950">
+                            <button
+                              type="button"
+                              aria-label="Remove new preset row"
+                              onClick={() =>
+                                setNewPresetRows(previous =>
+                                  previous.filter((_, currentIndex) => currentIndex !== index),
+                                )
+                              }
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-950"
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                 <button
@@ -511,7 +526,6 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
           <div className="space-y-4">
             {presets.map(preset => {
               const isSelected = selectedPresetIds.has(preset.id);
-              const isEditing = editingPresetId === preset.id;
               const isExcludedForAllocation = excludedPresetIds.has(preset.id);
               const members = getGroupMembersWithValues(preset, basisAccounts, selectedPeriod);
               const basisTotalValue = members.reduce((sum, member) => sum + member.value, 0);
@@ -519,34 +533,42 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
               return (
                 <Card key={preset.id} className="border border-slate-200 shadow-sm dark:border-slate-700">
                   <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-1">
-                      {isEditing ? (
-                        <div className="flex flex-col gap-2">
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                            Preset name
-                            <input
-                              value={presetNameDraft}
-                              onChange={event => setPresetNameDraft(event.target.value)}
-                              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
-                              placeholder="e.g. Regional operations pool"
-                            />
-                          </label>
-                          {presetEditError && (
-                            <p className="text-xs text-rose-600 dark:text-rose-300">{presetEditError}</p>
-                          )}
-                        </div>
-                      ) : (
-                        <>
-                          <h4 className="text-base font-medium text-slate-900 dark:text-slate-100">
-                            {preset.name || 'Untitled preset'}
-                          </h4>
-                          {isExcludedForAllocation && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">
-                              <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
-                              Excluded from mapping
-                            </span>
-                          )}
-                        </>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-3">
+                        <input
+                          value={preset.name}
+                          onChange={event => updatePreset(preset.id, { name: event.target.value })}
+                          className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-base font-medium shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
+                          placeholder="Preset name"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const dynamicOptions = getPresetAvailableDynamicAccounts(preset.id);
+                            const targetOptions = getPresetAvailableTargetAccounts(preset.id);
+                            if (dynamicOptions.length === 0 || targetOptions.length === 0) {
+                              return;
+                            }
+                            addPresetRow(preset.id, {
+                              dynamicAccountId: dynamicOptions[0].id,
+                              targetAccountId: targetOptions[0].id,
+                            });
+                          }}
+                          className="inline-flex items-center rounded-md border border-slate-300 bg-white p-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+                          disabled={
+                            getPresetAvailableDynamicAccounts(preset.id).length === 0 ||
+                            getPresetAvailableTargetAccounts(preset.id).length === 0
+                          }
+                          title="Add row"
+                        >
+                          <Plus className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                      {isExcludedForAllocation && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">
+                          <XCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                          Excluded from mapping
+                        </span>
                       )}
                       <p className="text-sm text-slate-500 dark:text-slate-400">
                         {members.length} basis datapoint{members.length === 1 ? '' : 's'}
@@ -572,33 +594,6 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                         />
                         <span>{isSelected ? 'Included in allocation' : 'Include in allocation'}</span>
                       </label>
-                      {isEditing ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={handleSavePreset}
-                            className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900"
-                          >
-                            Save preset
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleCancelEdit}
-                            className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => beginEditPreset(preset.id, preset.name)}
-                          disabled={isEditing}
-                          className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
-                        >
-                          Edit preset
-                        </button>
-                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -615,94 +610,79 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                             <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                               Basis value
                             </th>
-                            {isEditing && (
-                              <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                                Actions
-                              </th>
-                            )}
+                            <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                              Actions
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-950">
                           {preset.rows.length === 0 ? (
                             <tr>
-                              <td colSpan={isEditing ? 4 : 3} className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
+                              <td colSpan={4} className="px-4 py-4 text-sm text-slate-500 dark:text-slate-400">
                                 Add rows to map basis datapoints to targets.
                               </td>
                             </tr>
                           ) : (
                             preset.rows.map((row, index) => {
-                              const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
-                              const dynamicLabel = basisAccount?.name ?? row.dynamicAccountId;
-                              const targetLabel = targetLabelById.get(row.targetAccountId) ?? row.targetAccountId;
                               const basisValue = formatCurrency(resolveBasisValue(row.dynamicAccountId));
-
-                              if (isEditing) {
-                                const dynamicOptions = getPresetAvailableDynamicAccounts(preset.id, index);
-                                const targetOptions = getPresetAvailableTargetAccounts(preset.id, index);
-                                return (
-                                  <tr key={`${row.dynamicAccountId}-${row.targetAccountId}-${index}`}>
-                                    <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
-                                      <select
-                                        value={row.dynamicAccountId}
-                                        onChange={event =>
-                                          updatePresetRow(preset.id, index, {
-                                            dynamicAccountId: event.target.value,
-                                          })
-                                        }
-                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                      >
-                                        {dynamicOptions.length === 0 ? (
-                                          <option value="">No basis accounts available</option>
-                                        ) : (
-                                          dynamicOptions.map(option => (
-                                            <option key={option.id} value={option.id}>
-                                              {option.name}
-                                            </option>
-                                          ))
-                                        )}
-                                      </select>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
-                                      <select
-                                        value={row.targetAccountId}
-                                        onChange={event =>
-                                          updatePresetRow(preset.id, index, {
-                                            targetAccountId: event.target.value,
-                                          })
-                                        }
-                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                                      >
-                                        {targetOptions.length === 0 ? (
-                                          <option value="">No targets available</option>
-                                        ) : (
-                                          targetOptions.map(option => (
-                                            <option key={option.id} value={option.id}>
-                                              {option.label}
-                                            </option>
-                                          ))
-                                        )}
-                                      </select>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{basisValue}</td>
-                                    <td className="px-4 py-3 text-sm">
-                                      <button
-                                        type="button"
-                                        onClick={() => removePresetRow(preset.id, index)}
-                                        className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
-                                      >
-                                        <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
-                                        Remove
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              }
+                              const dynamicOptions = getPresetAvailableDynamicAccounts(preset.id, index);
+                              const targetOptions = getPresetAvailableTargetAccounts(preset.id, index);
 
                               return (
                                 <tr key={`${row.dynamicAccountId}-${row.targetAccountId}-${index}`}>
-                                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">{dynamicLabel}</td>
-                                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">{targetLabel}</td>
+                                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+                                    <select
+                                      value={row.dynamicAccountId}
+                                      onChange={event =>
+                                        updatePresetRow(preset.id, index, {
+                                          dynamicAccountId: event.target.value,
+                                        })
+                                      }
+                                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                    >
+                                      {dynamicOptions.length === 0 ? (
+                                        <option value="">No basis accounts available</option>
+                                      ) : (
+                                        dynamicOptions.map(option => (
+                                          <option key={option.id} value={option.id}>
+                                            {option.name}
+                                          </option>
+                                        ))
+                                      )}
+                                    </select>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+                                    <select
+                                      value={row.targetAccountId}
+                                      onChange={event =>
+                                        updatePresetRow(preset.id, index, {
+                                          targetAccountId: event.target.value,
+                                        })
+                                      }
+                                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                    >
+                                      {targetOptions.length === 0 ? (
+                                        <option value="">No targets available</option>
+                                      ) : (
+                                        targetOptions.map(option => (
+                                          <option key={option.id} value={option.id}>
+                                            {option.label}
+                                          </option>
+                                        ))
+                                      )}
+                                    </select>
+                                  </td>
                                   <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{basisValue}</td>
+                                  <td className="px-4 py-3 text-sm">
+                                    <button
+                                      type="button"
+                                      aria-label="Remove preset row"
+                                      onClick={() => removePresetRow(preset.id, index)}
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+                                    >
+                                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                  </td>
                                 </tr>
                               );
                             })
@@ -710,31 +690,6 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                         </tbody>
                       </table>
                     </div>
-
-                    {isEditing && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const dynamicOptions = getPresetAvailableDynamicAccounts(preset.id);
-                          const targetOptions = getPresetAvailableTargetAccounts(preset.id);
-                          if (dynamicOptions.length === 0 || targetOptions.length === 0) {
-                            return;
-                          }
-                          addPresetRow(preset.id, {
-                            dynamicAccountId: dynamicOptions[0].id,
-                            targetAccountId: targetOptions[0].id,
-                          });
-                        }}
-                        className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
-                        disabled={
-                          getPresetAvailableDynamicAccounts(preset.id).length === 0 ||
-                          getPresetAvailableTargetAccounts(preset.id).length === 0
-                        }
-                      >
-                        <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-                        Add row
-                      </button>
-                    )}
                   </CardContent>
                 </Card>
               );
@@ -841,7 +796,8 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                   </tr>
                 ) : (
                   targetDetails.map((detail, index) => {
-                    const ratio = basisTotal > 0 ? detail.basisValue / basisTotal : 0;
+                    const percentage = previewPercentages[index] ?? 0;
+                    const ratio = percentage / 100;
                     const allocatedValue = previewComputation.allocations[index] ?? 0;
                     const targetDatapoint = selectedAllocation?.targetDatapoints[index];
                     const isExcluded = detail.isExcluded;
@@ -886,7 +842,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                         >
                           {formatCurrency(detail.basisValue)}
                         </td>
-                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{(ratio * 100).toFixed(2)}%</td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">{percentage.toFixed(2)}%</td>
                         <td className={`${
                           isExcluded ? 'px-4 py-3 text-sm font-semibold text-rose-700 dark:text-rose-300' : 'px-4 py-3 text-sm font-semibold text-blue-700 dark:text-blue-400'
                         }`}

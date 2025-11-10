@@ -1,6 +1,7 @@
 import type { Worksheet } from 'exceljs';
+import { extractDateFromText } from './extractDateFromText';
 
-export interface TrialBalanceRow {
+export interface ParsedRow {
   [key: string]: string | number;
 }
 
@@ -8,7 +9,7 @@ export interface ParsedUpload {
   sheetName: string;
   period: string;
   headers: string[];
-  rows: TrialBalanceRow[];
+  rows: ParsedRow[];
   metadata: Record<string, string>; // stores entity, glMonth, etc.
 }
 
@@ -103,12 +104,16 @@ export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUploa
     let headers: string[] = [];
     let headerRowFound = false;
     const headerExtensionRows = new Set<number>();
-    const rows: TrialBalanceRow[] = [];
+    const rows: ParsedRow[] = [];
+
+    // Extract date from sheet name (e.g., "Trial balance report (Aug'24)" -> "2024-08")
+    const sheetNameDate = extractDateFromText(sheet.name);
 
     const metadata: Record<string, string> = {
       entity: getCellValue(sheet, 'B1'),
       glMonth: getCellValue(sheet, 'B4'),
-      reportName: getCellValue(sheet, 'B2')
+      reportName: getCellValue(sheet, 'B2'),
+      sheetNameDate: sheetNameDate // Add extracted date from sheet name
     };
 
     sheet.eachRow((row, rowNumber) => {
@@ -155,7 +160,7 @@ export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUploa
       }
 
       if (headerRowFound && values.filter(Boolean).length > 0) {
-        const rowObj: TrialBalanceRow = {};
+        const rowObj: ParsedRow = {};
         values.forEach((val, i) => {
           const key = headers[i] || `Column ${String.fromCharCode(65 + i)}`;
           if (val !== null && val !== undefined) {
