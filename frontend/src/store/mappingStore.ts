@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  CompanySummary,
   DynamicBasisAccount,
   GLAccountMappingRow,
   MappingPolarity,
@@ -13,6 +14,7 @@ import {
   getStandardScoaOption,
 } from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
+import { slugify } from '../utils/slugify';
 import {
   allocateDynamic,
   getGroupTotal,
@@ -437,6 +439,96 @@ const syncDynamicAllocationState = (
   useRatioAllocationStore.setState({ results: [], validationErrors: [], auditLog: [] });
 };
 
+const ensureCompanyBreakdown = (
+  account: GLAccountMappingRow,
+  companyId: string,
+  companyName: string,
+) => {
+  if (!account.companies || account.companies.length === 0) {
+    return [
+      {
+        id: companyId,
+        company: companyName,
+        balance: account.netChange,
+      },
+    ];
+  }
+
+  return account.companies.map((company, index) => {
+    if (index === 0) {
+      return {
+        ...company,
+        id: companyId,
+        company: companyName,
+      };
+    }
+    return { ...company };
+  });
+};
+
+const resolveCompanyConflicts = (
+  accounts: GLAccountMappingRow[],
+  selectedCompanies: CompanySummary[],
+): GLAccountMappingRow[] => {
+  const normalized = accounts.map(account => {
+    const trimmedName = account.companyName?.trim() ?? '';
+    const normalizedId =
+      trimmedName.length > 0
+        ? account.companyId && account.companyId.length > 0
+          ? account.companyId
+          : slugify(trimmedName) || `unassigned-${account.id}`
+        : `unassigned-${account.id}`;
+
+    return {
+      ...account,
+      companyId: normalizedId,
+      companyName: trimmedName,
+      companies: ensureCompanyBreakdown(account, normalizedId, trimmedName),
+      requiresCompanyAssignment: trimmedName.length === 0,
+    };
+  });
+
+  if (selectedCompanies.length !== 1) {
+    return normalized;
+  }
+
+  const groupedByAccountMonth = new Map<string, GLAccountMappingRow[]>();
+  normalized.forEach(account => {
+    const periodKey = account.glMonth ?? 'unspecified';
+    const groupKey = `${account.accountId}__${periodKey}`;
+    const group = groupedByAccountMonth.get(groupKey) ?? [];
+    group.push(account);
+    groupedByAccountMonth.set(groupKey, group);
+  });
+
+  groupedByAccountMonth.forEach(group => {
+    if (group.length <= 1) {
+      return;
+    }
+
+    const nameCounts = new Map<string, number>();
+    group.forEach(account => {
+      const key = account.companyName.length > 0 ? account.companyName.toLowerCase() : '__blank__';
+      nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+    });
+
+    group.forEach(account => {
+      const key = account.companyName.length > 0 ? account.companyName.toLowerCase() : '__blank__';
+      if ((nameCounts.get(key) ?? 0) > 1) {
+        const index = normalized.findIndex(candidate => candidate.id === account.id);
+        if (index !== -1) {
+          normalized[index] = {
+            ...normalized[index],
+            requiresCompanyAssignment: true,
+          };
+        }
+      }
+    });
+  });
+
+  return normalized;
+};
+
 const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts.reduce((sum, account) => sum + account.netChange, 0);
 
@@ -458,6 +550,7 @@ interface MappingState {
   activeUploadId: string | null;
   activeClientId: string | null;
   activeCompanyIds: string[];
+  activeCompanies: CompanySummary[];
   activePeriod: string | null;
   setSearchTerm: (term: string) => void;
   setActivePeriod: (period: string | null) => void;
@@ -501,10 +594,15 @@ interface MappingState {
   applyPresetToAccounts: (ids: string[], presetId: string | null) => void;
   bulkAccept: (ids: string[]) => void;
   finalizeMappings: (ids: string[]) => boolean;
+  updateAccountCompany: (
+    accountId: string,
+    payload: { companyName: string; companyId?: string | null }
+  ) => void;
   loadImportedAccounts: (payload: {
     uploadId: string;
     clientId?: string | null;
     companyIds?: string[];
+    companies?: CompanySummary[];
     period?: string | null;
     rows: TrialBalanceRow[];
   }) => void;
@@ -519,6 +617,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   activeUploadId: null,
   activeClientId: null,
   activeCompanyIds: [],
+  activeCompanies: [],
   activePeriod: null,
   setSearchTerm: term => set({ searchTerm: term }),
   setActivePeriod: period => set({ activePeriod: period }),
@@ -1066,16 +1165,62 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     console.log('Finalize mappings', payload);
     return true;
   },
-  loadImportedAccounts: ({ uploadId, clientId, companyIds, period, rows }) => {
+  updateAccountCompany: (accountId, payload) =>
+    set(state => {
+      const trimmedName = payload.companyName.trim();
+      const normalizedId =
+        trimmedName.length > 0
+          ? payload.companyId && payload.companyId.length > 0
+            ? payload.companyId
+            : slugify(trimmedName) || `unassigned-${accountId}`
+          : `unassigned-${accountId}`;
+
+      const accounts = state.accounts.map(account => {
+        if (account.id !== accountId) {
+          return account;
+        }
+
+        return {
+          ...account,
+          companyId: normalizedId,
+          companyName: trimmedName,
+          companies: ensureCompanyBreakdown(account, normalizedId, trimmedName),
+        };
+      });
+
+      const resolved = resolveCompanyConflicts(accounts, state.activeCompanies);
+      updateDynamicBasisAccounts(resolved);
+      return { accounts: resolved };
+    }),
+  loadImportedAccounts: ({
+    uploadId,
+    clientId,
+    companyIds,
+    companies,
+    period,
+    rows,
+  }) => {
     const normalizedClientId = clientId && clientId.trim().length > 0 ? clientId : null;
     const normalizedPeriod = period && period.trim().length > 0 ? period : null;
-    const accounts = buildMappingRowsFromImport(rows, {
+
+    const selectedCompanies = companies
+      ? Array.from(
+          new Map(
+            companies.map(company => [company.id, { id: company.id, name: company.name }]),
+          ).values(),
+        )
+      : [];
+
+    const accountsFromImport = buildMappingRowsFromImport(rows, {
       uploadId,
       clientId: normalizedClientId,
+      selectedCompanies,
     }).map(applyDerivedStatus);
 
+    const resolvedAccounts = resolveCompanyConflicts(accountsFromImport, selectedCompanies);
+
     const periodSet = new Set<string>();
-    accounts.forEach(account => {
+    resolvedAccounts.forEach(account => {
       if (account.glMonth) {
         periodSet.add(account.glMonth);
       }
@@ -1087,17 +1232,20 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       ? null
       : normalizedPeriod ?? uniquePeriods[0] ?? null;
 
+    const resolvedCompanyIds = companyIds ?? selectedCompanies.map(company => company.id);
+
     set({
-      accounts,
+      accounts: resolvedAccounts,
       searchTerm: '',
       activeStatuses: [],
       activeUploadId: uploadId,
       activeClientId: normalizedClientId,
-      activeCompanyIds: companyIds ?? [],
+      activeCompanyIds: resolvedCompanyIds,
+      activeCompanies: selectedCompanies,
       activePeriod: resolvedPeriod,
     });
 
-    syncDynamicAllocationState(accounts, rows, normalizedPeriod);
+    syncDynamicAllocationState(resolvedAccounts, rows, normalizedPeriod);
   },
 }));
 
