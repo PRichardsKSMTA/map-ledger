@@ -1,6 +1,7 @@
 import {
   ChangeEvent,
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -17,6 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
+import MappingCompanyCell from './MappingCompanyCell';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
   getAccountExcludedAmount,
@@ -180,6 +182,11 @@ export default function MappingTable() {
   const { selectedIds, toggleSelection, setSelection, clearSelection } =
     useMappingSelectionStore();
   const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
+  const allAccounts = useMappingStore((state) => state.accounts);
+  const activeCompanies = useMappingStore((state) => state.activeCompanies);
+  const updateAccountCompany = useMappingStore(
+    (state) => state.updateAccountCompany,
+  );
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: SortDirection;
@@ -196,6 +203,40 @@ export default function MappingTable() {
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
     [splitValidationIssues]
+  );
+
+  const compositeConflictIds = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+    allAccounts.forEach((account) => {
+      const monthKey = account.glMonth ?? 'unspecified';
+      const companyKey = account.companyName?.trim().toLowerCase() ?? '';
+      const key = `${companyKey || '__blank__'}__${account.accountId}__${monthKey}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.push(account.id);
+      } else {
+        grouped.set(key, [account.id]);
+      }
+    });
+
+    const conflicts = new Set<string>();
+    grouped.forEach((ids) => {
+      if (ids.length > 1) {
+        ids.forEach((id) => conflicts.add(id));
+      }
+    });
+
+    return conflicts;
+  }, [allAccounts]);
+
+  const handleCompanyCommit = useCallback(
+    (accountId: string, companyName: string, matchedCompanyId?: string | null) => {
+      updateAccountCompany(accountId, {
+        companyName,
+        companyId: matchedCompanyId ?? undefined,
+      });
+    },
+    [updateAccountCompany],
   );
 
   const dynamicIssueIds = useMemo(() => {
@@ -504,10 +545,18 @@ export default function MappingTable() {
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="max-w-[220px] px-3 py-4">
-                      <div className="font-medium text-slate-900 dark:text-slate-100">
-                        {account.companyName}
-                      </div>
+                    <td className="max-w-[220px] px-3 py-4 align-top">
+                      <MappingCompanyCell
+                        account={account}
+                        options={activeCompanies}
+                        requiresManualAssignment={
+                          Boolean(account.requiresCompanyAssignment) ||
+                          (activeCompanies.length <= 1 &&
+                            compositeConflictIds.has(account.id))
+                        }
+                        hasCompositeConflict={compositeConflictIds.has(account.id)}
+                        onCommit={handleCompanyCommit}
+                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
                       {account.accountId}
