@@ -128,6 +128,14 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   exclusion: 'w-56',
 };
 
+const COLUMN_ALIGNMENT_CLASSES: Partial<Record<SortKey, string>> = {
+  exclusion: 'text-center',
+};
+
+const HEADER_BUTTON_ALIGNMENT: Partial<Record<SortKey, string>> = {
+  exclusion: 'justify-center',
+};
+
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
 
 export default function MappingTable() {
@@ -420,12 +428,12 @@ export default function MappingTable() {
                   key={column.key}
                   scope="col"
                   aria-sort={getAriaSort(column.key)}
-                  className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''}`}
+                  className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''} ${COLUMN_ALIGNMENT_CLASSES[column.key] ?? ''}`}
                 >
                   <button
                     type="button"
                     onClick={() => handleSort(column.key)}
-                    className="flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                    className={`flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${HEADER_BUTTON_ALIGNMENT[column.key] ?? ''}`}
                   >
                     {column.label}
                     <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
