@@ -4,6 +4,7 @@ import type { GLAccountMappingRow } from '../../types';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
   allocateDynamic,
+  getBasisValue,
   getSourceValue,
 } from '../../utils/dynamicAllocation';
 

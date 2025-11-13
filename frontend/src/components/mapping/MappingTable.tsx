@@ -484,7 +484,7 @@ export default function MappingTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
-            {sortedAccounts.map((account) => {
+            {sortedAccounts.map((account, index) => {
               const isSelected = selectedIds.has(account.id);
               const targetScoa =
                 account.manualCOAId ?? account.suggestedCOAId ?? '';
@@ -507,8 +507,10 @@ export default function MappingTable() {
               const adjustedActivity = account.netChange - excludedAmount;
               const showOriginalActivity = Math.abs(excludedAmount) > 0.005;
 
+              const rowKey = `${account.id}-${account.companyId}-${account.glMonth ?? 'no-period'}-${index}`;
+
               return (
-                <Fragment key={account.id}>
+                <Fragment key={rowKey}>
                   <tr
                     className={
                       isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined
