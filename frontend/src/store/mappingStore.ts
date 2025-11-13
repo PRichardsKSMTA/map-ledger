@@ -20,6 +20,7 @@ import {
   getGroupTotal,
   getSourceValue,
 } from '../utils/dynamicAllocation';
+import { resolveTargetBasisValue } from '../utils/dynamicExclusions';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 
 const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
@@ -1477,7 +1478,8 @@ useRatioAllocationStore.subscribe(
         amountByAccount.set(result.sourceAccountId, Math.max(0, Math.abs(total)));
       });
 
-      const groupById = new Map(groups.map(group => [group.id, group]));
+      const groupLookup = new Map(groups.map(group => [group.id, group]));
+      const basisLookup = new Map(basisAccounts.map(account => [account.id, account]));
       const sourceAccountById = new Map(sourceAccounts.map(account => [account.id, account]));
 
       dynamicAccounts.forEach(account => {
@@ -1496,16 +1498,9 @@ useRatioAllocationStore.subscribe(
           return;
         }
 
-        const basisValues = allocation.targetDatapoints.map(target => {
-          if (target.groupId) {
-            const group = groupById.get(target.groupId);
-            if (group) {
-              return getGroupTotal(group, basisAccounts, targetPeriod);
-            }
-            return 0;
-          }
-          return target.ratioMetric.value;
-        });
+        const basisValues = allocation.targetDatapoints.map(target =>
+          resolveTargetBasisValue(target, basisLookup, groupLookup, targetPeriod),
+        );
 
         const basisTotal = basisValues.reduce((sum, value) => sum + value, 0);
         if (!(basisTotal > 0)) {

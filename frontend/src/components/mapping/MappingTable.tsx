@@ -44,6 +44,8 @@ import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
 import RatioAllocationManager from './RatioAllocationManager';
 import { getGroupTotal } from '../../utils/dynamicAllocation';
+import { formatCurrencyAmount } from '../../utils/currency';
+import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions';
 
 type SortKey =
   | 'companyName'
@@ -102,14 +104,7 @@ const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
   Object.entries(MAPPING_TYPE_LABELS) as [MappingType, string][]
 ).map(([value, label]) => ({ value, label }));
 
-const netChangeFormatter = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
-const formatNetChange = (value: number) => netChangeFormatter.format(value);
+const formatNetChange = (value: number) => formatCurrencyAmount(value);
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'companyName', label: 'Company' },
@@ -384,6 +379,18 @@ export default function MappingTable() {
     return [...filteredAccounts].sort(safeCompare);
   }, [filteredAccounts, sortConfig, getDisplayStatus]);
 
+  const dynamicExclusionSummaries = useMemo(
+    () =>
+      computeDynamicExclusionSummaries({
+        accounts,
+        allocations,
+        basisAccounts,
+        groups,
+        selectedPeriod,
+      }),
+    [accounts, allocations, basisAccounts, groups, selectedPeriod]
+  );
+
   useEffect(() => {
     if (!selectAllRef.current) return;
     const allIds = sortedAccounts.map((account) => account.id);
@@ -503,9 +510,23 @@ export default function MappingTable() {
               const statusLabel = STATUS_LABELS[displayStatus];
               const StatusIcon = STATUS_ICONS[displayStatus];
               const isExpanded = expandedRows.has(account.id);
-              const excludedAmount = getAccountExcludedAmount(account);
+              const dynamicExclusion =
+                account.mappingType === 'dynamic'
+                  ? dynamicExclusionSummaries.get(account.id)
+                  : undefined;
+              const computedExcludedAmount = getAccountExcludedAmount(account);
+              const excludedAmount =
+                account.mappingType === 'dynamic' && dynamicExclusion
+                  ? dynamicExclusion.amount
+                  : computedExcludedAmount;
+              const excludedRatio =
+                account.mappingType === 'dynamic'
+                  ? dynamicExclusion?.percentage
+                  : undefined;
               const adjustedActivity = account.netChange - excludedAmount;
               const showOriginalActivity = Math.abs(excludedAmount) > 0.005;
+              const hasDynamicExclusionOverride =
+                account.mappingType === 'dynamic' && Boolean(dynamicExclusion);
 
               const rowKey = `${account.id}-${account.companyId}-${account.glMonth ?? 'no-period'}-${index}`;
 
@@ -574,14 +595,22 @@ export default function MappingTable() {
                       </div>
                       {showOriginalActivity && (
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Original {formatNetChange(account.netChange)}
+                          Original: {formatNetChange(account.netChange)}
                         </div>
                       )}
                     </td>
                     <td
                       className={`px-3 py-4 align-middle ${COLUMN_WIDTH_CLASSES.exclusion ?? ''}`}
                     >
-                      <MappingExclusionCell account={account} />
+                      <MappingExclusionCell
+                        account={account}
+                        excludedAmountOverride={
+                          hasDynamicExclusionOverride ? excludedAmount : undefined
+                        }
+                        excludedRatioOverride={
+                          hasDynamicExclusionOverride ? excludedRatio : undefined
+                        }
+                      />
                     </td>
                     <td className="px-3 py-4">
                       <label
