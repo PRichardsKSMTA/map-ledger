@@ -142,6 +142,7 @@ export default function MappingTable() {
     selectedPeriod,
     basisAccounts,
     groups,
+    results,
   } = useRatioAllocationStore(
     (state) => ({
       allocations: state.allocations,
@@ -149,6 +150,7 @@ export default function MappingTable() {
       selectedPeriod: state.selectedPeriod,
       basisAccounts: state.basisAccounts,
       groups: state.groups,
+      results: state.results,
     })
   );
   const datapoints = useTemplateStore((state) => state.datapoints);
@@ -387,8 +389,9 @@ export default function MappingTable() {
         basisAccounts,
         groups,
         selectedPeriod,
+        results,
       }),
-    [accounts, allocations, basisAccounts, groups, selectedPeriod]
+    [accounts, allocations, basisAccounts, groups, selectedPeriod, results]
   );
 
   useEffect(() => {

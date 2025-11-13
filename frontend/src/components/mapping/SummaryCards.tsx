@@ -28,8 +28,9 @@ const SummaryCards = () => {
         basisAccounts,
         groups,
         selectedPeriod,
+        results,
       }),
-    [accounts, allocations, basisAccounts, groups, selectedPeriod],
+    [accounts, allocations, basisAccounts, groups, results, selectedPeriod],
   );
 
   const adjustedTotals = useMemo(() => {
