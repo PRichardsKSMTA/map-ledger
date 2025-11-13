@@ -845,7 +845,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                                 if (!selectedAllocation || !datapointId) {
                                   return;
                                 }
-                                toggleTargetExclusion(selectedAllocation.id, datapointId, presetId ?? undefined);
+                                toggleTargetExclusion(selectedAllocation.id, datapointId);
                               }}
                             />
                             Exclude
