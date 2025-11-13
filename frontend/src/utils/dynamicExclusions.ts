@@ -1,0 +1,151 @@
+import type {
+  DynamicAllocationGroup,
+  DynamicBasisAccount,
+  GLAccountMappingRow,
+  RatioAllocation,
+  RatioAllocationTargetDatapoint,
+} from '../types';
+import { getBasisValue } from './dynamicAllocation';
+
+const normalizeId = (value?: string | null): string => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  return trimmed;
+};
+
+const resolveMemberBasisValue = (
+  memberAccountId: string,
+  basisLookup: Map<string, DynamicBasisAccount>,
+  periodId: string | null,
+): number => {
+  const basisAccount = basisLookup.get(memberAccountId);
+  if (basisAccount) {
+    return getBasisValue(basisAccount, periodId);
+  }
+  return 0;
+};
+
+export const resolveTargetBasisValue = (
+  target: RatioAllocationTargetDatapoint,
+  basisLookup: Map<string, DynamicBasisAccount>,
+  groupLookup: Map<string, DynamicAllocationGroup>,
+  periodId: string | null,
+): number => {
+  const ratioMetricId = normalizeId(target.ratioMetric.id);
+  if (ratioMetricId) {
+    const directBasis = basisLookup.get(ratioMetricId);
+    if (directBasis) {
+      return getBasisValue(directBasis, periodId);
+    }
+  }
+
+  if (target.groupId) {
+    const group = groupLookup.get(target.groupId);
+    if (group) {
+      const matchingMember = group.members.find(member => {
+        if (ratioMetricId) {
+          return normalizeId(member.accountId) === ratioMetricId;
+        }
+        return normalizeId(member.targetAccountId) === normalizeId(target.datapointId);
+      });
+      if (matchingMember) {
+        const memberBasis = resolveMemberBasisValue(
+          matchingMember.accountId,
+          basisLookup,
+          periodId,
+        );
+        if (memberBasis > 0) {
+          return memberBasis;
+        }
+        return matchingMember.basisValue;
+      }
+    }
+  }
+
+  return typeof target.ratioMetric.value === 'number'
+    ? target.ratioMetric.value
+    : 0;
+};
+
+type DynamicSummaryParams = {
+  accounts: GLAccountMappingRow[];
+  allocations: RatioAllocation[];
+  basisAccounts: DynamicBasisAccount[];
+  groups: DynamicAllocationGroup[];
+  selectedPeriod: string | null;
+};
+
+export type DynamicExclusionSummary = {
+  amount: number;
+  percentage: number;
+};
+
+export const computeDynamicExclusionSummaries = ({
+  accounts,
+  allocations,
+  basisAccounts,
+  groups,
+  selectedPeriod,
+}: DynamicSummaryParams): Map<string, DynamicExclusionSummary> => {
+  const summaries = new Map<string, DynamicExclusionSummary>();
+  if (accounts.length === 0 || allocations.length === 0) {
+    return summaries;
+  }
+
+  const basisLookup = new Map(basisAccounts.map(account => [account.id, account]));
+  const groupLookup = new Map(groups.map(group => [group.id, group]));
+  const allocationLookup = new Map(
+    allocations.map(allocation => [allocation.sourceAccount.id, allocation]),
+  );
+
+  accounts.forEach(account => {
+    if (account.mappingType !== 'dynamic') {
+      return;
+    }
+
+    const allocation = allocationLookup.get(account.id);
+    if (!allocation) {
+      return;
+    }
+
+    const basisValues = allocation.targetDatapoints.map(target =>
+      resolveTargetBasisValue(target, basisLookup, groupLookup, selectedPeriod),
+    );
+    const basisTotal = basisValues.reduce((sum, value) => sum + value, 0);
+    if (!(basisTotal > 0)) {
+      return;
+    }
+
+    let excludedBasis = 0;
+    allocation.targetDatapoints.forEach((target, index) => {
+      if (target.isExclusion) {
+        excludedBasis += basisValues[index] ?? 0;
+      }
+    });
+
+    if (!(excludedBasis > 0)) {
+      return;
+    }
+
+    const ratio = Math.min(1, excludedBasis / basisTotal);
+    const absoluteSource = Math.abs(account.netChange);
+    const excludedAmount = absoluteSource > 0 ? ratio * absoluteSource : 0;
+    const signedAmount = account.netChange >= 0 ? excludedAmount : -excludedAmount;
+
+    summaries.set(account.id, { amount: signedAmount, percentage: ratio });
+  });
+
+  return summaries;
+};
+
+export const sumDynamicExclusionAmounts = (
+  summaries: Map<string, DynamicExclusionSummary>,
+): number => {
+  let total = 0;
+  summaries.forEach(entry => {
+    total += entry.amount;
+  });
+  return total;
+};

@@ -43,8 +43,9 @@ import DynamicAllocationRow from './DynamicAllocationRow';
 import { PRESET_OPTIONS } from './presets';
 import { buildTargetScoaOptions } from '../../utils/targetScoaOptions';
 import RatioAllocationManager from './RatioAllocationManager';
-import { getBasisValue, getGroupTotal } from '../../utils/dynamicAllocation';
+import { getGroupTotal } from '../../utils/dynamicAllocation';
 import { formatCurrencyAmount } from '../../utils/currency';
+import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions';
 
 type SortKey =
   | 'companyName'
@@ -378,55 +379,17 @@ export default function MappingTable() {
     return [...filteredAccounts].sort(safeCompare);
   }, [filteredAccounts, sortConfig, getDisplayStatus]);
 
-  const dynamicExclusionSummaries = useMemo(() => {
-    const summaries = new Map<string, { amount: number; percentage: number }>();
-    const basisLookup = new Map(basisAccounts.map((account) => [account.id, account]));
-    const groupLookup = new Map(groups.map((group) => [group.id, group]));
-
-    accounts.forEach((account) => {
-      if (account.mappingType !== 'dynamic') {
-        return;
-      }
-      const allocation = allocations.find((item) => item.sourceAccount.id === account.id);
-      if (!allocation) {
-        return;
-      }
-      const basisValues = allocation.targetDatapoints.map((target) => {
-        if (target.groupId) {
-          const group = groupLookup.get(target.groupId);
-          if (group) {
-            return getGroupTotal(group, basisAccounts, selectedPeriod);
-          }
-          return 0;
-        }
-        const basisAccount = basisLookup.get(target.ratioMetric.id);
-        if (basisAccount) {
-          return getBasisValue(basisAccount, selectedPeriod);
-        }
-        return typeof target.ratioMetric.value === 'number' ? target.ratioMetric.value : 0;
-      });
-      const basisTotal = basisValues.reduce((sum, value) => sum + value, 0);
-      if (!(basisTotal > 0)) {
-        return;
-      }
-      let excludedBasis = 0;
-      allocation.targetDatapoints.forEach((target, index) => {
-        if (target.isExclusion) {
-          excludedBasis += basisValues[index] ?? 0;
-        }
-      });
-      if (!(excludedBasis > 0)) {
-        return;
-      }
-      const ratio = Math.min(1, excludedBasis / basisTotal);
-      const absoluteSource = Math.abs(account.netChange);
-      const excludedAmount = absoluteSource > 0 ? ratio * absoluteSource : 0;
-      const signedAmount = account.netChange >= 0 ? excludedAmount : -excludedAmount;
-      summaries.set(account.id, { amount: signedAmount, percentage: ratio });
-    });
-
-    return summaries;
-  }, [accounts, allocations, basisAccounts, groups, selectedPeriod]);
+  const dynamicExclusionSummaries = useMemo(
+    () =>
+      computeDynamicExclusionSummaries({
+        accounts,
+        allocations,
+        basisAccounts,
+        groups,
+        selectedPeriod,
+      }),
+    [accounts, allocations, basisAccounts, groups, selectedPeriod]
+  );
 
   useEffect(() => {
     if (!selectAllRef.current) return;
