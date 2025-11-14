@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from 'rea
 import { AlertTriangle, CheckCircle2, Plus, Trash2, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
-import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
+import { resolveTargetAccountId, useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import type { DynamicAllocationPresetRow } from '../../types';
 import {
   allocateDynamic,
@@ -49,44 +49,84 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
   const newPresetAmountHeaderId = useId();
   const newPresetActionsHeaderId = useId();
 
-  const targetLabelById = useMemo(() => {
-    const map = new Map<string, string>();
-    STANDARD_CHART_OF_ACCOUNTS.forEach(option => {
-      map.set(option.id, option.label);
+  const { newPresetDynamicUsage, newPresetCanonicalUsage } = useMemo(() => {
+    const dynamicUsage = new Map<string, Set<string>>();
+    const canonicalUsage = new Map<string, Set<string>>();
+
+    const addUsage = (map: Map<string, Set<string>>, id: string | null, key: string) => {
+      if (!id) {
+        return;
+      }
+      if (!map.has(id)) {
+        map.set(id, new Set());
+      }
+      map.get(id)?.add(key);
+    };
+
+    newPresetRows.forEach((row, index) => {
+      const basisKey = `basis-${index}`;
+      const targetKey = `target-${index}`;
+      if (row.dynamicAccountId) {
+        addUsage(dynamicUsage, row.dynamicAccountId, basisKey);
+        const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
+        const canonicalId = resolveTargetAccountId(basisAccount?.mappedTargetId);
+        addUsage(canonicalUsage, canonicalId, basisKey);
+      }
+      const targetCanonicalId = resolveTargetAccountId(row.targetAccountId);
+      addUsage(canonicalUsage, targetCanonicalId, targetKey);
     });
-    return map;
-  }, []);
+
+    return { newPresetDynamicUsage: dynamicUsage, newPresetCanonicalUsage: canonicalUsage };
+  }, [basisAccounts, newPresetRows]);
 
   const computeNewPresetDynamicOptions = useCallback(
-    (excludeIndex?: number) => {
-      const usedIds = new Set(
-        newPresetRows
-          .flatMap((row, index) =>
-            index === excludeIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
-          )
-          .filter((value): value is string => Boolean(value)),
-      );
+    (rowIndex?: number) => {
+      const dropdownKey = typeof rowIndex === 'number' ? `basis-${rowIndex}` : null;
       return basisAccounts
-        .filter(account => !usedIds.has(account.id))
+        .filter(account => {
+          const dynamicUsers = newPresetDynamicUsage.get(account.id);
+          if (dynamicUsers && dynamicUsers.size > 0) {
+            if (!dropdownKey || dynamicUsers.size > 1 || !dynamicUsers.has(dropdownKey)) {
+              return false;
+            }
+          }
+          const canonicalId = resolveTargetAccountId(account.mappedTargetId);
+          if (!canonicalId) {
+            return true;
+          }
+          const canonicalUsers = newPresetCanonicalUsage.get(canonicalId);
+          if (!canonicalUsers || canonicalUsers.size === 0) {
+            return true;
+          }
+          return (
+            dropdownKey !== null &&
+            canonicalUsers.size === 1 &&
+            canonicalUsers.has(dropdownKey)
+          );
+        })
         .map(account => ({ value: account.id, label: account.name }));
     },
-    [basisAccounts, newPresetRows],
+    [basisAccounts, newPresetDynamicUsage, newPresetCanonicalUsage],
   );
 
   const computeNewPresetTargetOptions = useCallback(
-    (excludeIndex?: number) => {
-      const usedIds = new Set(
-        newPresetRows
-          .flatMap((row, index) =>
-            index === excludeIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
-          )
-          .filter((value): value is string => Boolean(value)),
-      );
-      return STANDARD_CHART_OF_ACCOUNTS.filter(option => !usedIds.has(option.id))
+    (rowIndex?: number) => {
+      const dropdownKey = typeof rowIndex === 'number' ? `target-${rowIndex}` : null;
+      return STANDARD_CHART_OF_ACCOUNTS.filter(option => {
+        const canonicalUsers = newPresetCanonicalUsage.get(option.id);
+        if (!canonicalUsers || canonicalUsers.size === 0) {
+          return true;
+        }
+        return (
+          dropdownKey !== null &&
+          canonicalUsers.size === 1 &&
+          canonicalUsers.has(dropdownKey)
+        );
+      })
         .map(option => ({ value: option.id, label: option.label }))
         .sort((a, b) => a.label.localeCompare(b.label));
     },
-    [newPresetRows],
+    [newPresetCanonicalUsage],
   );
 
   const allocationIdForInitialSource = useMemo(() => {
@@ -237,7 +277,11 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
     if (!trimmedName || sanitizedRows.length === 0 || sanitizedRows.length !== newPresetRows.length) {
       return;
     }
-    createPreset({ name: trimmedName, rows: sanitizedRows });
+    createPreset({
+      name: trimmedName,
+      rows: sanitizedRows,
+      applyToAllocationId: selectedAllocation?.id,
+    });
     setIsCreatingPreset(false);
     setNewPresetName('');
     setNewPresetRows([]);
@@ -654,6 +698,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                                         })
                                       }
                                       className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      aria-label="Preset basis datapoint"
                                     >
                                       {dynamicOptions.length === 0 ? (
                                         <option value="">No basis accounts available</option>
@@ -675,6 +720,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                                         })
                                       }
                                       className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                                      aria-label="Preset target account"
                                     >
                                       {targetOptions.length === 0 ? (
                                         <option value="">No targets available</option>
@@ -812,8 +858,7 @@ const RatioAllocationBuilder = ({ initialSourceAccountId }: RatioAllocationBuild
                 ) : (
                   targetDetails.map((detail, index) => {
                     const percentage = previewPercentages[index] ?? 0;
-                    const ratio = percentage / 100;
-                    const allocatedValue = previewComputation.allocations[index] ?? 0;
+                      const allocatedValue = previewComputation.allocations[index] ?? 0;
                     const targetDatapoint = selectedAllocation?.targetDatapoints[index];
                     const isExcluded = detail.isExcluded;
                     const datapointId = targetDatapoint?.datapointId ?? detail.targetId;

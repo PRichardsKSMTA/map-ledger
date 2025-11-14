@@ -14,7 +14,6 @@ import {
 } from '../types';
 import { STANDARD_CHART_OF_ACCOUNTS } from '../data/standardChartOfAccounts';
 import {
-  allocateDynamic,
   allocateDynamicWithPresets,
   getBasisValue,
   GroupMemberValue,
@@ -35,7 +34,7 @@ const getTargetNameById = (targetId: string): string => {
   return option?.label ?? targetId;
 };
 
-const resolveTargetAccountId = (value?: string | null): string | null => {
+export const resolveTargetAccountId = (value?: string | null): string | null => {
   if (!value) {
     return null;
   }
@@ -47,6 +46,30 @@ const resolveTargetAccountId = (value?: string | null): string | null => {
     option => option.id === normalized || option.value === normalized,
   );
   return match?.id ?? normalized;
+};
+
+const resolveCanonicalTargetId = (value?: string | null): string | null => {
+  const resolved = resolveTargetAccountId(value);
+  return resolved && resolved.trim().length > 0 ? resolved : null;
+};
+
+export const resolvePresetRowCanonicalTargetIds = (
+  row: DynamicAllocationPresetRow,
+  basisAccounts: DynamicBasisAccount[],
+): string[] => {
+  const canonicalIds: string[] = [];
+  if (row.dynamicAccountId) {
+    const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
+    const basisTargetId = resolveCanonicalTargetId(basisAccount?.mappedTargetId);
+    if (basisTargetId) {
+      canonicalIds.push(basisTargetId);
+    }
+  }
+  const rowTargetId = resolveCanonicalTargetId(row.targetAccountId);
+  if (rowTargetId) {
+    canonicalIds.push(rowTargetId);
+  }
+  return canonicalIds;
 };
 
 const buildGroupMembers = (
@@ -174,13 +197,6 @@ const sanitizePresetRows = (
   return sanitized;
 };
 
-type ResolvedTargetDetail = {
-  target: RatioAllocationTargetDatapoint;
-  basisValue: number;
-  members: GroupMemberValue[];
-  error?: string;
-};
-
 export type RatioAllocationHydrationPayload = {
   basisAccounts?: DynamicBasisAccount[];
   sourceAccounts?: DynamicSourceAccount[];
@@ -216,7 +232,8 @@ export type RatioAllocationState = {
     name: string;
     rows: DynamicAllocationPresetRow[];
     notes?: string;
-  }) => void;
+    applyToAllocationId?: string | null;
+  }) => string;
   updatePreset: (
     presetId: string,
     updates: Partial<Omit<DynamicAllocationPreset, 'id' | 'rows'>>,
@@ -554,7 +571,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           }
         });
 
-        presetTargetsMap.forEach((targets, presetId) => {
+        presetTargetsMap.forEach((_, presetId) => {
           const preset = presets.find(item => item.id === presetId);
           if (!preset) {
             targetErrors.push({
@@ -871,7 +888,8 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     }
   },
 
-  createPreset: ({ name, rows, notes }) => {
+  createPreset: ({ name, rows, notes, applyToAllocationId }) => {
+    let newPresetId = '';
     set(state => {
       const sanitizedRows = sanitizePresetRows(rows);
       const preset: DynamicAllocationPreset = {
@@ -880,6 +898,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         rows: sanitizedRows,
         notes,
       };
+      newPresetId = preset.id;
       const presets = [...state.presets, preset];
       const allocations = state.allocations.map(allocation =>
         synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
@@ -887,6 +906,12 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
       return { presets, groups, allocations };
     });
+
+    if (applyToAllocationId && newPresetId) {
+      get().toggleAllocationPresetTargets(applyToAllocationId, newPresetId);
+    }
+
+    return newPresetId;
   },
 
   updatePreset: (presetId, updates) => {
@@ -1011,32 +1036,104 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     });
   },
 
-  getPresetAvailableDynamicAccounts: (presetId, excludeRowIndex) => {
+  getPresetAvailableDynamicAccounts: (presetId, rowIndex) => {
     const { basisAccounts, presets } = get();
     const preset = presets.find(item => item.id === presetId);
     if (!preset) {
       return basisAccounts;
     }
-    const usedIds = new Set(
-      preset.rows
-        .flatMap((row, index) =>
-          index === excludeRowIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
-        )
-        .filter((value): value is string => Boolean(value)),
-    );
-    return basisAccounts.filter(account => !usedIds.has(account.id));
-  },
 
-  getPresetAvailableTargetAccounts: (presetId, excludeRowIndex) => {
-    const preset = get().presets.find(item => item.id === presetId);
-    const usedIds = new Set(
-      (preset?.rows ?? [])
-        .flatMap((row, index) =>
-          index === excludeRowIndex ? [] : [row.dynamicAccountId, row.targetAccountId],
-        )
-        .filter((value): value is string => Boolean(value)),
-    );
-    return STANDARD_CHART_OF_ACCOUNTS.filter(option => !usedIds.has(option.id))
+    const dynamicUsage = new Map<string, Set<string>>();
+    const canonicalUsage = new Map<string, Set<string>>();
+
+    const addUsage = (map: Map<string, Set<string>>, id: string | null, key: string) => {
+      if (!id) {
+        return;
+      }
+      if (!map.has(id)) {
+        map.set(id, new Set());
+      }
+      map.get(id)?.add(key);
+    };
+
+    preset.rows.forEach((row, index) => {
+      const basisKey = `basis-${index}`;
+      const targetKey = `target-${index}`;
+      if (row.dynamicAccountId) {
+        addUsage(dynamicUsage, row.dynamicAccountId, basisKey);
+        const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
+        const canonicalId = resolveCanonicalTargetId(basisAccount?.mappedTargetId);
+        addUsage(canonicalUsage, canonicalId, basisKey);
+      }
+      const targetCanonicalId = resolveCanonicalTargetId(row.targetAccountId);
+      addUsage(canonicalUsage, targetCanonicalId, targetKey);
+    });
+
+    const dropdownKey = typeof rowIndex === 'number' ? `basis-${rowIndex}` : null;
+
+    return basisAccounts.filter(account => {
+      const dynamicUsers = dynamicUsage.get(account.id);
+      if (dynamicUsers && dynamicUsers.size > 0) {
+        if (!dropdownKey || dynamicUsers.size > 1 || !dynamicUsers.has(dropdownKey)) {
+          return false;
+        }
+      }
+      const canonicalTargetId = resolveCanonicalTargetId(account.mappedTargetId);
+      if (!canonicalTargetId) {
+        return true;
+      }
+      const canonicalUsers = canonicalUsage.get(canonicalTargetId);
+        if (!canonicalUsers || canonicalUsers.size === 0) {
+          return true;
+        }
+        return (
+          dropdownKey !== null &&
+          canonicalUsers.size === 1 &&
+          canonicalUsers.has(dropdownKey)
+        );
+      });
+    },
+
+  getPresetAvailableTargetAccounts: (presetId, rowIndex) => {
+    const { basisAccounts, presets } = get();
+    const preset = presets.find(item => item.id === presetId);
+    const canonicalUsage = new Map<string, Set<string>>();
+
+    const addUsage = (map: Map<string, Set<string>>, id: string | null, key: string) => {
+      if (!id) {
+        return;
+      }
+      if (!map.has(id)) {
+        map.set(id, new Set());
+      }
+      map.get(id)?.add(key);
+    };
+
+    (preset?.rows ?? []).forEach((row, index) => {
+      const basisKey = `basis-${index}`;
+      const targetKey = `target-${index}`;
+      if (row.dynamicAccountId) {
+        const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
+        const canonicalId = resolveCanonicalTargetId(basisAccount?.mappedTargetId);
+        addUsage(canonicalUsage, canonicalId, basisKey);
+      }
+      const targetCanonicalId = resolveCanonicalTargetId(row.targetAccountId);
+      addUsage(canonicalUsage, targetCanonicalId, targetKey);
+    });
+
+    const dropdownKey = typeof rowIndex === 'number' ? `target-${rowIndex}` : null;
+
+    return STANDARD_CHART_OF_ACCOUNTS.filter(option => {
+      const canonicalUsers = canonicalUsage.get(option.id);
+        if (!canonicalUsers || canonicalUsers.size === 0) {
+          return true;
+        }
+        return (
+          dropdownKey !== null &&
+          canonicalUsers.size === 1 &&
+          canonicalUsers.has(dropdownKey)
+        );
+      })
       .map(option => ({
         id: option.id,
         label: option.label,
@@ -1210,9 +1307,6 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       });
       return;
     }
-
-    // Remove any existing preset targets and add the new preset
-    const nonPresetTargets = allocation.targetDatapoints.filter(t => !t.groupId);
 
     // Toggle to remove old preset if any, then toggle to add new preset
     const existingPresetId = allocation.targetDatapoints.find(t => t.groupId)?.groupId;

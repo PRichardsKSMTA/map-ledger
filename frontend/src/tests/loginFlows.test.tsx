@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, waitFor } from './testUtils';
+import userEvent from './userEvent';
 import type { AccountInfo } from '@azure/msal-browser';
 import Login from '../pages/Login';
 import App from '../App';
@@ -137,4 +137,3 @@ test('shows error when handleRedirectPromise fails', async () => {
     expect(screen.getByRole('alert')).toHaveTextContent('redirect error')
   );
 });
-
