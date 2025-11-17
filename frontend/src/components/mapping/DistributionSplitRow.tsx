@@ -231,11 +231,11 @@ export default function DistributionSplitRow({
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Allocation splits</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Distribute this standard account across client operations.</p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Allocation splits</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Ensure 100% allocation across client operations.</p>
         </div>
         <button
           type="button"
@@ -249,18 +249,16 @@ export default function DistributionSplitRow({
       </div>
 
       {operationsCatalog.length === 0 && (
-        <p className="mt-3 text-xs text-amber-600 dark:text-amber-300">
-          No client operations are available for this distribution.
-        </p>
+        <p className="text-xs text-amber-600 dark:text-amber-300">No client operations are available for this distribution.</p>
       )}
       {operationsCatalog.length > 0 && availableOptions.length === 0 && (
-        <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           All available operations have been assigned. Remove an operation to choose a different target.
         </p>
       )}
 
       {operationsDraft.length > 0 ? (
-        <div className="mt-4 overflow-x-auto">
+        <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
             <thead className="bg-white dark:bg-slate-900/60">
               <tr>
@@ -357,13 +355,13 @@ export default function DistributionSplitRow({
           </table>
         </div>
       ) : (
-        <p className="mt-4 rounded-md border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+        <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
           No operation splits yet. Add client operations to distribute this mapped value.
         </p>
       )}
 
       {!totals.isComplete && operationsDraft.length > 0 && (
-        <p className="mt-3 flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300">
+        <p className="flex items-center gap-2 text-sm text-rose-600 dark:text-rose-300">
           <AlertCircle className="h-4 w-4" aria-hidden="true" />
           Allocation percentages must equal 100%.
         </p>
