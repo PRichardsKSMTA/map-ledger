@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import type {
+  DistributionOperationShare,
   DistributionRow,
+  DistributionStatus,
   DistributionType,
-  MappingStatus,
   StandardScoaSummary,
 } from '../types';
-import { getStandardScoaOption } from '../data/standardChartOfAccounts';
 
 export interface DistributionOperationCatalogItem {
   id: string;
@@ -16,81 +16,56 @@ interface DistributionState {
   rows: DistributionRow[];
   operationsCatalog: DistributionOperationCatalogItem[];
   searchTerm: string;
-  statusFilters: MappingStatus[];
+  statusFilters: DistributionStatus[];
   syncRowsFromStandardTargets: (summaries: StandardScoaSummary[]) => void;
   setSearchTerm: (term: string) => void;
-  toggleStatusFilter: (status: MappingStatus) => void;
+  toggleStatusFilter: (status: DistributionStatus) => void;
   clearStatusFilters: () => void;
   updateRow: (id: string, updates: Partial<DistributionRow>) => void;
   updateRowType: (id: string, type: DistributionType) => void;
   updateRowOperations: (id: string, operations: DistributionRow['operations']) => void;
   updateRowPreset: (id: string, presetId: string | null) => void;
   updateRowNotes: (id: string, notes: string) => void;
-  updateRowStatus: (id: string, status: MappingStatus) => void;
+  setOperationsCatalog: (operations: DistributionOperationCatalogItem[]) => void;
+  applyBatchDistribution: (
+    ids: string[],
+    updates: {
+      type?: DistributionType;
+      operation?: DistributionOperationShare | null;
+    },
+  ) => void;
+  applyPresetToRows: (ids: string[], presetId: string | null) => void;
 }
 
-const operationsCatalog: DistributionOperationCatalogItem[] = [
-  { id: 'ops-log', name: 'Logistics' },
-  { id: 'ops-otr', name: 'Over-the-Road' },
-  { id: 'ops-ded', name: 'Dedicated' },
-  { id: 'ops-ltl', name: 'Less-than-Truckload' },
-  { id: 'ops-int', name: 'Intermodal' },
-];
+const deriveDistributionStatus = (
+  type: DistributionType,
+  operations: DistributionRow['operations'],
+): DistributionStatus => {
+  if (type === 'direct') {
+    return operations.length === 1 ? 'Mapped' : 'Unmapped';
+  }
 
-const FREIGHT_REVENUE_TARGET = getStandardScoaOption('FREIGHT REVENUE LINEHAUL - COMPANY FLEET');
-const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
-  'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
-);
-const NON_DRIVER_WAGES_TARGET = getStandardScoaOption('NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS');
-const FUEL_EXPENSE_TARGET = getStandardScoaOption('FUEL EXPENSE - COMPANY FLEET');
-const TRACTOR_MAINTENANCE_TARGET = getStandardScoaOption('MAINTENANCE EXPENSE - TRACTOR - COMPANY FLEET');
+  if (type === 'percentage') {
+    if (operations.length === 0) {
+      return 'Unmapped';
+    }
 
-const DEFAULT_ROW_CONFIGS: Record<string, Partial<DistributionRow>> = {
-  [FREIGHT_REVENUE_TARGET.id]: {
-    type: 'direct',
-    operations: [{ id: 'ops-log', name: 'Logistics' }],
-    presetId: 'preset-1',
-    notes: 'Approved during March close.',
-    status: 'Mapped',
-  },
-  [DRIVER_BENEFITS_TARGET.id]: {
-    type: 'percentage',
-    operations: [
-      { id: 'ops-ded', name: 'Dedicated', allocation: 60 },
-      { id: 'ops-log', name: 'Logistics', allocation: 40 },
-    ],
-    presetId: 'preset-2',
-    notes: 'Split based on headcount.',
-    status: 'Mapped',
-  },
-  [NON_DRIVER_WAGES_TARGET.id]: {
-    type: 'percentage',
-    operations: [
-      { id: 'ops-ded', name: 'Dedicated', allocation: 55 },
-      { id: 'ops-log', name: 'Logistics', allocation: 45 },
-    ],
-    presetId: 'preset-2',
-    notes: 'Pending confirmation of allocation weights.',
-    status: 'Unmapped',
-  },
-  [FUEL_EXPENSE_TARGET.id]: {
-    type: 'dynamic',
-    operations: [
-      { id: 'ops-log', name: 'Logistics' },
-      { id: 'ops-otr', name: 'Over-the-Road' },
-    ],
-    presetId: 'preset-1',
-    notes: 'Allocate fuel based on miles driven.',
-    status: 'New',
-  },
-  [TRACTOR_MAINTENANCE_TARGET.id]: {
-    type: 'direct',
-    operations: [{ id: 'ops-ded', name: 'Dedicated' }],
-    presetId: null,
-    notes: 'Charged entirely to dedicated operations.',
-    status: 'New',
-  },
+    const allHaveAllocations = operations.every(operation => typeof operation.allocation === 'number');
+    if (!allHaveAllocations) {
+      return 'Unmapped';
+    }
+
+    const total = operations.reduce((sum, operation) => sum + (operation.allocation ?? 0), 0);
+    return Math.abs(total - 100) <= 0.01 ? 'Mapped' : 'Unmapped';
+  }
+
+  return operations.length > 0 ? 'Mapped' : 'Unmapped';
 };
+
+const applyDistributionStatus = (row: DistributionRow): DistributionRow => ({
+  ...row,
+  status: deriveDistributionStatus(row.type, row.operations),
+});
 
 const clampOperationsForType = (
   type: DistributionType,
@@ -113,7 +88,7 @@ const clampOperationsForType = (
 
 export const useDistributionStore = create<DistributionState>((set, _get) => ({
   rows: [],
-  operationsCatalog,
+  operationsCatalog: [],
   searchTerm: '',
   statusFilters: [],
   syncRowsFromStandardTargets: summaries =>
@@ -123,12 +98,11 @@ export const useDistributionStore = create<DistributionState>((set, _get) => ({
       );
       const nextRows: DistributionRow[] = summaries.map(summary => {
         const existing = existingByTarget.get(summary.id);
-        const defaultConfig = DEFAULT_ROW_CONFIGS[summary.id];
         const nextOperations = existing
           ? existing.operations.map(operation => ({ ...operation }))
-          : defaultConfig?.operations?.map(operation => ({ ...operation })) ?? [];
-        const resolvedType = existing?.type ?? defaultConfig?.type ?? 'direct';
-        return {
+          : [];
+        const resolvedType = existing?.type ?? 'direct';
+        return applyDistributionStatus({
           id: existing?.id ?? summary.id,
           mappingRowId: summary.id,
           accountId: summary.value,
@@ -136,13 +110,10 @@ export const useDistributionStore = create<DistributionState>((set, _get) => ({
           activity: summary.mappedAmount,
           type: resolvedType,
           operations: clampOperationsForType(resolvedType, nextOperations),
-          presetId: existing?.presetId ?? defaultConfig?.presetId ?? null,
-          notes: existing?.notes ?? defaultConfig?.notes,
-          status:
-            existing?.status ??
-            defaultConfig?.status ??
-            (summary.mappedAmount > 0 ? 'Mapped' : 'Unmapped'),
-        };
+          presetId: existing?.presetId ?? null,
+          notes: existing?.notes,
+          status: existing?.status ?? 'Unmapped',
+        });
       });
       return { rows: nextRows };
     }),
@@ -156,23 +127,38 @@ export const useDistributionStore = create<DistributionState>((set, _get) => ({
   clearStatusFilters: () => set({ statusFilters: [] }),
   updateRow: (id, updates) =>
     set(state => ({
-      rows: state.rows.map(row => (row.id === id ? { ...row, ...updates } : row)),
+      rows: state.rows.map(row => {
+        if (row.id !== id) {
+          return row;
+        }
+        const nextRow: DistributionRow = {
+          ...row,
+          ...updates,
+          operations: updates.operations ?? row.operations,
+          type: updates.type ?? row.type,
+        };
+        return applyDistributionStatus(nextRow);
+      }),
     })),
   updateRowType: (id, type) =>
     set(state => ({
-      rows: state.rows.map(row =>
-        row.id === id
-          ? {
-              ...row,
-              type,
-              operations: clampOperationsForType(type, row.operations),
-            }
-          : row,
-      ),
+      rows: state.rows.map(row => {
+        if (row.id !== id) {
+          return row;
+        }
+        const nextOperations = clampOperationsForType(type, row.operations);
+        return applyDistributionStatus({
+          ...row,
+          type,
+          operations: nextOperations,
+        });
+      }),
     })),
   updateRowOperations: (id, operations) =>
     set(state => ({
-      rows: state.rows.map(row => (row.id === id ? { ...row, operations } : row)),
+      rows: state.rows.map(row =>
+        row.id === id ? applyDistributionStatus({ ...row, operations }) : row,
+      ),
     })),
   updateRowPreset: (id, presetId) =>
     set(state => ({
@@ -182,8 +168,56 @@ export const useDistributionStore = create<DistributionState>((set, _get) => ({
     set(state => ({
       rows: state.rows.map(row => (row.id === id ? { ...row, notes: notes || undefined } : row)),
     })),
-  updateRowStatus: (id, status) =>
-    set(state => ({
-      rows: state.rows.map(row => (row.id === id ? { ...row, status } : row)),
-    })),
+  setOperationsCatalog: operations =>
+    set({
+      operationsCatalog: operations.map(operation => ({ ...operation })),
+    }),
+  applyBatchDistribution: (ids, updates) => {
+    if (!ids.length) {
+      return;
+    }
+    set(state => {
+      const idSet = new Set(ids);
+      return {
+        rows: state.rows.map(row => {
+          if (!idSet.has(row.id)) {
+            return row;
+          }
+          let nextRow: DistributionRow = { ...row };
+          if (updates.type && updates.type !== nextRow.type) {
+            nextRow = {
+              ...nextRow,
+              type: updates.type,
+              operations: clampOperationsForType(updates.type, nextRow.operations),
+            };
+          }
+          if (Object.prototype.hasOwnProperty.call(updates, 'operation')) {
+            const operationShare = updates.operation;
+            if (operationShare) {
+              nextRow = {
+                ...nextRow,
+                operations: clampOperationsForType(nextRow.type, [operationShare]),
+              };
+            } else {
+              nextRow = { ...nextRow, operations: [] };
+            }
+          }
+          return applyDistributionStatus(nextRow);
+        }),
+      };
+    });
+  },
+  applyPresetToRows: (ids, presetId) => {
+    if (!ids.length) {
+      return;
+    }
+    set(state => {
+      const idSet = new Set(ids);
+      return {
+        rows: state.rows.map(row =>
+          idSet.has(row.id) ? { ...row, presetId: presetId ?? null } : row,
+        ),
+      };
+    });
+  },
 }));
