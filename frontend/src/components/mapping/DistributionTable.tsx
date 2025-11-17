@@ -531,25 +531,11 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                       ) : (
                         <div className="space-y-2">
                           <p className="text-sm text-slate-700 dark:text-slate-200">{operationsSummary}</p>
-                          {row.operations.length === 0 && (
-                            <p className="text-xs text-amber-600 dark:text-amber-400">Assign operations to complete this distribution.</p>
+                          {row.type === 'dynamic' && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                              {activePreset ? `Preset: ${activePreset.name}` : 'No preset selected'}
+                            </span>
                           )}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleRow(row)}
-                              aria-expanded={isExpanded}
-                              aria-controls={`distribution-panel-${row.id}`}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
-                            >
-                              {isExpanded ? 'Hide details' : 'Edit distribution'}
-                            </button>
-                            {row.type === 'dynamic' && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
-                                {activePreset ? `Preset: ${activePreset.name}` : 'No preset selected'}
-                              </span>
-                            )}
-                          </div>
                         </div>
                       )}
                     </td>
