@@ -403,6 +403,7 @@ export interface DistributionOperationShare {
   id: string;
   name: string;
   allocation?: number;
+  notes?: string;
 }
 
 export type DistributionStatus = Extract<MappingStatus, 'Mapped' | 'Unmapped'>;
