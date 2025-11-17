@@ -463,12 +463,15 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                           aria-expanded={isExpanded}
                           aria-controls={`distribution-panel-${row.id}`}
                           aria-label={`${isExpanded ? 'Hide' : 'Show'} operations for ${row.accountId}`}
-                          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-500 transition hover:border-blue-500 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-400 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded border border-transparent text-slate-500 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-300 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
                         >
-                          <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90 text-blue-600' : ''}`} aria-hidden="true" />
+                          <ChevronRight
+                            className={`h-6 w-6 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            aria-hidden="true"
+                          />
                         </button>
                       ) : (
-                        <span className="flex h-6 w-6 items-center justify-center" aria-hidden="true" />
+                        <span className="inline-flex h-6 w-6 items-center justify-center" aria-hidden="true" />
                       )}
                     </td>
                     <td className="px-3 py-4 align-middle">
