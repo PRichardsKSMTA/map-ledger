@@ -120,7 +120,7 @@ describe('DistributionTable', () => {
     const toggleButton = within(fuelRow as HTMLTableRowElement).getByLabelText(/operations for/i);
     fireEvent.click(toggleButton);
 
-    const builderButton = await screen.findByText('Open dynamic allocation builder');
+    const builderButton = await screen.findByText('Open preset builder');
     fireEvent.click(builderButton);
 
     expect(await screen.findByText('Dynamic allocations')).toBeInTheDocument();
