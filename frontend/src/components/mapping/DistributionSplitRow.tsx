@@ -235,7 +235,7 @@ export default function DistributionSplitRow({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Allocation splits</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Ensure 100% allocation across client operations.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Ensure 100% allocation across targets.</p>
         </div>
         <button
           type="button"
@@ -244,7 +244,7 @@ export default function DistributionSplitRow({
           className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
         >
           <Plus className="h-4 w-4" />
-          Add operation
+          Add split
         </button>
       </div>
 
@@ -262,11 +262,11 @@ export default function DistributionSplitRow({
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
             <thead className="bg-white dark:bg-slate-900/60">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Operation</th>
+                <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Target</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Percentage</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Amount</th>
                 <th className="px-3 py-2 text-left font-medium text-slate-600 dark:text-slate-300">Notes</th>
-                <th className="px-3 py-2" aria-label="Remove operation" />
+                <th className="px-3 py-2" aria-label="Remove split" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -274,7 +274,7 @@ export default function DistributionSplitRow({
                 <tr key={operation.id}>
                   <td className="px-3 py-2">
                     <label className="sr-only" htmlFor={`distribution-operation-${operation.id}`}>
-                      Select target operation
+                      Select target
                     </label>
                     <select
                       id={`distribution-operation-${operation.id}`}
@@ -282,7 +282,7 @@ export default function DistributionSplitRow({
                       onChange={event => handleTargetChange(operation.id, event.target.value)}
                       className="w-full rounded-md border border-slate-300 bg-white px-2 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     >
-                      <option value="">Select operation</option>
+                      <option value="">Select target</option>
                       {optionsForOperation(operation.id).map(option => (
                         <option key={option.id} value={option.id}>
                           {option.name && option.name !== option.id
@@ -356,7 +356,7 @@ export default function DistributionSplitRow({
         </div>
       ) : (
         <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
-          No operation splits yet. Add client operations to distribute this mapped value.
+          No splits yet. Add client targets to distribute this mapped value.
         </p>
       )}
 
