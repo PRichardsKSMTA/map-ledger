@@ -1,6 +1,7 @@
 import { ChangeEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Check, ChevronRight, HelpCircle, X } from 'lucide-react';
 import RatioAllocationManager from './RatioAllocationManager';
+import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
 import {
   useDistributionStore,
   type DistributionOperationCatalogItem,
@@ -598,44 +599,28 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                       })()}
                     </td>
                   </tr>
-                  {isExpanded && isEditing && (
+                  {isExpanded && isEditing && row.type === 'percentage' && (
                     <tr id={`distribution-panel-${row.id}`}>
                       <td colSpan={COLUMN_DEFINITIONS.length + 2} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
                         <div className="space-y-6">
-                          {row.type === 'percentage' && (
-                            <DistributionSplitRow
-                              row={row}
-                              operationsCatalog={operationsCatalog}
-                              operationsDraft={operationsDraft}
-                              setOperationsDraft={setOperationsDraft}
-                            />
-                          )}
-
-                          {row.type === 'dynamic' && (
-                            <div className="space-y-4">
-                              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                                <div className="space-y-2">
-                                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Dynamic allocations</p>
-                                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                                    Dynamic allocations distribute amounts according to preset configurations. Use the preset builder to assign ratio weights for this standard account.
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div>
-                                <button
-                                  type="button"
-                                  onClick={() => setActiveDynamicAccountId(row.accountId)}
-                                  className="inline-flex items-center rounded-md border border-emerald-500 px-3 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:border-emerald-400 dark:text-emerald-300 dark:hover:bg-emerald-500/10 dark:focus-visible:ring-offset-slate-900"
-                                >
-                                  Open dynamic allocation builder
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          <DistributionSplitRow
+                            row={row}
+                            operationsCatalog={operationsCatalog}
+                            operationsDraft={operationsDraft}
+                            setOperationsDraft={setOperationsDraft}
+                          />
                         </div>
                       </td>
                     </tr>
+                  )}
+                  {isExpanded && isEditing && row.type === 'dynamic' && (
+                    <DistributionDynamicAllocationRow
+                      row={row}
+                      colSpan={COLUMN_DEFINITIONS.length + 2}
+                      panelId={`distribution-panel-${row.id}`}
+                      onOpenBuilder={() => setActiveDynamicAccountId(row.accountId)}
+                      operationsCatalog={operationsCatalog}
+                    />
                   )}
                 </Fragment>
               );
