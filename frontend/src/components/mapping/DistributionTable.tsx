@@ -10,6 +10,7 @@ import { selectStandardScoaSummaries, useMappingStore } from '../../store/mappin
 import { useOrganizationStore } from '../../store/organizationStore';
 import { useDistributionSelectionStore } from '../../store/distributionSelectionStore';
 import DistributionToolbar from './DistributionToolbar';
+import DistributionSplitRow from './DistributionSplitRow';
 import type {
   DistributionOperationShare,
   DistributionRow,
@@ -201,6 +202,30 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     return normalized.toUpperCase();
   }, []);
 
+  const sanitizeOperationsDraft = useCallback(
+    (draft: DistributionOperationShare[]): DistributionOperationShare[] =>
+      draft
+        .map(operation => {
+          const id = operation.id?.trim();
+          if (!id) {
+            return null;
+          }
+          const allocation =
+            typeof operation.allocation === 'number' && Number.isFinite(operation.allocation)
+              ? operation.allocation
+              : undefined;
+          const notes = operation.notes?.trim();
+          return {
+            id,
+            name: operation.name?.trim() || id,
+            allocation,
+            notes: notes || undefined,
+          } satisfies DistributionOperationShare;
+        })
+        .filter((operation): operation is DistributionOperationShare => Boolean(operation)),
+    [],
+  );
+
   useEffect(() => {
     if (previousSignature.current === summarySignature) {
       return;
@@ -346,31 +371,6 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     setOperationsDraft(row.operations.map(operation => ({ ...operation })));
   };
 
-  const handleToggleOperation = (operationId: string, enabled: boolean) => {
-    const catalogItem = operationsCatalog.find(item => item.id === operationId);
-    if (!catalogItem) {
-      return;
-    }
-
-    setOperationsDraft(previous => {
-      if (enabled) {
-        if (previous.some(operation => operation.id === operationId)) {
-          return previous;
-        }
-        return [...previous, { id: catalogItem.id, name: catalogItem.name }];
-      }
-      return previous.filter(operation => operation.id !== operationId);
-    });
-  };
-
-  const handleAllocationChange = (operationId: string, value: number) => {
-    setOperationsDraft(previous =>
-      previous.map(operation =>
-        operation.id === operationId ? { ...operation, allocation: Number.isFinite(value) ? value : 0 } : operation,
-      ),
-    );
-  };
-
   const handleDirectOperationChange = (row: DistributionRow, operationId: string) => {
     if (!operationId) {
       updateRowOperations(row.id, []);
@@ -385,7 +385,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   };
 
   const handleSaveOperations = (row: DistributionRow) => {
-    updateRowOperations(row.id, operationsDraft);
+    const sanitized = sanitizeOperationsDraft(operationsDraft);
+    updateRowOperations(row.id, sanitized);
+    setOperationsDraft(sanitized.map(operation => ({ ...operation })));
   };
 
   const handleCancelOperations = (row: DistributionRow) => {
@@ -602,67 +604,22 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                           </div>
                           <div className="grid gap-6 lg:grid-cols-3">
                             <div className="space-y-4 lg:col-span-2">
-                              {row.type !== 'direct' && (
+                              {row.type === 'percentage' && (
+                                <DistributionSplitRow
+                                  row={row}
+                                  operationsCatalog={operationsCatalog}
+                                  operationsDraft={operationsDraft}
+                                  setOperationsDraft={setOperationsDraft}
+                                />
+                              )}
+                              {row.type === 'dynamic' && (
                                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                                  <div className="flex items-center justify-between">
-                                    <div>
-                                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Operations</p>
-                                      <p className="text-xs text-slate-500 dark:text-slate-400">Select the target operations that should receive this value.</p>
-                                    </div>
-                                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{operationsDraft.length} selected</span>
+                                  <div className="space-y-2">
+                                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Dynamic allocations</p>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                                      Dynamic allocations distribute amounts according to preset configurations. Use the preset builder to assign ratio weights for this standard account.
+                                    </p>
                                   </div>
-                                  {operationsCatalog.length === 0 ? (
-                                    <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-                                      No operations are available for this client. Import client operations to continue.
-                                    </p>
-                                  ) : (
-                                    <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
-                                      {operationsCatalog.map(option => {
-                                        const isSelected = operationsDraft.some(operation => operation.id === option.id);
-                                        const optionLabel = option.name && option.name !== option.id ? `${option.id} – ${option.name}` : option.id;
-                                        return (
-                                          <label
-                                            key={option.id}
-                                            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 text-sm shadow-sm transition ${
-                                              isSelected
-                                                ? 'border-blue-500 bg-blue-50/60 dark:border-blue-400 dark:bg-blue-500/10'
-                                                : 'border-slate-300 bg-white hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-500'
-                                            }`}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={isSelected}
-                                              onChange={event => handleToggleOperation(option.id, event.target.checked)}
-                                              className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900"
-                                            />
-                                            <div className="flex-1">
-                                              <div className="font-medium text-slate-700 dark:text-slate-100">{optionLabel}</div>
-                                              {row.type === 'percentage' && isSelected && (
-                                                <div className="mt-1 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                                                  <label htmlFor={`allocation-${row.id}-${option.id}`}>Allocation %</label>
-                                                  <input
-                                                    id={`allocation-${row.id}-${option.id}`}
-                                                    type="number"
-                                                    min={0}
-                                                    max={100}
-                                                    step={0.1}
-                                                    value={operationsDraft.find(operation => operation.id === option.id)?.allocation ?? 0}
-                                                    onChange={event => handleAllocationChange(option.id, Number.parseFloat(event.target.value))}
-                                                    className="w-24 rounded-md border border-slate-300 px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
-                                                  />
-                                                </div>
-                                              )}
-                                            </div>
-                                          </label>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                  {row.type === 'dynamic' && (
-                                    <p className="mt-3 text-xs text-slate-600 dark:text-slate-300">
-                                      Dynamic allocations distribute amounts according to preset configurations. Use the builder to configure ratio weights.
-                                    </p>
-                                  )}
                                 </div>
                               )}
 

@@ -73,7 +73,9 @@ const clampOperationsForType = (
 ): DistributionRow['operations'] => {
   if (type === 'direct') {
     const [primary] = operations;
-    return primary ? [{ id: primary.id, name: primary.name }] : [];
+    return primary
+      ? [{ id: primary.id, name: primary.name, notes: primary.notes }]
+      : [];
   }
 
   if (type === 'percentage') {
@@ -83,7 +85,12 @@ const clampOperationsForType = (
     }));
   }
 
-  return operations.map(operation => ({ id: operation.id, name: operation.name, allocation: operation.allocation }));
+  return operations.map(operation => ({
+    id: operation.id,
+    name: operation.name,
+    allocation: operation.allocation,
+    notes: operation.notes,
+  }));
 };
 
 export const useDistributionStore = create<DistributionState>((set, _get) => ({
