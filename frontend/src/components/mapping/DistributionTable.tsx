@@ -522,7 +522,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                     <td className={`px-3 py-4 text-slate-700 dark:text-slate-200 ${COLUMN_WIDTH_CLASSES.description ?? ''}`}>
                       {row.description}
                     </td>
-                    <td className={`px-3 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''}`}>
+                    <td
+                      className={`pl-3 pr-8 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''}`}
+                    >
                       {formatCurrency(row.activity)}
                     </td>
                     <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.type ?? ''}`}>
