@@ -45,7 +45,7 @@ type SortDirection = 'asc' | 'desc';
 const COLUMN_DEFINITIONS: { key: SortKey; label: string; align?: 'right' }[] = [
   { key: 'accountId', label: 'Account ID' },
   { key: 'description', label: 'Standard COA Description' },
-  { key: 'activity', label: 'Mapped Value', align: 'right' },
+  { key: 'activity', label: 'Activity', align: 'right' },
   { key: 'type', label: 'Distribution Type' },
   { key: 'operations', label: 'Target Operation' },
   { key: 'preset', label: 'Preset' },
@@ -55,7 +55,7 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string; align?: 'right' }[] = [
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   accountId: 'w-32',
   description: 'min-w-[18rem]',
-  activity: 'w-32',
+  activity: 'min-w-[11rem]',
   type: 'w-40',
   operations: 'min-w-[18rem]',
   preset: 'w-40',
