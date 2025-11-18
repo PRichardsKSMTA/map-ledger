@@ -224,29 +224,28 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     return normalized.toUpperCase();
   }, []);
 
-  const sanitizeOperationsDraft = useCallback(
-    (draft: DistributionOperationShare[]): DistributionOperationShare[] =>
-      draft
-        .map(operation => {
-          const id = operation.id?.trim();
-          if (!id) {
-            return null;
-          }
-          const allocation =
-            typeof operation.allocation === 'number' && Number.isFinite(operation.allocation)
-              ? operation.allocation
-              : undefined;
-          const notes = operation.notes?.trim();
-          return {
-            id,
-            name: operation.name?.trim() || id,
-            allocation,
-            notes: notes || undefined,
-          } satisfies DistributionOperationShare;
-        })
-        .filter((operation): operation is DistributionOperationShare => Boolean(operation)),
-    [],
-  );
+  const sanitizeOperationsDraft = useCallback((draft: DistributionOperationShare[]): DistributionOperationShare[] => {
+    const sanitized = draft.reduce<DistributionOperationShare[]>((acc, operation) => {
+      const id = operation.id?.trim();
+      if (!id) {
+        return acc;
+      }
+      const allocation =
+        typeof operation.allocation === 'number' && Number.isFinite(operation.allocation)
+          ? operation.allocation
+          : undefined;
+      const notes = operation.notes?.trim();
+      acc.push({
+        id,
+        name: operation.name?.trim() || id,
+        allocation,
+        notes: notes || undefined,
+      });
+      return acc;
+    }, []);
+
+    return sanitized;
+  }, []);
 
   useEffect(() => {
     if (previousSignature.current === summarySignature) {

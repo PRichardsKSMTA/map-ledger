@@ -65,8 +65,9 @@ export default function DistributionToolbar() {
   };
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-end">
+    <>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-end">
           <div className="flex max-w-sm flex-col">
             <label htmlFor={searchLabelId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Search distribution rows
@@ -86,11 +87,7 @@ export default function DistributionToolbar() {
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <div
-              role="group"
-              aria-label="Filter distribution by status"
-              className="flex flex-wrap items-center gap-2"
-            >
+            <div role="group" aria-label="Filter distribution by status" className="flex flex-wrap items-center gap-2">
               {STATUS_DEFINITIONS.map(status => {
                 const isActive = statusFilters.includes(status.value);
                 return (
@@ -168,6 +165,6 @@ export default function DistributionToolbar() {
         onClose={() => setPresetModalOpen(false)}
         onApply={handleApplyPreset}
       />
-    </div>
+    </>
   );
 }
