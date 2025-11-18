@@ -65,9 +65,8 @@ export default function DistributionToolbar() {
   };
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-end">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div className="flex flex-1 flex-col gap-4 lg:flex-row lg:items-end">
           <div className="flex max-w-sm flex-col">
             <label htmlFor={searchLabelId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Search distribution rows
