@@ -457,6 +457,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
               </th>
               {COLUMN_DEFINITIONS.map(column => {
                 const widthClass = COLUMN_WIDTH_CLASSES[column.key] ?? '';
+                const buttonAlignmentClass = column.align === 'right' ? 'justify-end text-right' : '';
                 return (
                   <th
                     key={column.key}
@@ -467,7 +468,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                     <button
                       type="button"
                       onClick={() => handleSort(column.key)}
-                      className="flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                      className={`flex w-full items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${buttonAlignmentClass}`}
                     >
                       {column.label}
                       <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
