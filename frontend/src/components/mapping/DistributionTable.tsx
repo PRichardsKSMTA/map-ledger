@@ -56,10 +56,16 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   accountId: 'w-32',
   description: 'min-w-[18rem]',
   activity: 'min-w-[11rem]',
-  type: 'w-40',
-  operations: 'min-w-[18rem]',
+  type: 'w-44',
+  operations: 'min-w-[20rem]',
   preset: 'w-40',
   status: 'w-32',
+};
+
+const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
+  activity: 'pr-10',
+  type: 'pr-10',
+  operations: 'pr-6',
 };
 
 const STATUS_ICONS: Record<DistributionStatus, typeof Check | typeof HelpCircle> = {
@@ -457,13 +463,14 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
               </th>
               {COLUMN_DEFINITIONS.map(column => {
                 const widthClass = COLUMN_WIDTH_CLASSES[column.key] ?? '';
+                const spacingClass = COLUMN_SPACING_CLASSES[column.key] ?? '';
                 const buttonAlignmentClass = column.align === 'right' ? 'justify-end text-right' : '';
                 return (
                   <th
                     key={column.key}
                     scope="col"
                     aria-sort={getAriaSort(column.key)}
-                    className={`px-3 py-3 ${widthClass} ${column.align === 'right' ? 'text-right' : ''}`}
+                    className={`px-3 py-3 ${widthClass} ${spacingClass} ${column.align === 'right' ? 'text-right' : ''}`}
                   >
                     <button
                       type="button"
@@ -524,11 +531,11 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                       {row.description}
                     </td>
                     <td
-                      className={`pl-3 pr-8 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''}`}
+                      className={`pl-3 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''} ${COLUMN_SPACING_CLASSES.activity ?? ''}`}
                     >
                       {formatCurrency(row.activity)}
                     </td>
-                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.type ?? ''}`}>
+                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.type ?? ''} ${COLUMN_SPACING_CLASSES.type ?? ''}`}>
                       <label htmlFor={`distribution-type-${row.id}`} className="sr-only">
                         Select distribution type
                       </label>
@@ -545,7 +552,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                         ))}
                       </select>
                     </td>
-                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.operations ?? ''}`}>
+                    <td className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.operations ?? ''} ${COLUMN_SPACING_CLASSES.operations ?? ''}`}>
                       {row.type === 'direct' ? (
                         operationsCatalog.length > 0 ? (
                           <select
