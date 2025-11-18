@@ -435,8 +435,12 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     <div className="space-y-6">
       <DistributionToolbar />
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm dark:border-slate-700">
-        <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700" role="table">
+      <div className="overflow-x-auto">
+        <table
+          className="divide-y divide-slate-200 dark:divide-slate-700"
+          role="table"
+          style={{ minWidth: '100%' }}
+        >
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               <th scope="col" className="w-10 px-3 py-3">
@@ -474,7 +478,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
               })}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
+          <tbody className="divide-y divide-slate-200 bg-white text-sm dark:divide-slate-700 dark:bg-slate-900">
             {sortedRows.map(row => {
               const isExpanded = expandedRows.has(row.id);
               const isEditing = editingRowId === row.id;
