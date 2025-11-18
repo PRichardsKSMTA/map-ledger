@@ -124,5 +124,6 @@ describe('DistributionTable', () => {
     fireEvent.click(builderButton);
 
     expect(await screen.findByText('Dynamic allocations')).toBeInTheDocument();
+    expect(await screen.findByText('Target operation')).toBeInTheDocument();
   });
 });

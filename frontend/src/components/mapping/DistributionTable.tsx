@@ -215,7 +215,14 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const presetOptions = useRatioAllocationStore(selectPresetSummaries);
 
   const operationTargetCatalog = useMemo(
-    () => clientOperations.map(operation => ({ id: operation.id, label: operation.name ?? operation.id })),
+    () =>
+      clientOperations.map(operation => ({
+        id: operation.id,
+        label:
+          operation.name && operation.name !== operation.id
+            ? `${operation.id} – ${operation.name}`
+            : operation.id,
+      })),
     [clientOperations],
   );
 
@@ -678,6 +685,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                 onDone={() => setActiveDynamicAccountId(null)}
                 targetCatalog={operationTargetCatalog}
                 resolveCanonicalTargetId={resolveOperationCanonicalTargetId}
+                targetLabel="Target operation"
+                targetPlaceholder="Select target operation"
+                targetEmptyLabel="No operations available"
               />
             </div>
           </div>
