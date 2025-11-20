@@ -27,10 +27,10 @@ const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsP
         {steps.map(step => {
           const isActive = step.key === activeStep;
           const baseClasses =
-            'group relative flex-1 rounded-t-xl px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 [clip-path:polygon(9%_0,91%_0,100%_100%,0_100%)]';
+            'group relative flex-1 rounded-t-xl border px-4 py-3 text-left text-sm font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 [clip-path:polygon(9%_0,91%_0,100%_100%,0_100%)]';
           const stateClasses = isActive
-            ? ' -mb-px bg-blue-600 text-white shadow-lg ring-2 ring-blue-500 dark:bg-blue-500 dark:text-white'
-            : ' bg-slate-100 text-slate-700 ring-1 ring-slate-300 hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700';
+            ? ' -mb-px border-amber-300 bg-amber-100 text-amber-900 shadow-md ring-1 ring-amber-400 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-700'
+            : ' border-amber-200 bg-white text-slate-700 hover:bg-amber-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
 
           return (
             <button
