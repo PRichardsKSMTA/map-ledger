@@ -130,6 +130,28 @@ export interface StandardScoaSummary {
   mappedAmount: number;
 }
 
+export interface ReconciliationSourceMapping {
+  glAccountId: string;
+  glAccountName: string;
+  entityName?: string;
+  companyName: string;
+  amount: number;
+}
+
+export interface ReconciliationAccountBreakdown {
+  id: string;
+  label: string;
+  subcategory: string;
+  total: number;
+  sources: ReconciliationSourceMapping[];
+}
+
+export interface ReconciliationSubcategoryGroup {
+  subcategory: string;
+  total: number;
+  accounts: ReconciliationAccountBreakdown[];
+}
+
 export interface ImportPreviewRow {
   entity: string;
   accountId: string;

@@ -7,6 +7,9 @@ import type {
   MappingSplitDefinition,
   MappingStatus,
   MappingType,
+  ReconciliationAccountBreakdown,
+  ReconciliationSourceMapping,
+  ReconciliationSubcategoryGroup,
   StandardScoaSummary,
   TrialBalanceRow,
 } from '../types';
@@ -278,6 +281,140 @@ const accumulateStandardTargetValues = (
   });
 
   return accumulator;
+};
+
+const getSubcategoryLabel = (label: string): string => {
+  const [subcategory] = label.split(' - ');
+  const cleaned = subcategory?.trim();
+  if (cleaned && cleaned.length > 0) {
+    return cleaned;
+  }
+  return 'Other';
+};
+
+export const buildReconciliationGroups = (
+  accounts: GLAccountMappingRow[],
+): ReconciliationSubcategoryGroup[] => {
+  const accountTargets = new Map<string, ReconciliationAccountBreakdown>();
+
+  const addContribution = (
+    targetId: string,
+    label: string,
+    amount: number,
+    source: ReconciliationSourceMapping,
+  ) => {
+    if (amount <= 0) {
+      return;
+    }
+
+    const subcategory = getSubcategoryLabel(label);
+    const existing = accountTargets.get(targetId);
+
+    if (existing) {
+      existing.total += amount;
+      existing.sources.push(source);
+      return;
+    }
+
+    accountTargets.set(targetId, {
+      id: targetId,
+      label,
+      subcategory,
+      total: amount,
+      sources: [source],
+    });
+  };
+
+  accounts.forEach(account => {
+    const sourceBase = {
+      glAccountId: account.accountId,
+      glAccountName: account.accountName,
+      entityName: account.entityName,
+      companyName: account.companyName,
+    } satisfies Omit<ReconciliationSourceMapping, 'amount'>;
+
+    if (account.mappingType === 'direct') {
+      if (account.status !== 'Mapped') {
+        return;
+      }
+
+      const normalizedTarget = account.manualCOAId?.trim();
+      if (!normalizedTarget) {
+        return;
+      }
+
+      const option = findStandardScoaOption(normalizedTarget);
+      const targetId = option?.id ?? normalizedTarget;
+      const label = option?.label ?? normalizedTarget;
+      const amount = Math.abs(account.netChange);
+
+      addContribution(targetId, label, amount, { ...sourceBase, amount });
+      return;
+    }
+
+    if (account.mappingType === 'percentage') {
+      account.splitDefinitions.forEach(split => {
+        if (split.isExclusion) {
+          return;
+        }
+
+        const normalizedTarget = split.targetId?.trim();
+        if (!normalizedTarget) {
+          return;
+        }
+
+        const option = findStandardScoaOption(normalizedTarget);
+        const targetId = option?.id ?? normalizedTarget;
+        const label = option?.label ?? split.targetName ?? normalizedTarget;
+        const amount = getSplitAmount(account, split);
+
+        if (amount <= 0) {
+          return;
+        }
+
+        addContribution(targetId, label, amount, { ...sourceBase, amount });
+      });
+    }
+  });
+
+  const groupedBySubcategory = new Map<string, ReconciliationSubcategoryGroup>();
+
+  accountTargets.forEach(account => {
+    if (account.total <= 0) {
+      return;
+    }
+
+    const sources = [...account.sources].sort(
+      (a, b) => b.amount - a.amount || a.glAccountName.localeCompare(b.glAccountName),
+    );
+
+    const accountEntry: ReconciliationAccountBreakdown = {
+      ...account,
+      sources,
+    };
+
+    const existingGroup = groupedBySubcategory.get(account.subcategory);
+    if (existingGroup) {
+      existingGroup.accounts.push(accountEntry);
+      existingGroup.total += accountEntry.total;
+      return;
+    }
+
+    groupedBySubcategory.set(account.subcategory, {
+      subcategory: account.subcategory,
+      total: accountEntry.total,
+      accounts: [accountEntry],
+    });
+  });
+
+  return Array.from(groupedBySubcategory.values())
+    .map(group => ({
+      ...group,
+      accounts: group.accounts.sort(
+        (a, b) => b.total - a.total || a.label.localeCompare(b.label),
+      ),
+    }))
+    .sort((a, b) => b.total - a.total || a.subcategory.localeCompare(b.subcategory));
 };
 
 const buildBasisAccountsFromMappings = (
@@ -1379,6 +1516,10 @@ export const selectFilteredAccounts = (state: MappingState): GLAccountMappingRow
 export const selectStandardScoaSummaries = (
   state: MappingState,
 ): StandardScoaSummary[] => buildStandardScoaSummaries(state.accounts);
+
+export const selectReconciliationGroups = (
+  state: MappingState,
+): ReconciliationSubcategoryGroup[] => buildReconciliationGroups(state.accounts);
 
 export const selectAccountsByPeriod = (state: MappingState): Map<string, GLAccountMappingRow[]> => {
   const byPeriod = new Map<string, GLAccountMappingRow[]>();
