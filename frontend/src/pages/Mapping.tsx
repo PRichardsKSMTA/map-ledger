@@ -54,7 +54,7 @@ export default function Mapping() {
       <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
       <section
         aria-label="Mapping workspace content"
-        className="w-full rounded-t-none rounded-b-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-full rounded-t-none rounded-b-lg border border-gray-200 border-t-0 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
         {activeStep === 'mapping' && <MappingTable />}
         {activeStep === 'reconcile' && <ReconcilePane />}
