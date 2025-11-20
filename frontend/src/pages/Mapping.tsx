@@ -5,13 +5,14 @@ import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
 import SummaryCards from '../components/mapping/SummaryCards';
 import MappingTable from '../components/mapping/MappingTable';
 import DistributionTable from '../components/mapping/DistributionTable';
+import ReconcilePane from '../components/mapping/ReconcilePane';
 import ReviewPane from '../components/mapping/ReviewPane';
 import MappingMonthHelper from '../components/mapping/MappingMonthHelper';
 import { useMappingStore } from '../store/mappingStore';
 import scrollPageToTop from '../utils/scroll';
 
 const stepParam = (value: string | null): MappingStep => {
-  if (value === 'distribution' || value === 'review') {
+  if (value === 'reconcile' || value === 'distribution' || value === 'review') {
     return value;
   }
   return 'mapping';
@@ -53,9 +54,10 @@ export default function Mapping() {
       <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
       <section
         aria-label="Mapping workspace content"
-        className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+        className="w-full rounded-t-none rounded-b-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
       >
         {activeStep === 'mapping' && <MappingTable />}
+        {activeStep === 'reconcile' && <ReconcilePane />}
         {activeStep === 'distribution' && <DistributionTable />}
         {activeStep === 'review' && <ReviewPane />}
       </section>
