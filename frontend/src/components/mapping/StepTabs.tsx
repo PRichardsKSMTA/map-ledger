@@ -21,16 +21,16 @@ const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsP
   return (
     <div className="pb-1">
       <nav
-        className="-mb-px flex flex-col gap-3 sm:flex-row"
+        className="-mb-px flex flex-col gap-3 border-b border-gray-200 sm:flex-row dark:border-slate-700"
         aria-label="Mapping workflow steps"
       >
         {steps.map(step => {
           const isActive = step.key === activeStep;
           const baseClasses =
-            'group relative flex-1 rounded-t-xl border px-4 py-3 text-left text-sm font-medium shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900 [clip-path:polygon(9%_0,91%_0,100%_100%,0_100%)]';
+            'group relative flex-1 rounded-t-lg border px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900';
           const stateClasses = isActive
-            ? ' -mb-px border-amber-300 bg-amber-100 text-amber-900 shadow-md ring-1 ring-amber-400 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-700'
-            : ' border-amber-200 bg-white text-slate-700 hover:bg-amber-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700';
+            ? ' -mb-px border-gray-200 bg-white text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50'
+            : ' border-transparent text-slate-700 hover:border-gray-200 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white';
 
           return (
             <button
