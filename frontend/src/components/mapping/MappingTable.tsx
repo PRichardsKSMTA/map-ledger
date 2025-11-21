@@ -18,7 +18,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
-import MappingCompanyCell from './MappingCompanyCell';
+import MappingEntityCell from './MappingEntityCell';
 import { selectPresetSummaries, useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
   getAccountExcludedAmount,
@@ -47,7 +47,7 @@ import { formatCurrencyAmount } from '../../utils/currency';
 import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions';
 
 type SortKey =
-  | 'companyName'
+  | 'entityName'
   | 'accountId'
   | 'accountName'
   | 'netChange'
@@ -106,7 +106,7 @@ const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
 const formatNetChange = (value: number) => formatCurrencyAmount(value);
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
-  { key: 'companyName', label: 'Company' },
+  { key: 'entityName', label: 'Entity' },
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'netChange', label: 'Activity' },
@@ -181,9 +181,9 @@ export default function MappingTable() {
     useMappingSelectionStore();
   const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
   const allAccounts = useMappingStore((state) => state.accounts);
-  const activeCompanies = useMappingStore((state) => state.activeCompanies);
-  const updateAccountCompany = useMappingStore(
-    (state) => state.updateAccountCompany,
+  const activeEntities = useMappingStore((state) => state.activeEntities);
+  const updateAccountEntity = useMappingStore(
+    (state) => state.updateAccountEntity,
   );
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
@@ -207,8 +207,8 @@ export default function MappingTable() {
     const grouped = new Map<string, string[]>();
     allAccounts.forEach((account) => {
       const monthKey = account.glMonth ?? 'unspecified';
-      const companyKey = account.companyName?.trim().toLowerCase() ?? '';
-      const key = `${companyKey || '__blank__'}__${account.accountId}__${monthKey}`;
+      const entityKey = account.entityName?.trim().toLowerCase() ?? '';
+      const key = `${entityKey || '__blank__'}__${account.accountId}__${monthKey}`;
       const existing = grouped.get(key);
       if (existing) {
         existing.push(account.id);
@@ -227,14 +227,14 @@ export default function MappingTable() {
     return conflicts;
   }, [allAccounts]);
 
-  const handleCompanyCommit = useCallback(
-    (accountId: string, companyName: string, matchedCompanyId?: string | null) => {
-      updateAccountCompany(accountId, {
-        companyName,
-        companyId: matchedCompanyId ?? undefined,
+  const handleEntityCommit = useCallback(
+    (accountId: string, entityName: string, matchedEntityId?: string | null) => {
+      updateAccountEntity(accountId, {
+        entityName,
+        entityId: matchedEntityId ?? undefined,
       });
     },
-    [updateAccountCompany],
+    [updateAccountEntity],
   );
 
   const dynamicIssueIds = useMemo(() => {
@@ -345,7 +345,7 @@ export default function MappingTable() {
         [
           account.accountId,
           account.accountName,
-          account.companyName,
+          account.entityName,
           account.activity,
           account.netChange.toString(),
           formatNetChange(account.netChange),
@@ -534,7 +534,7 @@ export default function MappingTable() {
               const hasDynamicExclusionOverride =
                 account.mappingType === 'dynamic' && Boolean(dynamicExclusion);
 
-              const rowKey = `${account.id}-${account.companyId}-${account.glMonth ?? 'no-period'}-${index}`;
+              const rowKey = `${account.id}-${account.entityId}-${account.glMonth ?? 'no-period'}-${index}`;
 
               return (
                 <Fragment key={rowKey}>
@@ -575,16 +575,16 @@ export default function MappingTable() {
                       />
                     </td>
                     <td className="max-w-[220px] px-3 py-4 align-top">
-                      <MappingCompanyCell
+                      <MappingEntityCell
                         account={account}
-                        options={activeCompanies}
+                        options={activeEntities}
                         requiresManualAssignment={
-                          Boolean(account.requiresCompanyAssignment) ||
-                          (activeCompanies.length <= 1 &&
+                          Boolean(account.requiresEntityAssignment) ||
+                          (activeEntities.length <= 1 &&
                             compositeConflictIds.has(account.id))
                         }
                         hasCompositeConflict={compositeConflictIds.has(account.id)}
-                        onCommit={handleCompanyCommit}
+                        onCommit={handleEntityCommit}
                       />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
@@ -871,8 +871,8 @@ function getSortValue(
   resolveStatus?: StatusResolver
 ): string | number {
   switch (key) {
-    case 'companyName':
-      return account.companyName;
+    case 'entityName':
+      return account.entityName;
     case 'accountId':
       return account.accountId;
     case 'accountName':

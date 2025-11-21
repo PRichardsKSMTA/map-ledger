@@ -19,8 +19,8 @@ describe('mappingStore selectors', () => {
       accounts: createInitialMappingAccounts(),
       searchTerm: '',
       activeStatuses: [],
-      activeCompanies: [],
-      activeCompanyIds: [],
+      activeEntities: [],
+      activeEntityIds: [],
     });
     useRatioAllocationStore.setState({
       allocations: [],
@@ -296,8 +296,8 @@ describe('mappingStore selectors', () => {
         .loadImportedAccounts({
           uploadId: 'import-1',
           clientId: 'cli-123',
-          companyIds: ['ent-1'],
-          companies: [{ id: 'ent-1', name: 'Entity One' }],
+          entityIds: ['ent-1'],
+          entities: [{ id: 'ent-1', name: 'Entity One' }],
           period: '2024-01',
           rows,
         });
@@ -314,8 +314,8 @@ describe('mappingStore selectors', () => {
     );
     expect(state.activeUploadId).toBe('import-1');
     expect(state.activeClientId).toBe('cli-123');
-    expect(state.activeCompanyIds).toEqual(['ent-1']);
-    expect(state.activeCompanies).toEqual([
+    expect(state.activeEntityIds).toEqual(['ent-1']);
+    expect(state.activeEntities).toEqual([
       { id: 'ent-1', name: 'Entity One' },
     ]);
     expect(state.activePeriod).toBe('2024-01');
@@ -343,8 +343,8 @@ describe('mappingStore selectors', () => {
       useMappingStore.getState().loadImportedAccounts({
         uploadId: 'import-dup',
         clientId: 'cli-123',
-        companyIds: ['comp-1'],
-        companies: [{ id: 'comp-1', name: 'AMX Inc.' }],
+        entityIds: ['comp-1'],
+        entities: [{ id: 'comp-1', name: 'AMX Inc.' }],
         period: '2025-08',
         rows,
       });
@@ -353,26 +353,26 @@ describe('mappingStore selectors', () => {
     const state = useMappingStore.getState();
     expect(state.accounts).toHaveLength(2);
     state.accounts.forEach((account) => {
-      expect(account.requiresCompanyAssignment).toBe(true);
+      expect(account.requiresEntityAssignment).toBe(true);
     });
 
     act(() => {
-      useMappingStore.getState().updateAccountCompany(state.accounts[0].id, {
-        companyName: 'AMX Inc.',
-        companyId: 'comp-1',
+      useMappingStore.getState().updateAccountEntity(state.accounts[0].id, {
+        entityName: 'AMX Inc.',
+        entityId: 'comp-1',
       });
-      useMappingStore.getState().updateAccountCompany(state.accounts[1].id, {
-        companyName: 'AMX Canada',
+      useMappingStore.getState().updateAccountEntity(state.accounts[1].id, {
+        entityName: 'AMX Canada',
       });
     });
 
     const resolved = useMappingStore.getState().accounts;
-    expect(resolved.map((account) => account.companyName)).toEqual([
+    expect(resolved.map((account) => account.entityName)).toEqual([
       'AMX Inc.',
       'AMX Canada',
     ]);
     resolved.forEach((account) => {
-      expect(account.requiresCompanyAssignment).toBe(false);
+      expect(account.requiresEntityAssignment).toBe(false);
     });
   });
 });

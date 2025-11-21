@@ -22,7 +22,7 @@ const templateHeaders = [
   'GL ID',
   'Account Description',
   'Net Change',
-  'Company',
+  'Entity',
   'User Defined 1',
   'User Defined 2',
   'User Defined 3',
@@ -79,7 +79,7 @@ interface ImportFormProps {
   onImport: (
     uploads: TrialBalanceRow[],
     clientId: string,
-    companyIds: string[],
+    entityIds: string[],
     headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
@@ -92,7 +92,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const companies = useOrganizationStore((state) => state.companies);
   const isLoadingClients = useOrganizationStore((state) => state.isLoading);
-  const [companyIds, setCompanyIds] = useState<string[]>([]);
+  const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploads, setUploads] = useState<ParsedUpload[]>([]);
@@ -143,7 +143,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   const singleClientId = clientOptions.length === 1 ? clientOptions[0].id : null;
 
-  const companyOptions = useMemo(() => {
+  const entityOptions = useMemo(() => {
     if (!clientId) return [];
     return companies.filter((company) =>
       company.clients.some((c) => c.id === clientId)
@@ -152,7 +152,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   useEffect(() => {
     if (companies.length === 1) {
-      setCompanyIds([companies[0].id]);
+      setEntityIds([companies[0].id]);
     }
   }, [companies]);
 
@@ -163,13 +163,13 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   }, [singleClientId]);
 
   useEffect(() => {
-    const available = companyOptions.map((company) => company.id);
+    const available = entityOptions.map((company) => company.id);
     if (available.length === 1) {
-      setCompanyIds([available[0]]);
+      setEntityIds([available[0]]);
     } else {
-      setCompanyIds([]);
+      setEntityIds([]);
     }
-  }, [clientId, companyOptions]);
+  }, [clientId, entityOptions]);
 
   useEffect(() => {
     if (uploads.length > 0 && selectedSheets.length === 0) {
@@ -191,8 +191,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   const processFile = async (file: File) => {
     try {
-      if (!clientId || companyIds.length === 0) {
-        setError('Please select a client and company before uploading.');
+      if (!clientId || entityIds.length === 0) {
+        setError('Please select a client and entity before uploading.');
         setSelectedFile(null);
         setSelectedSheets([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -266,8 +266,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
             return null;
           }
 
-          const entityValue = keyMap['Company']
-            ? row[keyMap['Company']]
+          const entityValue = keyMap['Entity']
+            ? row[keyMap['Entity']]
             : '';
           const netChangeValue = keyMap['Net Change']
             ? row[keyMap['Net Change']]
@@ -307,7 +307,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     if (
       selectedFile &&
       clientId &&
-      companyIds.length > 0 &&
+      entityIds.length > 0 &&
       combinedRows.length > 0 &&
       headerMap
     ) {
@@ -316,7 +316,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       await onImport(
         combinedRows,
         clientId,
-        companyIds,
+        entityIds,
         headerMap,
         glMonths,
         selectedFile.name,
@@ -369,13 +369,13 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
           )}
 
       <MultiSelect
-        label="Company"
-        options={companyOptions.map((company) => ({
+        label="Entity"
+        options={entityOptions.map((company) => ({
           value: company.id,
           label: company.name,
         }))}
-        value={companyIds}
-        onChange={setCompanyIds}
+        value={entityIds}
+        onChange={setEntityIds}
         disabled={!clientId || isLoadingClients}
       />
 
@@ -398,7 +398,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                 setHeaderMap(null);
                 setCombinedRows([]);
                 setClientId(singleClientId ?? '');
-                setCompanyIds([]);
+                setEntityIds([]);
               }}
                 className="text-gray-500 hover:text-red-500"
               >
@@ -511,7 +511,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
             disabled={
               !selectedFile ||
               !clientId ||
-              companyIds.length === 0 ||
+              entityIds.length === 0 ||
               isImporting ||
               uploads.length === 0 ||
               selectedSheets.length === 0 ||
