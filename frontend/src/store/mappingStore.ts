@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type {
-  CompanySummary,
+  EntitySummary,
   DynamicBasisAccount,
   GLAccountMappingRow,
   MappingPolarity,
@@ -39,10 +39,8 @@ const STANDARD_SCOA_TARGET_ID_SET = new Set(
 const baseMappings: GLAccountMappingRow[] = [
   {
     id: 'acct-3',
-    companyId: 'comp-global',
-    companyName: 'Global Logistics',
-    entityId: 'entity-main',
-    entityName: 'Global Main',
+    entityId: 'comp-global',
+    entityName: 'Global Logistics',
     accountId: '6100',
     accountName: 'Fuel Expense',
     activity: 65000,
@@ -56,16 +54,12 @@ const baseMappings: GLAccountMappingRow[] = [
     polarity: 'Debit',
     notes: 'Needs reviewer confirmation of dynamic allocation.',
     splitDefinitions: [],
-    companies: [
-      { id: 'entity-main', company: 'Global Main', balance: 65000 },
-    ],
+    entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
   },
   {
     id: 'acct-2',
-    companyId: 'comp-acme',
-    companyName: 'Acme Freight',
-    entityId: 'entity-ops',
-    entityName: 'Acme Freight Operations',
+    entityId: 'comp-acme',
+    entityName: 'Acme Freight',
     accountId: '5200',
     accountName: 'Payroll Taxes',
     activity: 120000,
@@ -97,17 +91,15 @@ const baseMappings: GLAccountMappingRow[] = [
         notes: 'Field staff',
       },
     ],
-    companies: [
-      { id: 'entity-tms', company: 'Acme Freight TMS', balance: 80000 },
-      { id: 'entity-ops', company: 'Acme Freight Operations', balance: 40000 },
+    entities: [
+      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 80000 },
+      { id: 'entity-ops', entity: 'Acme Freight Operations', balance: 40000 },
     ],
   },
   {
     id: 'acct-1',
-    companyId: 'comp-acme',
-    companyName: 'Acme Freight',
-    entityId: 'entity-tms',
-    entityName: 'Acme Freight TMS',
+    entityId: 'comp-acme',
+    entityName: 'Acme Freight',
     accountId: '4000',
     accountName: 'Linehaul Revenue',
     activity: 500000,
@@ -123,17 +115,15 @@ const baseMappings: GLAccountMappingRow[] = [
     presetId: 'preset-1',
     notes: 'Approved during March close.',
     splitDefinitions: [],
-    companies: [
-      { id: 'entity-tms', company: 'Acme Freight TMS', balance: 400000 },
-      { id: 'entity-mx', company: 'Acme Freight Mexico', balance: 100000 },
+    entities: [
+      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
+      { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
     ],
   },
   {
     id: 'acct-4',
-    companyId: 'comp-heritage',
-    companyName: 'Heritage Transport',
-    entityId: 'entity-legacy',
-    entityName: 'Legacy Ops',
+    entityId: 'comp-heritage',
+    entityName: 'Heritage Transport',
     accountId: '8999',
     accountName: 'Legacy Clearing',
     activity: 15000,
@@ -145,15 +135,13 @@ const baseMappings: GLAccountMappingRow[] = [
     polarity: 'Debit',
     notes: 'Excluded from mapping per client request.',
     splitDefinitions: [],
-    companies: [
-      { id: 'entity-legacy', company: 'Legacy Ops', balance: 15000 },
-    ],
+    entities: [{ id: 'entity-legacy', entity: 'Legacy Ops', balance: 15000 }],
   },
 ];
 
 const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   ...row,
-  companies: row.companies.map(company => ({ ...company })),
+  entities: row.entities.map(entity => ({ ...entity })),
   splitDefinitions: row.splitDefinitions.map(split => ({ ...split })),
 });
 
@@ -330,7 +318,7 @@ export const buildReconciliationGroups = (
       glAccountId: account.accountId,
       glAccountName: account.accountName,
       entityName: account.entityName,
-      companyName: account.companyName,
+      entityName: account.entityName,
     } satisfies Omit<ReconciliationSourceMapping, 'amount'>;
 
     if (account.mappingType === 'direct') {
@@ -592,56 +580,56 @@ const syncDynamicAllocationState = (
   useRatioAllocationStore.setState({ results: [], validationErrors: [], auditLog: [] });
 };
 
-const ensureCompanyBreakdown = (
+const ensureEntityBreakdown = (
   account: GLAccountMappingRow,
-  companyId: string,
-  companyName: string,
+  entityId: string,
+  entityName: string,
 ) => {
-  if (!account.companies || account.companies.length === 0) {
+  if (!account.entities || account.entities.length === 0) {
     return [
       {
-        id: companyId,
-        company: companyName,
+        id: entityId,
+        entity: entityName,
         balance: account.netChange,
       },
     ];
   }
 
-  return account.companies.map((company, index) => {
+  return account.entities.map((entity, index) => {
     if (index === 0) {
       return {
-        ...company,
-        id: companyId,
-        company: companyName,
+        ...entity,
+        id: entityId,
+        entity: entityName,
       };
     }
-    return { ...company };
+    return { ...entity };
   });
 };
 
-const resolveCompanyConflicts = (
+const resolveEntityConflicts = (
   accounts: GLAccountMappingRow[],
-  selectedCompanies: CompanySummary[],
+  selectedEntities: EntitySummary[],
 ): GLAccountMappingRow[] => {
   const normalized = accounts.map(account => {
-    const trimmedName = account.companyName?.trim() ?? '';
+    const trimmedName = account.entityName?.trim() ?? '';
     const normalizedId =
       trimmedName.length > 0
-        ? account.companyId && account.companyId.length > 0
-          ? account.companyId
+        ? account.entityId && account.entityId.length > 0
+          ? account.entityId
           : slugify(trimmedName) || `unassigned-${account.id}`
         : `unassigned-${account.id}`;
 
     return {
       ...account,
-      companyId: normalizedId,
-      companyName: trimmedName,
-      companies: ensureCompanyBreakdown(account, normalizedId, trimmedName),
-      requiresCompanyAssignment: trimmedName.length === 0,
+      entityId: normalizedId,
+      entityName: trimmedName,
+      entities: ensureEntityBreakdown(account, normalizedId, trimmedName),
+      requiresEntityAssignment: trimmedName.length === 0,
     };
   });
 
-  if (selectedCompanies.length !== 1) {
+  if (selectedEntities.length !== 1) {
     return normalized;
   }
 
@@ -661,18 +649,18 @@ const resolveCompanyConflicts = (
 
     const nameCounts = new Map<string, number>();
     group.forEach(account => {
-      const key = account.companyName.length > 0 ? account.companyName.toLowerCase() : '__blank__';
+      const key = account.entityName.length > 0 ? account.entityName.toLowerCase() : '__blank__';
       nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
     });
 
     group.forEach(account => {
-      const key = account.companyName.length > 0 ? account.companyName.toLowerCase() : '__blank__';
+      const key = account.entityName.length > 0 ? account.entityName.toLowerCase() : '__blank__';
       if ((nameCounts.get(key) ?? 0) > 1) {
         const index = normalized.findIndex(candidate => candidate.id === account.id);
         if (index !== -1) {
           normalized[index] = {
             ...normalized[index],
-            requiresCompanyAssignment: true,
+            requiresEntityAssignment: true,
           };
         }
       }
@@ -702,8 +690,8 @@ interface MappingState {
   activeStatuses: MappingStatus[];
   activeUploadId: string | null;
   activeClientId: string | null;
-  activeCompanyIds: string[];
-  activeCompanies: CompanySummary[];
+  activeEntityIds: string[];
+  activeEntities: EntitySummary[];
   activePeriod: string | null;
   setSearchTerm: (term: string) => void;
   setActivePeriod: (period: string | null) => void;
@@ -733,7 +721,7 @@ interface MappingState {
     }
   ) => void;
   applyMappingToMonths: (
-    companyId: string,
+    entityId: string,
     accountId: string,
     months: string[] | 'all',
     mapping: {
@@ -747,15 +735,15 @@ interface MappingState {
   applyPresetToAccounts: (ids: string[], presetId: string | null) => void;
   bulkAccept: (ids: string[]) => void;
   finalizeMappings: (ids: string[]) => boolean;
-  updateAccountCompany: (
+  updateAccountEntity: (
     accountId: string,
-    payload: { companyName: string; companyId?: string | null }
+    payload: { entityName: string; entityId?: string | null }
   ) => void;
   loadImportedAccounts: (payload: {
     uploadId: string;
     clientId?: string | null;
-    companyIds?: string[];
-    companies?: CompanySummary[];
+    entityIds?: string[];
+    entities?: EntitySummary[];
     period?: string | null;
     rows: TrialBalanceRow[];
   }) => void;
@@ -769,8 +757,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   activeStatuses: [],
   activeUploadId: null,
   activeClientId: null,
-  activeCompanyIds: [],
-  activeCompanies: [],
+  activeEntityIds: [],
+  activeEntities: [],
   activePeriod: null,
   setSearchTerm: term => set({ searchTerm: term }),
   setActivePeriod: period => set({ activePeriod: period }),
@@ -795,7 +783,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const shouldApplyToAll = state.activePeriod === null;
 
       const accounts = state.accounts.map(account => {
-        const isSameAccount = account.companyId === targetAccount.companyId &&
+        const isSameAccount = account.entityId === targetAccount.entityId &&
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -816,7 +804,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const shouldApplyToAll = state.activePeriod === null;
 
       const accounts = state.accounts.map(account => {
-        const isSameAccount = account.companyId === targetAccount.companyId &&
+        const isSameAccount = account.entityId === targetAccount.entityId &&
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -837,7 +825,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const shouldApplyToAll = state.activePeriod === null;
 
       const accounts = state.accounts.map(account => {
-        const isSameAccount = account.companyId === targetAccount.companyId &&
+        const isSameAccount = account.entityId === targetAccount.entityId &&
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -879,7 +867,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           : [];
 
       const accounts = state.accounts.map(account => {
-        const isSameAccount = account.companyId === targetAccount.companyId &&
+        const isSameAccount = account.entityId === targetAccount.entityId &&
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -923,7 +911,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       return {
         accounts: state.accounts.map(account => {
-          const isSameAccount = account.companyId === targetAccount.companyId &&
+          const isSameAccount = account.entityId === targetAccount.entityId &&
                                 account.accountId === targetAccount.accountId;
           const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -942,7 +930,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       return {
         accounts: state.accounts.map(account => {
-          const isSameAccount = account.companyId === targetAccount.companyId &&
+          const isSameAccount = account.entityId === targetAccount.entityId &&
                                 account.accountId === targetAccount.accountId;
           const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
@@ -960,10 +948,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const shouldApplyToAll = state.activePeriod === null;
       const templateSplit = createBlankSplitDefinition();
       const updatedTargetSplits = [...targetAccount.splitDefinitions, templateSplit];
-      const key = `${targetAccount.companyId}__${targetAccount.accountId}`;
+      const key = `${targetAccount.entityId}__${targetAccount.accountId}`;
 
       const accounts = state.accounts.map(account => {
-        const matchesKey = `${account.companyId}__${account.accountId}` === key;
+        const matchesKey = `${account.entityId}__${account.accountId}` === key;
         const shouldUpdate = shouldApplyToAll ? matchesKey : account.id === id;
 
         if (!shouldUpdate || account.mappingType !== 'percentage') {
@@ -999,10 +987,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             }
           : split,
       );
-      const key = `${targetAccount.companyId}__${targetAccount.accountId}`;
+      const key = `${targetAccount.entityId}__${targetAccount.accountId}`;
 
       const accounts = state.accounts.map(account => {
-        const matchesKey = `${account.companyId}__${account.accountId}` === key;
+        const matchesKey = `${account.entityId}__${account.accountId}` === key;
         const shouldUpdate = shouldApplyToAll ? matchesKey : account.id === accountId;
 
         if (!shouldUpdate) {
@@ -1041,10 +1029,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       const shouldApplyToAll = state.activePeriod === null;
       const updatedTargetSplits = targetAccount.splitDefinitions.filter(split => split.id !== splitId);
-      const key = `${targetAccount.companyId}__${targetAccount.accountId}`;
+      const key = `${targetAccount.entityId}__${targetAccount.accountId}`;
 
       const accounts = state.accounts.map(account => {
-        const matchesKey = `${account.companyId}__${account.accountId}` === key;
+        const matchesKey = `${account.entityId}__${account.accountId}` === key;
         const shouldUpdate = shouldApplyToAll ? matchesKey : account.id === accountId;
 
         if (!shouldUpdate) {
@@ -1135,11 +1123,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       updateDynamicBasisAccounts(accounts);
       return { accounts };
     }),
-  applyMappingToMonths: (companyId, accountId, months, mapping) =>
+  applyMappingToMonths: (entityId, accountId, months, mapping) =>
     set(state => {
       const targetIds = state.accounts
         .filter(account => {
-          const matchesAccount = account.companyId === companyId && account.accountId === accountId;
+          const matchesAccount = account.entityId === entityId && account.accountId === accountId;
           if (!matchesAccount) return false;
 
           if (months === 'all') return true;
@@ -1225,7 +1213,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         ? new Set(
             state.accounts
               .filter(account => ids.includes(account.id))
-              .map(account => `${account.companyId}__${account.accountId}`),
+              .map(account => `${account.entityId}__${account.accountId}`),
           )
         : null;
       const templateSplitsByKey = new Map<string, MappingSplitDefinition[]>();
@@ -1234,7 +1222,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           if (!ids.includes(account.id)) {
             return;
           }
-          const key = `${account.companyId}__${account.accountId}`;
+          const key = `${account.entityId}__${account.accountId}`;
           if (templateSplitsByKey.has(key)) {
             return;
           }
@@ -1246,7 +1234,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const accounts = state.accounts.map(account => {
         const matchesDirect = ids.includes(account.id);
         const matchesKey = shouldApplyToAll
-          ? keySet?.has(`${account.companyId}__${account.accountId}`)
+          ? keySet?.has(`${account.entityId}__${account.accountId}`)
           : false;
 
         if (!matchesDirect && !matchesKey) {
@@ -1258,7 +1246,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
 
         const nextStatus: MappingStatus = account.status === 'Excluded' ? 'Unmapped' : account.status;
-        const key = `${account.companyId}__${account.accountId}`;
+        const key = `${account.entityId}__${account.accountId}`;
         const baseSplits = shouldApplyToAll
           ? templateSplitsByKey.get(key)?.map(split => ({ ...split })) ??
             ensureMinimumPercentageSplits(account.splitDefinitions)
@@ -1318,13 +1306,13 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     console.log('Finalize mappings', payload);
     return true;
   },
-  updateAccountCompany: (accountId, payload) =>
+  updateAccountEntity: (accountId, payload) =>
     set(state => {
-      const trimmedName = payload.companyName.trim();
+      const trimmedName = payload.entityName.trim();
       const normalizedId =
         trimmedName.length > 0
-          ? payload.companyId && payload.companyId.length > 0
-            ? payload.companyId
+          ? payload.entityId && payload.entityId.length > 0
+            ? payload.entityId
             : slugify(trimmedName) || `unassigned-${accountId}`
           : `unassigned-${accountId}`;
 
@@ -1335,31 +1323,31 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
         return {
           ...account,
-          companyId: normalizedId,
-          companyName: trimmedName,
-          companies: ensureCompanyBreakdown(account, normalizedId, trimmedName),
+          entityId: normalizedId,
+          entityName: trimmedName,
+          entities: ensureEntityBreakdown(account, normalizedId, trimmedName),
         };
       });
 
-      const resolved = resolveCompanyConflicts(accounts, state.activeCompanies);
+      const resolved = resolveEntityConflicts(accounts, state.activeEntities);
       updateDynamicBasisAccounts(resolved);
       return { accounts: resolved };
     }),
   loadImportedAccounts: ({
     uploadId,
     clientId,
-    companyIds,
-    companies,
+    entityIds,
+    entities,
     period,
     rows,
   }) => {
     const normalizedClientId = clientId && clientId.trim().length > 0 ? clientId : null;
     const normalizedPeriod = period && period.trim().length > 0 ? period : null;
 
-    const selectedCompanies = companies
+    const selectedEntities = entities
       ? Array.from(
           new Map(
-            companies.map(company => [company.id, { id: company.id, name: company.name }]),
+            entities.map(entity => [entity.id, { id: entity.id, name: entity.name }]),
           ).values(),
         )
       : [];
@@ -1367,10 +1355,10 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     const accountsFromImport = buildMappingRowsFromImport(rows, {
       uploadId,
       clientId: normalizedClientId,
-      selectedCompanies,
+      selectedEntities,
     }).map(applyDerivedStatus);
 
-    const resolvedAccounts = resolveCompanyConflicts(accountsFromImport, selectedCompanies);
+    const resolvedAccounts = resolveEntityConflicts(accountsFromImport, selectedEntities);
 
     const periodSet = new Set<string>();
     resolvedAccounts.forEach(account => {
@@ -1385,7 +1373,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       ? null
       : normalizedPeriod ?? uniquePeriods[0] ?? null;
 
-    const resolvedCompanyIds = companyIds ?? selectedCompanies.map(company => company.id);
+    const resolvedEntityIds = entityIds ?? selectedEntities.map(entity => entity.id);
 
     set({
       accounts: resolvedAccounts,
@@ -1393,8 +1381,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       activeStatuses: [],
       activeUploadId: uploadId,
       activeClientId: normalizedClientId,
-      activeCompanyIds: resolvedCompanyIds,
-      activeCompanies: selectedCompanies,
+      activeEntityIds: resolvedEntityIds,
+      activeEntities: selectedEntities,
       activePeriod: resolvedPeriod,
     });
 
@@ -1533,12 +1521,12 @@ export const selectAccountsByPeriod = (state: MappingState): Map<string, GLAccou
 
 export const selectAccountHasMultiplePeriods = (
   state: MappingState,
-  companyId: string,
+  entityId: string,
   accountId: string
 ): boolean => {
   const periods = new Set<string>();
   state.accounts.forEach(account => {
-    if (account.companyId === companyId && account.accountId === accountId && account.glMonth) {
+    if (account.entityId === entityId && account.accountId === accountId && account.glMonth) {
       periods.add(account.glMonth);
     }
   });

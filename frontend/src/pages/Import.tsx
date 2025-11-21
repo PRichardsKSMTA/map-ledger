@@ -7,7 +7,7 @@ import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
 import TemplateGuide from '../components/import/TemplateGuide';
-import type { CompanySummary, TrialBalanceRow } from '../types';
+import type { EntitySummary, TrialBalanceRow } from '../types';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
@@ -61,7 +61,7 @@ export default function Import() {
     fetchImports({ userId, clientId: singleClient?.id, page, pageSize });
   }, [fetchImports, userId, singleClient?.id, page, pageSize]);
 
-  const companyNameById = useMemo(() => {
+  const entityNameById = useMemo(() => {
     const map = new Map<string, string>();
     companies.forEach((company) => {
       map.set(company.id, company.name);
@@ -74,7 +74,7 @@ export default function Import() {
   const handleFileImport = async (
     rows: TrialBalanceRow[],
     clientId: string,
-    _companyIds: string[],
+    _entityIds: string[],
     _headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
@@ -89,11 +89,11 @@ export default function Import() {
         throw new Error('You must be signed in to upload files.');
       }
 
-      const selectedCompanies: CompanySummary[] = Array.from(
+      const selectedEntities: EntitySummary[] = Array.from(
         new Map(
-          _companyIds.map((companyId) => {
-            const companyName = companyNameById.get(companyId) ?? companyId;
-            return [companyId, { id: companyId, name: companyName }];
+          _entityIds.map((entityId) => {
+            const entityName = entityNameById.get(entityId) ?? entityId;
+            return [entityId, { id: entityId, name: entityName }];
           }),
         ).values(),
       );
@@ -157,8 +157,8 @@ export default function Import() {
       loadImportedAccounts({
         uploadId: importId,
         clientId,
-        companyIds: _companyIds,
-        companies: selectedCompanies,
+        entityIds: _entityIds,
+        entities: selectedEntities,
         period: primaryPeriod,
         rows,
       });

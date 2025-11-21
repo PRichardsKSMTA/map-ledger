@@ -249,9 +249,9 @@ describe('MappingTable', () => {
     render(<MappingTable />);
 
     expect(
-      screen.getByRole('columnheader', { name: /Company/i }),
+      screen.getByRole('columnheader', { name: /Entity/i }),
     ).toBeInTheDocument();
-    expect(screen.queryByText('Company / Company')).not.toBeInTheDocument();
+    expect(screen.queryByText('Entity / Entity')).not.toBeInTheDocument();
 
     const companyCells = screen.getAllByText('Acme Freight');
     expect(companyCells.length).toBeGreaterThan(0);

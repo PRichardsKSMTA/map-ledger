@@ -397,20 +397,20 @@ export interface ClientRef {
   operations: OperationRef[];
 }
 
-export interface CompanyRef {
+export interface EntityRef {
   id: string;
   name: string;
   clients: ClientRef[];
 }
 
-export interface CompanySummary {
+export interface EntitySummary {
   id: string;
   name: string;
 }
 
-export interface GLAccountCompanyBreakdown {
+export interface GLAccountEntityBreakdown {
   id: string;
-  company: string;
+  entity: string;
   balance: number;
 }
 
@@ -456,10 +456,8 @@ export interface DistributionRow {
 
 export interface GLAccountMappingRow {
   id: string;
-  companyId: string;
-  companyName: string;
-  entityId?: string;
-  entityName?: string;
+  entityId: string;
+  entityName: string;
   accountId: string;
   accountName: string;
   activity: number;
@@ -475,10 +473,10 @@ export interface GLAccountMappingRow {
   presetId?: string;
   notes?: string;
   splitDefinitions: MappingSplitDefinition[];
-  companies: GLAccountCompanyBreakdown[];
+  entities: GLAccountEntityBreakdown[];
   dynamicExclusionAmount?: number;
   glMonth?: string; // GL month in YYYY-MM format
-  requiresCompanyAssignment?: boolean;
+  requiresEntityAssignment?: boolean;
 }
 
 export interface GLUpload {

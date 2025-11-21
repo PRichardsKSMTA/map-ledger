@@ -104,7 +104,7 @@ const ReconcilePane = () => {
                           <ul className="divide-y divide-amber-100 text-sm dark:divide-slate-700">
                             {account.sources.map(source => (
                               <li
-                                key={`${account.id}-${source.glAccountId}-${source.companyName}`}
+                                key={`${account.id}-${source.glAccountId}-${source.entityName}`}
                                 className="flex items-start justify-between gap-3 py-2"
                               >
                                 <div>
@@ -112,7 +112,7 @@ const ReconcilePane = () => {
                                     {source.glAccountId} — {source.glAccountName}
                                   </p>
                                   <p className="text-xs text-gray-600 dark:text-gray-400">
-                                    {source.companyName}
+                                    {source.entityName}
                                     {source.entityName ? ` • ${source.entityName}` : ''}
                                   </p>
                                 </div>
