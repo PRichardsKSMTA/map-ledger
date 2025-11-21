@@ -27,6 +27,10 @@ const openApiSpec = {
       get: { summary: 'List saved datapoint configurations' },
       post: { summary: 'Create a new datapoint configuration' },
       put: { summary: 'Update an existing datapoint configuration' }
+    },
+    '/client-files': {
+      get: { summary: 'List paginated client file metadata' },
+      post: { summary: 'Persist client file metadata and sheet/entity details' }
     }
   }
 };

@@ -11,5 +11,6 @@ import './userClients';
 import './datapointConfigs/create';
 import './datapointConfigs/list';
 import './datapointConfigs/update';
+import './clientFiles';
 
 export default app;

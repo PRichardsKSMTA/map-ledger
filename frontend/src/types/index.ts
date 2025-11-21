@@ -169,20 +169,31 @@ export interface TrialBalanceRow {
   [key: string]: unknown;
 }
 
+export interface ImportSheet {
+  sheetName: string;
+  glMonth?: string;
+  rowCount: number;
+}
+
+export interface ImportEntity {
+  entityName: string;
+  rowCount: number;
+}
+
 export interface Import {
   id: string;
   clientId: string;
   fileName: string;
   fileSize: number;
   fileType: string;
-  fileData: string;
-  previewRows: ImportPreviewRow[];
   period: string;
   timestamp: string;
   status: 'completed' | 'failed';
   rowCount?: number;
   importedBy: string;
   userId: string;
+  sheets?: ImportSheet[];
+  entities?: ImportEntity[];
 }
 
 export interface SyncedAccount {
