@@ -7,8 +7,7 @@ import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
 import TemplateGuide from '../components/import/TemplateGuide';
-import { fileToBase64 } from '../utils/file';
-import type { CompanySummary, ImportPreviewRow, TrialBalanceRow } from '../types';
+import type { CompanySummary, TrialBalanceRow } from '../types';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
@@ -18,11 +17,15 @@ export default function Import() {
   const userId = user?.id ?? null;
   const navigate = useNavigate();
   const [isImporting, setIsImporting] = useState(false);
-  const addImport = useImportStore((state) => state.addImport);
-  const deleteImport = useImportStore((state) => state.deleteImport);
-  const imports = useImportStore((state) =>
-    userId ? state.importsByUser[userId] ?? [] : []
-  );
+  const imports = useImportStore((state) => state.imports);
+  const fetchImports = useImportStore((state) => state.fetchImports);
+  const historyLoading = useImportStore((state) => state.isLoading);
+  const historyError = useImportStore((state) => state.error);
+  const recordImport = useImportStore((state) => state.recordImport);
+  const page = useImportStore((state) => state.page);
+  const pageSize = useImportStore((state) => state.pageSize);
+  const total = useImportStore((state) => state.total);
+  const setPage = useImportStore((state) => state.setPage);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const companies = useOrganizationStore((state) => state.companies);
@@ -50,6 +53,14 @@ export default function Import() {
 
   const singleClient = clientSummaries.length === 1 ? clientSummaries[0] : null;
 
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    fetchImports({ userId, clientId: singleClient?.id, page, pageSize });
+  }, [fetchImports, userId, singleClient?.id, page, pageSize]);
+
   const companyNameById = useMemo(() => {
     const map = new Map<string, string>();
     companies.forEach((company) => {
@@ -58,17 +69,7 @@ export default function Import() {
     return map;
   }, [companies]);
 
-  const handleDeleteImport = (importId: string) => {
-    if (!userId) {
-      return;
-    }
-
-    deleteImport(userId, importId);
-    setError(null);
-    setSuccess('Import removed from history');
-  };
-
-  const loadImportedAccounts = useMappingStore(state => state.loadImportedAccounts);
+  const loadImportedAccounts = useMappingStore((state) => state.loadImportedAccounts);
 
   const handleFileImport = async (
     rows: TrialBalanceRow[],
@@ -98,32 +99,59 @@ export default function Import() {
       );
 
       const importId = crypto.randomUUID();
-      const previewRows: ImportPreviewRow[] = rows.slice(0, 10).map((row) => ({
-        accountId: row.accountId,
-        description: row.description,
-        entity: row.entity,
-        netChange: row.netChange,
-        glMonth: row.glMonth,
-      }));
-      const fileData = await fileToBase64(file);
       const fileType = file.type || 'application/octet-stream';
 
       // Use the first GL month for the import record, or a placeholder if none detected
-      const primaryPeriod = glMonths.length > 0 ? glMonths[0] : new Date().toISOString().slice(0, 7);
+      const primaryPeriod =
+        glMonths.length > 0 ? glMonths[0] : new Date().toISOString().slice(0, 7);
 
-      addImport(user.id, {
+      const sheets = (() => {
+        const counts = new Map<string, number>();
+        if (glMonths.length === 0) {
+          counts.set(primaryPeriod, rows.length);
+        } else {
+          glMonths.forEach((month) => counts.set(month, 0));
+          rows.forEach((row) => {
+            const key = row.glMonth ?? primaryPeriod;
+            counts.set(key, (counts.get(key) ?? 0) + 1);
+          });
+        }
+
+        return Array.from(counts.entries()).map(([sheetName, count]) => ({
+          sheetName,
+          glMonth: sheetName,
+          rowCount: count,
+        }));
+      })();
+
+      const entities = (() => {
+        const counts = new Map<string, number>();
+        rows.forEach((row) => {
+          if (!row.entity) {
+            return;
+          }
+          counts.set(row.entity, (counts.get(row.entity) ?? 0) + 1);
+        });
+        return Array.from(counts.entries()).map(([entityName, count]) => ({
+          entityName,
+          rowCount: count,
+        }));
+      })();
+
+      await recordImport({
         id: importId,
         clientId,
+        userId: user.id,
         fileName,
         fileSize: file.size,
         fileType,
-        fileData,
-        previewRows,
         period: primaryPeriod,
         timestamp: new Date().toISOString(),
         status: 'completed',
         rowCount: rows.length,
         importedBy: user.email,
+        sheets,
+        entities,
       });
 
       loadImportedAccounts({
@@ -248,7 +276,27 @@ export default function Import() {
         <CardHeader>
           <h2 className="text-lg font-medium text-gray-900">Import History</h2>
         </CardHeader>
-        <ImportHistory imports={imports} onDeleteImport={handleDeleteImport} />
+        {historyError && (
+          <div className="px-6 text-sm text-red-600">{historyError}</div>
+        )}
+        <ImportHistory
+          imports={imports}
+          isLoading={historyLoading}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={(nextPage) => {
+            setPage(nextPage);
+            if (userId) {
+              fetchImports({
+                userId,
+                clientId: singleClient?.id,
+                page: nextPage,
+                pageSize,
+              });
+            }
+          }}
+        />
       </Card>
     </div>
   );
