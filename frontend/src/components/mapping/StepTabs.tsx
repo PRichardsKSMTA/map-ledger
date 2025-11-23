@@ -29,7 +29,7 @@ const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsP
           const baseClasses =
             'group relative flex-1 rounded-t-lg border px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900';
           const stateClasses = isActive
-            ? ' -mb-px border-gray-200 bg-white text-slate-900 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50'
+            ? ' -mb-px border-blue-500 bg-slate-50 text-slate-900 shadow-sm hover:bg-slate-100 dark:border-blue-400 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700'
             : ' border-transparent text-slate-700 hover:border-gray-200 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-white';
 
           return (
