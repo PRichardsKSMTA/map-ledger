@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Plus, Trash2, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
-import { STANDARD_CHART_OF_ACCOUNTS } from '../../data/standardChartOfAccounts';
+import { useChartOfAccountsStore } from '../../store/chartOfAccountsStore';
 import { resolveTargetAccountId, useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import type { DynamicAllocationPresetRow } from '../../types';
 import {
@@ -18,12 +18,6 @@ export type RatioAllocationTargetCatalogOption = {
   id: string;
   label: string;
 };
-
-const DEFAULT_TARGET_CATALOG: RatioAllocationTargetCatalogOption[] =
-  STANDARD_CHART_OF_ACCOUNTS.map(option => ({
-    id: option.id,
-    label: option.label,
-  }));
 
 interface RatioAllocationBuilderProps {
   initialSourceAccountId?: string | null;
@@ -65,6 +59,7 @@ const RatioAllocationBuilder = ({
   const [isCreatingPreset, setIsCreatingPreset] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [newPresetRows, setNewPresetRows] = useState<DynamicAllocationPresetRow[]>([]);
+  const { options: chartOfAccountOptions } = useChartOfAccountsStore();
 
   const newPresetBasisHeaderId = useId();
   const newPresetTargetHeaderId = useId();
@@ -85,8 +80,18 @@ const RatioAllocationBuilder = ({
     [resolveCanonicalTargetId],
   );
 
+  const defaultTargetCatalog = useMemo(
+    () =>
+      chartOfAccountOptions.map(option => ({
+        id: option.id,
+        label: option.label,
+      })),
+    [chartOfAccountOptions],
+  );
+
   const preparedTargetCatalog = useMemo(() => {
-    const sourceCatalog = targetCatalog && targetCatalog.length > 0 ? targetCatalog : DEFAULT_TARGET_CATALOG;
+    const sourceCatalog =
+      targetCatalog && targetCatalog.length > 0 ? targetCatalog : defaultTargetCatalog;
     const seen = new Map<string, RatioAllocationTargetCatalogOption>();
     sourceCatalog.forEach(option => {
       const id = option.id?.trim();
@@ -99,7 +104,7 @@ const RatioAllocationBuilder = ({
       }
     });
     return Array.from(seen.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [targetCatalog]);
+  }, [defaultTargetCatalog, targetCatalog]);
 
   const { newPresetDynamicUsage, newPresetCanonicalUsage } = useMemo(() => {
     const dynamicUsage = new Map<string, Set<string>>();
