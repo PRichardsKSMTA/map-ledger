@@ -1,7 +1,6 @@
 import {
   ChangeEvent,
   Fragment,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -18,7 +17,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import MappingToolbar from './MappingToolbar';
-import MappingEntityCell from './MappingEntityCell';
 import { selectPresetSummaries, useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
   getAccountExcludedAmount,
@@ -47,7 +45,6 @@ import { formatCurrencyAmount } from '../../utils/currency';
 import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions';
 
 type SortKey =
-  | 'entityName'
   | 'accountId'
   | 'accountName'
   | 'netChange'
@@ -106,7 +103,6 @@ const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
 const formatNetChange = (value: number) => formatCurrencyAmount(value);
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
-  { key: 'entityName', label: 'Entity' },
   { key: 'accountId', label: 'Account ID' },
   { key: 'accountName', label: 'Description' },
   { key: 'netChange', label: 'Activity' },
@@ -120,8 +116,9 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
 ];
 
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
-  targetScoa: 'w-48',
+  targetScoa: 'min-w-[14rem] md:min-w-[16rem] lg:min-w-[18rem]',
   exclusion: 'w-56',
+  aiConfidence: 'w-28',
 };
 
 const COLUMN_ALIGNMENT_CLASSES: Partial<Record<SortKey, string>> = {
@@ -180,11 +177,6 @@ export default function MappingTable() {
   const { selectedIds, toggleSelection, setSelection, clearSelection } =
     useMappingSelectionStore();
   const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
-  const allAccounts = useMappingStore((state) => state.accounts);
-  const activeEntities = useMappingStore((state) => state.activeEntities);
-  const updateAccountEntity = useMappingStore(
-    (state) => state.updateAccountEntity,
-  );
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: SortDirection;
@@ -201,40 +193,6 @@ export default function MappingTable() {
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
     [splitValidationIssues]
-  );
-
-  const compositeConflictIds = useMemo(() => {
-    const grouped = new Map<string, string[]>();
-    allAccounts.forEach((account) => {
-      const monthKey = account.glMonth ?? 'unspecified';
-      const entityKey = account.entityName?.trim().toLowerCase() ?? '';
-      const key = `${entityKey || '__blank__'}__${account.accountId}__${monthKey}`;
-      const existing = grouped.get(key);
-      if (existing) {
-        existing.push(account.id);
-      } else {
-        grouped.set(key, [account.id]);
-      }
-    });
-
-    const conflicts = new Set<string>();
-    grouped.forEach((ids) => {
-      if (ids.length > 1) {
-        ids.forEach((id) => conflicts.add(id));
-      }
-    });
-
-    return conflicts;
-  }, [allAccounts]);
-
-  const handleEntityCommit = useCallback(
-    (accountId: string, entityName: string, matchedEntityId?: string | null) => {
-      updateAccountEntity(accountId, {
-        entityName,
-        entityId: matchedEntityId ?? undefined,
-      });
-    },
-    [updateAccountEntity],
   );
 
   const dynamicIssueIds = useMemo(() => {
@@ -464,9 +422,6 @@ export default function MappingTable() {
         >
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
-              <th scope="col" className="w-10 px-3 py-3">
-                <span className="sr-only">Toggle split details</span>
-              </th>
               <th scope="col" className="w-12 px-3 py-3">
                 <span className="sr-only">Select all rows</span>
                 <input
@@ -476,6 +431,9 @@ export default function MappingTable() {
                   onChange={handleSelectAll}
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
+              </th>
+              <th scope="col" className="w-10 px-3 py-3">
+                <span className="sr-only">Toggle split details</span>
               </th>
               {COLUMN_DEFINITIONS.map((column) => (
                 <th
@@ -544,6 +502,15 @@ export default function MappingTable() {
                     }
                   >
                     <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select account ${account.accountId}`}
+                        checked={isSelected}
+                        onChange={() => handleRowSelection(account.id)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="px-3 py-4">
                       {requiresSplit ? (
                         <button
                           type="button"
@@ -564,28 +531,6 @@ export default function MappingTable() {
                           aria-hidden="true"
                         />
                       )}
-                    </td>
-                    <td className="px-3 py-4">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select account ${account.accountId}`}
-                        checked={isSelected}
-                        onChange={() => handleRowSelection(account.id)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-                    <td className="max-w-[220px] px-3 py-4 align-top">
-                      <MappingEntityCell
-                        account={account}
-                        options={activeEntities}
-                        requiresManualAssignment={
-                          Boolean(account.requiresEntityAssignment) ||
-                          (activeEntities.length <= 1 &&
-                            compositeConflictIds.has(account.id))
-                        }
-                        hasCompositeConflict={compositeConflictIds.has(account.id)}
-                        onCommit={handleEntityCommit}
-                      />
                     </td>
                     <td className="whitespace-nowrap px-3 py-4 text-slate-700 dark:text-slate-200">
                       {account.accountId}
@@ -729,14 +674,16 @@ export default function MappingTable() {
                         ))}
                       </select>
                     </td>
-                    <td className="px-3 py-4 text-slate-700 dark:text-slate-200">
+                    <td
+                      className={`px-3 py-4 text-slate-700 dark:text-slate-200 ${COLUMN_WIDTH_CLASSES.aiConfidence ?? ''}`}
+                    >
                       <div className="flex items-center gap-2">
                         <span className="font-medium">
                           {account.aiConfidence !== undefined
                             ? `${account.aiConfidence}%`
                             : '—'}
                         </span>
-                        <div className="h-2 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                           <div
                             className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
                             style={{
@@ -871,8 +818,6 @@ function getSortValue(
   resolveStatus?: StatusResolver
 ): string | number {
   switch (key) {
-    case 'entityName':
-      return account.entityName;
     case 'accountId':
       return account.accountId;
     case 'accountName':
