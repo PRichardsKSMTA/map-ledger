@@ -17,6 +17,9 @@ const openApiSpec = {
     '/mapping/suggest': {
       get: { summary: 'Suggest account mapping' }
     },
+    '/chart-of-accounts': {
+      get: { summary: 'List chart of accounts' }
+    },
     '/user-clients': {
       get: { summary: 'List clients available to the current user' }
     },

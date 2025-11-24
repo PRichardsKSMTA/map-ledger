@@ -123,6 +123,19 @@ export interface TargetScoaOption {
   label: string;
 }
 
+export interface ChartOfAccount {
+  accountNumber: string;
+  coreAccount: string | null;
+  operationalGroup: string | null;
+  laborGroup: string | null;
+  accountType: string | null;
+  category: string | null;
+  subCategory: string | null;
+  description: string | null;
+}
+
+export interface ChartOfAccountOption extends TargetScoaOption, ChartOfAccount {}
+
 export interface StandardScoaSummary {
   id: string;
   value: string;

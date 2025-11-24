@@ -13,131 +13,162 @@ import type {
   StandardScoaSummary,
   TrialBalanceRow,
 } from '../types';
-import {
-  STANDARD_CHART_OF_ACCOUNTS,
-  getStandardScoaOption,
-} from '../data/standardChartOfAccounts';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 import { slugify } from '../utils/slugify';
 import { getSourceValue } from '../utils/dynamicAllocation';
 import { computeDynamicExclusionSummaries } from '../utils/dynamicExclusions';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
+import {
+  findChartOfAccountOption,
+  getChartOfAccountOptions,
+  isKnownChartOfAccount,
+} from './chartOfAccountsStore';
 
-const DRIVER_BENEFITS_TARGET = getStandardScoaOption(
-  'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
-);
-const NON_DRIVER_BENEFITS_TARGET = getStandardScoaOption('NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS');
+const DRIVER_BENEFITS_DESCRIPTION =
+  'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET';
+const NON_DRIVER_BENEFITS_DESCRIPTION =
+  'NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS';
 
-const STANDARD_SCOA_VALUE_SET = new Set(
-  STANDARD_CHART_OF_ACCOUNTS.map(option => option.value),
-);
+const findChartOfAccountByDescription = (description: string) => {
+  const normalized = description.trim().toLowerCase();
+  return getChartOfAccountOptions().find((option) => {
+    const label = option.label.toLowerCase();
+    const desc = option.description?.toLowerCase() ?? '';
+    return label === normalized || desc === normalized || label.includes(normalized);
+  });
+};
 
-const STANDARD_SCOA_TARGET_ID_SET = new Set(
-  STANDARD_CHART_OF_ACCOUNTS.map(option => option.id),
-);
+const buildTargetFromDescription = (description: string) => {
+  const match = findChartOfAccountByDescription(description);
+  if (match) {
+    return match;
+  }
 
-const baseMappings: GLAccountMappingRow[] = [
-  {
-    id: 'acct-3',
-    entityId: 'comp-global',
-    entityName: 'Global Logistics',
-    accountId: '6100',
-    accountName: 'Fuel Expense',
-    activity: 65000,
-    status: 'New',
-    mappingType: 'dynamic',
-    netChange: 65000,
-    operation: 'Fleet',
-    suggestedCOAId: '6100',
-    suggestedCOADescription: 'Fuel Expense',
-    aiConfidence: 70,
-    polarity: 'Debit',
-    notes: 'Needs reviewer confirmation of dynamic allocation.',
-    splitDefinitions: [],
-    entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
-  },
-  {
-    id: 'acct-2',
-    entityId: 'comp-acme',
-    entityName: 'Acme Freight',
-    accountId: '5200',
-    accountName: 'Payroll Taxes',
-    activity: 120000,
-    status: 'Unmapped',
-    mappingType: 'percentage',
-    netChange: 120000,
-    operation: 'Shared Services',
-    suggestedCOAId: '5200',
-    suggestedCOADescription: 'Payroll Taxes',
-    aiConfidence: 82,
-    polarity: 'Debit',
-    presetId: 'preset-2',
-    notes: 'Awaiting updated headcount split.',
-    splitDefinitions: [
-      {
-        id: 'split-1',
-        targetId: DRIVER_BENEFITS_TARGET.id,
-        targetName: DRIVER_BENEFITS_TARGET.label,
-        allocationType: 'percentage',
-        allocationValue: 60,
-        notes: 'HQ employees',
-      },
-      {
-        id: 'split-2',
-        targetId: NON_DRIVER_BENEFITS_TARGET.id,
-        targetName: NON_DRIVER_BENEFITS_TARGET.label,
-        allocationType: 'percentage',
-        allocationValue: 40,
-        notes: 'Field staff',
-      },
-    ],
-    entities: [
-      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 80000 },
-      { id: 'entity-ops', entity: 'Acme Freight Operations', balance: 40000 },
-    ],
-  },
-  {
-    id: 'acct-1',
-    entityId: 'comp-acme',
-    entityName: 'Acme Freight',
-    accountId: '4000',
-    accountName: 'Linehaul Revenue',
-    activity: 500000,
-    status: 'Mapped',
-    mappingType: 'direct',
-    netChange: 500000,
-    operation: 'Linehaul',
-    suggestedCOAId: '4100',
-    suggestedCOADescription: 'Revenue',
-    aiConfidence: 96,
-    manualCOAId: '4100',
-    polarity: 'Credit',
-    presetId: 'preset-1',
-    notes: 'Approved during March close.',
-    splitDefinitions: [],
-    entities: [
-      { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
-      { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
-    ],
-  },
-  {
-    id: 'acct-4',
-    entityId: 'comp-heritage',
-    entityName: 'Heritage Transport',
-    accountId: '8999',
-    accountName: 'Legacy Clearing',
-    activity: 15000,
-    status: 'Excluded',
-    mappingType: 'exclude',
-    netChange: 15000,
-    operation: 'Legacy',
-    aiConfidence: 48,
-    polarity: 'Debit',
-    notes: 'Excluded from mapping per client request.',
-    splitDefinitions: [],
-    entities: [{ id: 'entity-legacy', entity: 'Legacy Ops', balance: 15000 }],
-  },
-];
+  const slug = slugify(description) || 'target';
+  return {
+    id: `chart-of-account-${slug}`,
+    value: description,
+    label: description,
+    accountNumber: description,
+    coreAccount: null,
+    operationalGroup: null,
+    laborGroup: null,
+    accountType: null,
+    category: null,
+    subCategory: null,
+    description,
+  };
+};
+
+const buildBaseMappings = (): GLAccountMappingRow[] => {
+  const driverBenefits = buildTargetFromDescription(DRIVER_BENEFITS_DESCRIPTION);
+  const nonDriverBenefits = buildTargetFromDescription(
+    NON_DRIVER_BENEFITS_DESCRIPTION
+  );
+
+  return [
+    {
+      id: 'acct-3',
+      entityId: 'comp-global',
+      entityName: 'Global Logistics',
+      accountId: '6100',
+      accountName: 'Fuel Expense',
+      activity: 65000,
+      status: 'New',
+      mappingType: 'dynamic',
+      netChange: 65000,
+      operation: 'Fleet',
+      suggestedCOAId: '6100',
+      suggestedCOADescription: 'Fuel Expense',
+      aiConfidence: 70,
+      polarity: 'Debit',
+      notes: 'Needs reviewer confirmation of dynamic allocation.',
+      splitDefinitions: [],
+      entities: [{ id: 'entity-main', entity: 'Global Main', balance: 65000 }],
+    },
+    {
+      id: 'acct-2',
+      entityId: 'comp-acme',
+      entityName: 'Acme Freight',
+      accountId: '5200',
+      accountName: 'Payroll Taxes',
+      activity: 120000,
+      status: 'Unmapped',
+      mappingType: 'percentage',
+      netChange: 120000,
+      operation: 'Shared Services',
+      suggestedCOAId: '5200',
+      suggestedCOADescription: 'Payroll Taxes',
+      aiConfidence: 82,
+      polarity: 'Debit',
+      presetId: 'preset-2',
+      notes: 'Awaiting updated headcount split.',
+      splitDefinitions: [
+        {
+          id: 'split-1',
+          targetId: driverBenefits.id,
+          targetName: driverBenefits.label,
+          allocationType: 'percentage',
+          allocationValue: 60,
+          notes: 'HQ employees',
+        },
+        {
+          id: 'split-2',
+          targetId: nonDriverBenefits.id,
+          targetName: nonDriverBenefits.label,
+          allocationType: 'percentage',
+          allocationValue: 40,
+          notes: 'Field staff',
+        },
+      ],
+      entities: [
+        { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 80000 },
+        { id: 'entity-ops', entity: 'Acme Freight Operations', balance: 40000 },
+      ],
+    },
+    {
+      id: 'acct-1',
+      entityId: 'comp-acme',
+      entityName: 'Acme Freight',
+      accountId: '4000',
+      accountName: 'Linehaul Revenue',
+      activity: 500000,
+      status: 'Mapped',
+      mappingType: 'direct',
+      netChange: 500000,
+      operation: 'Linehaul',
+      suggestedCOAId: '4100',
+      suggestedCOADescription: 'Revenue',
+      aiConfidence: 96,
+      manualCOAId: '4100',
+      polarity: 'Credit',
+      presetId: 'preset-1',
+      notes: 'Approved during March close.',
+      splitDefinitions: [],
+      entities: [
+        { id: 'entity-tms', entity: 'Acme Freight TMS', balance: 400000 },
+        { id: 'entity-mx', entity: 'Acme Freight Mexico', balance: 100000 },
+      ],
+    },
+    {
+      id: 'acct-4',
+      entityId: 'comp-heritage',
+      entityName: 'Heritage Transport',
+      accountId: '8999',
+      accountName: 'Legacy Clearing',
+      activity: 15000,
+      status: 'Excluded',
+      mappingType: 'exclude',
+      netChange: 15000,
+      operation: 'Legacy',
+      aiConfidence: 48,
+      polarity: 'Debit',
+      notes: 'Excluded from mapping per client request.',
+      splitDefinitions: [],
+      entities: [{ id: 'entity-legacy', entity: 'Legacy Ops', balance: 15000 }],
+    },
+  ];
+};
 
 const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   ...row,
@@ -316,19 +347,13 @@ const resolveActivePeriod = (
   return null;
 };
 
-const findStandardScoaOption = (targetId?: string | null) => {
-  if (!targetId) {
-    return null;
-  }
-  const normalized = targetId.trim();
+const findChartOfAccountTarget = (targetId?: string | null) => {
+  const normalized = typeof targetId === 'string' ? targetId.trim() : '';
   if (!normalized) {
     return null;
   }
-  return (
-    STANDARD_CHART_OF_ACCOUNTS.find(option => option.id === normalized) ??
-    STANDARD_CHART_OF_ACCOUNTS.find(option => option.value === normalized) ??
-    null
-  );
+
+  return findChartOfAccountOption(normalized);
 };
 
 interface TargetAccumulatorEntry {
@@ -363,7 +388,7 @@ const accumulateStandardTargetValues = (
       if (!normalizedTarget) {
         return;
       }
-      const option = findStandardScoaOption(normalizedTarget);
+      const option = findChartOfAccountTarget(normalizedTarget);
       const targetId = option?.id ?? normalizedTarget;
       const label = option?.label ?? normalizedTarget;
       const amount = Math.abs(account.netChange);
@@ -380,7 +405,7 @@ const accumulateStandardTargetValues = (
         if (!normalizedTarget) {
           return;
         }
-        const option = findStandardScoaOption(normalizedTarget);
+        const option = findChartOfAccountTarget(normalizedTarget);
         const targetId = option?.id ?? normalizedTarget;
         const label = option?.label ?? split.targetName ?? normalizedTarget;
         const amount = getSplitAmount(account, split);
@@ -453,7 +478,7 @@ export const buildReconciliationGroups = (
         return;
       }
 
-      const option = findStandardScoaOption(normalizedTarget);
+      const option = findChartOfAccountTarget(normalizedTarget);
       const targetId = option?.id ?? normalizedTarget;
       const label = option?.label ?? normalizedTarget;
       const amount = Math.abs(account.netChange);
@@ -473,7 +498,7 @@ export const buildReconciliationGroups = (
           return;
         }
 
-        const option = findStandardScoaOption(normalizedTarget);
+        const option = findChartOfAccountTarget(normalizedTarget);
         const targetId = option?.id ?? normalizedTarget;
         const label = option?.label ?? split.targetName ?? normalizedTarget;
         const amount = getSplitAmount(account, split);
@@ -547,7 +572,7 @@ export const buildStandardScoaSummaries = (
   accounts: GLAccountMappingRow[],
 ): StandardScoaSummary[] => {
   const accumulator = accumulateStandardTargetValues(accounts);
-  return STANDARD_CHART_OF_ACCOUNTS.map(option => ({
+  return getChartOfAccountOptions().map(option => ({
     id: option.id,
     value: option.value,
     label: option.label,
@@ -616,7 +641,7 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
         return true;
       }
       const targetId = typeof split.targetId === 'string' ? split.targetId.trim() : '';
-      return targetId.length > 0 && STANDARD_SCOA_TARGET_ID_SET.has(targetId);
+      return targetId.length > 0 && isKnownChartOfAccount(targetId);
     });
 
     if (!allSplitsConfigured) {
@@ -641,7 +666,7 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
     return 'Unmapped';
   }
 
-  if (STANDARD_SCOA_VALUE_SET.has(manualTarget)) {
+  if (isKnownChartOfAccount(manualTarget)) {
     return 'Mapped';
   }
 
@@ -654,7 +679,7 @@ const applyDerivedStatus = (account: GLAccountMappingRow): GLAccountMappingRow =
 });
 
 export const createInitialMappingAccounts = (): GLAccountMappingRow[] =>
-  baseMappings.map(row => applyDerivedStatus(cloneMappingRow(row)));
+  buildBaseMappings().map(row => applyDerivedStatus(cloneMappingRow(row)));
 
 const syncDynamicAllocationState = (
   accounts: GLAccountMappingRow[],

@@ -5,6 +5,7 @@ import './dbPing';
 import './glUpload';
 import './health';
 import './industries';
+import './chartOfAccounts';
 import './mappingSuggest';
 import './masterclients';
 import './userClients';

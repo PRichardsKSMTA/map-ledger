@@ -12,7 +12,7 @@ import {
 } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 import type { GLAccountMappingRow, TrialBalanceRow } from '../types';
-import { getStandardScoaOption } from '../data/standardChartOfAccounts';
+import { getChartOfAccountOptions } from '../store/chartOfAccountsStore';
 
 const buildMappingAccount = (
   overrides: Partial<GLAccountMappingRow> & { id: string },
@@ -32,6 +32,15 @@ const buildMappingAccount = (
   entities: [],
   ...overrides,
 });
+
+const findTargetByDescription = (description: string) =>
+  getChartOfAccountOptions().find(target => {
+    const normalized = description.toLowerCase();
+    return (
+      target.description?.toLowerCase() === normalized ||
+      target.label.toLowerCase().includes(normalized)
+    );
+  });
 
 describe('mappingStore selectors', () => {
   beforeEach(() => {
@@ -100,9 +109,13 @@ describe('mappingStore selectors', () => {
   });
 
   it('exposes mapped SCoA accounts to the dynamic allocation basis list', () => {
-    const payrollTarget = getStandardScoaOption(
+    const payrollTarget = findTargetByDescription(
       'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
     );
+
+    if (!payrollTarget) {
+      throw new Error('Expected chart of account target to be available');
+    }
 
     act(() => {
       useMappingStore.getState().updateTarget('acct-1', payrollTarget.value);
@@ -120,10 +133,10 @@ describe('mappingStore selectors', () => {
   });
 
   it('includes percentage split targets in the basis selection before status is finalized', () => {
-    const driverTarget = getStandardScoaOption(
+    const driverTarget = findTargetByDescription(
       'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET',
     );
-    const nonDriverTarget = getStandardScoaOption(
+    const nonDriverTarget = findTargetByDescription(
       'NON DRIVER WAGES & BENEFITS - TOTAL ASSET OPERATIONS',
     );
 
