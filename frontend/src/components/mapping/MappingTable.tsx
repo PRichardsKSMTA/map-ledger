@@ -24,6 +24,7 @@ import {
   selectActiveStatuses,
   selectSearchTerm,
   selectSplitValidationIssues,
+  selectAvailablePeriods,
   useMappingStore,
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
@@ -156,6 +157,7 @@ export default function MappingTable() {
     [datapoints]
   );
   const accounts = useMappingStore(selectFilteredAccounts);
+  const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore((state) => state.activePeriod);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
@@ -189,6 +191,13 @@ export default function MappingTable() {
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(
     null
   );
+
+  const latestPeriod = useMemo(() => {
+    if (availablePeriods.length === 0) {
+      return null;
+    }
+    return availablePeriods[availablePeriods.length - 1] ?? null;
+  }, [availablePeriods]);
 
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
@@ -412,6 +421,8 @@ export default function MappingTable() {
     return sortConfig.direction === 'asc' ? 'ascending' : 'descending';
   };
 
+  let hasRenderedPriorPeriodDivider = false;
+
   return (
     <div className="space-y-4">
       <MappingToolbar />
@@ -456,6 +467,13 @@ export default function MappingTable() {
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
             {sortedAccounts.map((account, index) => {
+              const isPriorPeriod = latestPeriod !== null && account.glMonth !== latestPeriod;
+              const shouldRenderDivider = isPriorPeriod && !hasRenderedPriorPeriodDivider;
+
+              if (shouldRenderDivider) {
+                hasRenderedPriorPeriodDivider = true;
+              }
+
               const isSelected = selectedIds.has(account.id);
               const targetScoa =
                 account.manualCOAId ?? account.suggestedCOAId ?? '';
@@ -500,6 +518,17 @@ export default function MappingTable() {
 
               return (
                 <Fragment key={rowKey}>
+                  {shouldRenderDivider && (
+                    <tr className="bg-slate-100 dark:bg-slate-800/60">
+                      <td
+                        className="px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200"
+                        colSpan={12}
+                      >
+                        Earlier GL months
+                        {latestPeriod ? ` (before ${latestPeriod})` : ''}
+                      </td>
+                    </tr>
+                  )}
                   <tr
                     className={
                       isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined

@@ -236,6 +236,67 @@ const getPeriodsForAccounts = (accounts: GLAccountMappingRow[]): string[] => {
   return Array.from(periodSet).sort();
 };
 
+const normalizePeriod = (period?: string | null): string | null => {
+  if (!period) {
+    return null;
+  }
+  const trimmed = period.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const comparePeriodsDescending = (a?: string | null, b?: string | null): number => {
+  const normalizedA = normalizePeriod(a);
+  const normalizedB = normalizePeriod(b);
+
+  if (normalizedA === normalizedB) {
+    return 0;
+  }
+
+  if (normalizedA === null) {
+    return 1;
+  }
+
+  if (normalizedB === null) {
+    return -1;
+  }
+
+  return normalizedA > normalizedB ? -1 : 1;
+};
+
+const selectMostRecentNonZeroAccount = (
+  accounts: GLAccountMappingRow[],
+): GLAccountMappingRow => {
+  const sortedByPeriod = [...accounts].sort((a, b) =>
+    comparePeriodsDescending(a.glMonth, b.glMonth),
+  );
+
+  return sortedByPeriod.find(account => account.netChange !== 0) ?? sortedByPeriod[0];
+};
+
+const buildMostRecentAccounts = (accounts: GLAccountMappingRow[]): GLAccountMappingRow[] => {
+  const grouped = new Map<string, GLAccountMappingRow[]>();
+
+  accounts.forEach(account => {
+    const key = `${account.entityId}__${account.accountId}`;
+    const existing = grouped.get(key) ?? [];
+    existing.push(account);
+    grouped.set(key, existing);
+  });
+
+  return Array.from(grouped.values())
+    .map(selectMostRecentNonZeroAccount)
+    .sort((a, b) => {
+      const periodComparison = comparePeriodsDescending(a.glMonth, b.glMonth);
+      if (periodComparison !== 0) {
+        return periodComparison;
+      }
+
+      return a.accountName.localeCompare(b.accountName, undefined, {
+        sensitivity: 'base',
+      });
+    });
+};
+
 const resolveActivePeriod = (
   accounts: GLAccountMappingRow[],
   entityId: string | null,
@@ -1631,7 +1692,7 @@ export const selectAvailablePeriods = (state: MappingState): string[] =>
 export const selectFilteredAccounts = (state: MappingState): GLAccountMappingRow[] => {
   const scopedAccounts = selectEntityScopedAccounts(state);
   if (!state.activePeriod) {
-    return scopedAccounts;
+    return buildMostRecentAccounts(scopedAccounts);
   }
   return scopedAccounts.filter(account => account.glMonth === state.activePeriod);
 };
