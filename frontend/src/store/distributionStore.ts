@@ -42,24 +42,24 @@ const deriveDistributionStatus = (
   operations: DistributionRow['operations'],
 ): DistributionStatus => {
   if (type === 'direct') {
-    return operations.length === 1 ? 'Mapped' : 'Unmapped';
+    return operations.length === 1 ? 'Distributed' : 'Undistributed';
   }
 
   if (type === 'percentage') {
     if (operations.length === 0) {
-      return 'Unmapped';
+      return 'Undistributed';
     }
 
     const allHaveAllocations = operations.every(operation => typeof operation.allocation === 'number');
     if (!allHaveAllocations) {
-      return 'Unmapped';
+      return 'Undistributed';
     }
 
     const total = operations.reduce((sum, operation) => sum + (operation.allocation ?? 0), 0);
-    return Math.abs(total - 100) <= 0.01 ? 'Mapped' : 'Unmapped';
+    return Math.abs(total - 100) <= 0.01 ? 'Distributed' : 'Undistributed';
   }
 
-  return operations.length > 0 ? 'Mapped' : 'Unmapped';
+  return operations.length > 0 ? 'Distributed' : 'Undistributed';
 };
 
 const applyDistributionStatus = (row: DistributionRow): DistributionRow => ({
@@ -119,7 +119,7 @@ export const useDistributionStore = create<DistributionState>((set, _get) => ({
           operations: clampOperationsForType(resolvedType, nextOperations),
           presetId: existing?.presetId ?? null,
           notes: existing?.notes,
-          status: existing?.status ?? 'Unmapped',
+          status: existing?.status ?? 'Undistributed',
         });
       });
       return { rows: nextRows };

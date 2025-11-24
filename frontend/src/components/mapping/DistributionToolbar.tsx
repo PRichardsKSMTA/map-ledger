@@ -15,8 +15,8 @@ import type {
 } from '../../types';
 
 const STATUS_DEFINITIONS: { value: DistributionStatus; label: string }[] = [
-  { value: 'Unmapped', label: 'Unmapped' },
-  { value: 'Mapped', label: 'Mapped' },
+  { value: 'Undistributed', label: 'Undistributed' },
+  { value: 'Distributed', label: 'Distributed' },
 ];
 
 export default function DistributionToolbar() {
