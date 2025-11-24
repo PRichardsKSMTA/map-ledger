@@ -31,6 +31,9 @@ const openApiSpec = {
     '/client-files': {
       get: { summary: 'List paginated client file metadata' },
       post: { summary: 'Persist client file metadata and sheet/entity details' }
+    },
+    '/client-entities': {
+      get: { summary: 'List entities configured for a client' }
     }
   }
 };

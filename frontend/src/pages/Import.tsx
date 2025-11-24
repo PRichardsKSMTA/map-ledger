@@ -7,10 +7,11 @@ import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
 import TemplateGuide from '../components/import/TemplateGuide';
-import type { EntitySummary, TrialBalanceRow } from '../types';
+import type { ClientEntity, EntitySummary, TrialBalanceRow } from '../types';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
+import { slugify } from '../utils/slugify';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -61,20 +62,12 @@ export default function Import() {
     fetchImports({ userId, clientId: singleClient?.id, page, pageSize });
   }, [fetchImports, userId, singleClient?.id, page, pageSize]);
 
-  const entityNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    companies.forEach((company) => {
-      map.set(company.id, company.name);
-    });
-    return map;
-  }, [companies]);
-
   const loadImportedAccounts = useMappingStore((state) => state.loadImportedAccounts);
 
   const handleFileImport = async (
     rows: TrialBalanceRow[],
     clientId: string,
-    _entityIds: string[],
+    selectedEntities: ClientEntity[],
     _headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
@@ -89,14 +82,75 @@ export default function Import() {
         throw new Error('You must be signed in to upload files.');
       }
 
-      const selectedEntities: EntitySummary[] = Array.from(
-        new Map(
-          _entityIds.map((entityId) => {
-            const entityName = entityNameById.get(entityId) ?? entityId;
-            return [entityId, { id: entityId, name: entityName }];
-          }),
-        ).values(),
-      );
+      if (selectedEntities.length === 0) {
+        throw new Error('Please select at least one entity to import.');
+      }
+
+      const normalizeEntityValue = (value?: string | null) => {
+        const normalized = slugify(value ?? '');
+        if (normalized && normalized.length > 0) {
+          return normalized;
+        }
+        return (value ?? '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+      };
+
+      const entityLookup = new Map<string, ClientEntity>();
+      selectedEntities.forEach((entity) => {
+        const variants = new Set([entity.name, ...entity.aliases]);
+        variants.forEach((variant) => {
+          const normalized = normalizeEntityValue(variant);
+          if (normalized.length > 0 && !entityLookup.has(normalized)) {
+            entityLookup.set(normalized, entity);
+          }
+        });
+      });
+
+      const entityRowCounts = new Map<string, number>();
+      const resolvedRows = rows.map((row) => {
+        const matchedEntity = (() => {
+          const normalized = normalizeEntityValue(row.entity);
+          const matched = normalized.length > 0 ? entityLookup.get(normalized) : null;
+          if (matched) {
+            return matched;
+          }
+          if (selectedEntities.length === 1) {
+            return selectedEntities[0];
+          }
+          return null;
+        })();
+
+        if (!matchedEntity) {
+          return row;
+        }
+
+        entityRowCounts.set(
+          matchedEntity.id,
+          (entityRowCounts.get(matchedEntity.id) ?? 0) + 1,
+        );
+
+        if (row.entity === matchedEntity.name) {
+          return row;
+        }
+
+        return { ...row, entity: matchedEntity.name };
+      });
+
+      const singleEntity = selectedEntities.length === 1 ? selectedEntities[0] : null;
+      if (singleEntity && (entityRowCounts.get(singleEntity.id) ?? 0) === 0) {
+        entityRowCounts.set(singleEntity.id, resolvedRows.length);
+      }
+
+      const entitiesForMetadata = selectedEntities.map((entity) => ({
+        entityName: entity.name,
+        rowCount: entityRowCounts.get(entity.id) ?? 0,
+      }));
+
+      const mappingEntities: EntitySummary[] = selectedEntities.map(({ id, name }) => ({
+        id,
+        name,
+      }));
+
+      const entityIds = mappingEntities.map((entity) => entity.id);
 
       const importId = crypto.randomUUID();
       const fileType = file.type || 'application/octet-stream';
@@ -124,20 +178,6 @@ export default function Import() {
         }));
       })();
 
-      const entities = (() => {
-        const counts = new Map<string, number>();
-        rows.forEach((row) => {
-          if (!row.entity) {
-            return;
-          }
-          counts.set(row.entity, (counts.get(row.entity) ?? 0) + 1);
-        });
-        return Array.from(counts.entries()).map(([entityName, count]) => ({
-          entityName,
-          rowCount: count,
-        }));
-      })();
-
       await recordImport({
         id: importId,
         clientId,
@@ -148,19 +188,19 @@ export default function Import() {
         period: primaryPeriod,
         timestamp: new Date().toISOString(),
         status: 'completed',
-        rowCount: rows.length,
+        rowCount: resolvedRows.length,
         importedBy: user.email,
         sheets,
-        entities,
+        entities: entitiesForMetadata,
       });
 
       loadImportedAccounts({
         uploadId: importId,
         clientId,
-        entityIds: _entityIds,
-        entities: selectedEntities,
+        entityIds,
+        entities: mappingEntities,
         period: primaryPeriod,
-        rows,
+        rows: resolvedRows,
       });
 
       setSuccess('File imported successfully');

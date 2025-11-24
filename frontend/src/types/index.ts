@@ -408,6 +408,12 @@ export interface EntitySummary {
   name: string;
 }
 
+export interface ClientEntity {
+  id: string;
+  name: string;
+  aliases: string[];
+}
+
 export interface GLAccountEntityBreakdown {
   id: string;
   entity: string;
