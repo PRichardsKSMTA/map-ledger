@@ -7,11 +7,31 @@ import {
   createInitialMappingAccounts,
   selectStatusCounts,
   selectSummaryMetrics,
+  selectFilteredAccounts,
   useMappingStore,
 } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
-import type { TrialBalanceRow } from '../types';
+import type { GLAccountMappingRow, TrialBalanceRow } from '../types';
 import { getStandardScoaOption } from '../data/standardChartOfAccounts';
+
+const buildMappingAccount = (
+  overrides: Partial<GLAccountMappingRow> & { id: string },
+): GLAccountMappingRow => ({
+  id: overrides.id,
+  entityId: 'ent-1',
+  entityName: 'Entity One',
+  accountId: '1000',
+  accountName: 'Sample Account',
+  activity: overrides.netChange ?? 0,
+  status: 'Unmapped',
+  mappingType: 'direct',
+  netChange: 0,
+  operation: 'Ops',
+  polarity: 'Debit',
+  splitDefinitions: [],
+  entities: [],
+  ...overrides,
+});
 
 describe('mappingStore selectors', () => {
   beforeEach(() => {
@@ -393,5 +413,57 @@ describe('mappingStore selectors', () => {
     resolved.forEach((account) => {
       expect(account.requiresEntityAssignment).toBe(false);
     });
+  });
+
+  it('surfaces the most recent non-zero month per account when viewing all periods', () => {
+    const accounts: GLAccountMappingRow[] = [
+      buildMappingAccount({
+        id: 'acct-jan',
+        glMonth: '2024-01',
+        netChange: 150,
+        activity: 150,
+        accountName: 'Freight Revenue',
+        accountId: '4000',
+      }),
+      buildMappingAccount({
+        id: 'acct-feb',
+        glMonth: '2024-02',
+        netChange: 0,
+        activity: 0,
+        accountName: 'Freight Revenue',
+        accountId: '4000',
+      }),
+      buildMappingAccount({
+        id: 'acct-mar',
+        glMonth: '2024-03',
+        netChange: 275,
+        activity: 275,
+        accountName: 'COGS',
+        accountId: '5000',
+      }),
+    ];
+
+    act(() => {
+      useMappingStore.setState(state => ({
+        ...state,
+        accounts,
+        activePeriod: null,
+        activeEntityId: 'ent-1',
+        activeEntities: [{ id: 'ent-1', name: 'Entity One' }],
+        activeEntityIds: ['ent-1'],
+        activeStatuses: [],
+        searchTerm: '',
+      }));
+    });
+
+    const filtered = selectFilteredAccounts(useMappingStore.getState());
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered[0]).toEqual(
+      expect.objectContaining({ accountId: '5000', glMonth: '2024-03', netChange: 275 }),
+    );
+    expect(filtered[1]).toEqual(
+      expect.objectContaining({ accountId: '4000', glMonth: '2024-01', netChange: 150 }),
+    );
   });
 });
