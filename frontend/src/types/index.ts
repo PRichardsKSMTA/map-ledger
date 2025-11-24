@@ -439,7 +439,7 @@ export interface DistributionOperationShare {
   notes?: string;
 }
 
-export type DistributionStatus = Extract<MappingStatus, 'Mapped' | 'Unmapped'>;
+export type DistributionStatus = 'Distributed' | 'Undistributed';
 
 export interface DistributionRow {
   id: string;

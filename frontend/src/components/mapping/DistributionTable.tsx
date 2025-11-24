@@ -24,13 +24,14 @@ interface DistributionTableProps {
 }
 
 const STATUS_DEFINITIONS: { value: DistributionStatus; label: string }[] = [
-  { value: 'Unmapped', label: 'Unmapped' },
-  { value: 'Mapped', label: 'Mapped' },
+  { value: 'Undistributed', label: 'Undistributed' },
+  { value: 'Distributed', label: 'Distributed' },
 ];
 
 const STATUS_BADGE_CLASSES: Record<DistributionStatus, string> = {
-  Unmapped: 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
-  Mapped: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  Undistributed:
+    'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
+  Distributed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
 };
 
 const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
@@ -69,8 +70,8 @@ const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
 };
 
 const STATUS_ICONS: Record<DistributionStatus, typeof Check | typeof HelpCircle> = {
-  Mapped: Check,
-  Unmapped: HelpCircle,
+  Distributed: Check,
+  Undistributed: HelpCircle,
 };
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
