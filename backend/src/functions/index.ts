@@ -12,5 +12,6 @@ import './datapointConfigs/create';
 import './datapointConfigs/list';
 import './datapointConfigs/update';
 import './clientFiles';
+import './clientEntities';
 
 export default app;

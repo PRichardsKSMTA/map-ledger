@@ -3,6 +3,7 @@ import { Upload, X, Download } from 'lucide-react';
 import Select from '../ui/Select';
 import MultiSelect from '../ui/MultiSelect';
 import { useOrganizationStore } from '../../store/organizationStore';
+import { useClientEntityStore } from '../../store/clientEntityStore';
 import {
   parseTrialBalanceWorkbook,
   ParsedUpload,
@@ -15,8 +16,9 @@ import {
   ClientTemplateConfig,
 } from '../../utils/getClientTemplateMapping';
 import PreviewTable from './PreviewTable';
-import type { TrialBalanceRow } from '../../types';
+import type { ClientEntity, TrialBalanceRow } from '../../types';
 import { normalizeGlMonth, isValidNormalizedMonth } from '../../utils/extractDateFromText';
+import { detectLikelyEntities } from '../../utils/detectClientEntities';
 
 const templateHeaders = [
   'GL ID',
@@ -79,7 +81,7 @@ interface ImportFormProps {
   onImport: (
     uploads: TrialBalanceRow[],
     clientId: string,
-    entityIds: string[],
+    entitySelections: ClientEntity[],
     headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
@@ -92,6 +94,10 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const companies = useOrganizationStore((state) => state.companies);
   const isLoadingClients = useOrganizationStore((state) => state.isLoading);
+  const fetchClientEntities = useClientEntityStore((state) => state.fetchForClient);
+  const entityStoreError = useClientEntityStore((state) => state.error);
+  const isLoadingEntities = useClientEntityStore((state) => state.isLoading);
+  const entitiesByClient = useClientEntityStore((state) => state.entitiesByClient);
   const [entityIds, setEntityIds] = useState<string[]>([]);
   const [clientId, setClientId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -103,6 +109,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   > | null>(null);
   const [combinedRows, setCombinedRows] = useState<TrialBalanceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [hasManualEntitySelection, setHasManualEntitySelection] = useState(false);
 
   const previewSampleRows = useMemo(() => {
     if (uploads.length === 0 || selectedSheets.length === 0) return [] as Record<string, unknown>[];
@@ -145,16 +152,27 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   const entityOptions = useMemo(() => {
     if (!clientId) return [];
-    return companies.filter((company) =>
-      company.clients.some((c) => c.id === clientId)
-    );
-  }, [clientId, companies]);
+    return entitiesByClient[clientId] ?? [];
+  }, [clientId, entitiesByClient]);
+
+  const singleEntity = entityOptions.length === 1 ? entityOptions[0] : null;
 
   useEffect(() => {
-    if (companies.length === 1) {
-      setEntityIds([companies[0].id]);
+    if (clientId) {
+      fetchClientEntities(clientId);
     }
-  }, [companies]);
+  }, [clientId, fetchClientEntities]);
+
+  useEffect(() => {
+    setEntityIds([]);
+    setHasManualEntitySelection(false);
+  }, [clientId]);
+
+  useEffect(() => {
+    if (singleEntity && !hasManualEntitySelection) {
+      setEntityIds([singleEntity.id]);
+    }
+  }, [singleEntity, hasManualEntitySelection]);
 
   useEffect(() => {
     if (singleClientId) {
@@ -163,13 +181,27 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   }, [singleClientId]);
 
   useEffect(() => {
-    const available = entityOptions.map((company) => company.id);
-    if (available.length === 1) {
-      setEntityIds([available[0]]);
-    } else {
-      setEntityIds([]);
+    if (!hasManualEntitySelection && entityOptions.length > 0 && uploads.length > 0) {
+      const detected = detectLikelyEntities({
+        uploads,
+        selectedSheetIndexes: selectedSheets,
+        entities: entityOptions,
+        combinedRows,
+        fileName: selectedFile?.name,
+      });
+
+      if (detected.length > 0) {
+        setEntityIds(detected);
+      }
     }
-  }, [clientId, entityOptions]);
+  }, [
+    combinedRows,
+    entityOptions,
+    hasManualEntitySelection,
+    selectedFile?.name,
+    selectedSheets,
+    uploads,
+  ]);
 
   useEffect(() => {
     if (uploads.length > 0 && selectedSheets.length === 0) {
@@ -191,8 +223,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   const processFile = async (file: File) => {
     try {
-      if (!clientId || entityIds.length === 0) {
-        setError('Please select a client and entity before uploading.');
+      if (!clientId) {
+        setError('Please select a client before uploading.');
         setSelectedFile(null);
         setSelectedSheets([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -213,6 +245,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setHeaderMap(null);
       setCombinedRows([]);
       setError(null);
+      setHasManualEntitySelection(false);
     } catch (err) {
       setError((err as Error).message);
       setUploads([]);
@@ -312,11 +345,14 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       headerMap
     ) {
       const glMonths = extractGlMonthsFromRows(combinedRows);
+      const selectedEntities = entityOptions.filter((entity) =>
+        entityIds.includes(entity.id)
+      );
 
       await onImport(
         combinedRows,
         clientId,
-        entityIds,
+        selectedEntities,
         headerMap,
         glMonths,
         selectedFile.name,
@@ -344,41 +380,49 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-          {clientOptions.length > 1 && (
-            <Select
-              label="Client"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              required
-              disabled={clientOptions.length === 0 || isLoadingClients}
-            >
-              <option value="">Select a client</option>
-              {clientOptions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          )}
+      {clientOptions.length > 1 && (
+        <Select
+          label="Client"
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          required
+          disabled={clientOptions.length === 0 || isLoadingClients}
+        >
+          <option value="">Select a client</option>
+          {clientOptions.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </Select>
+      )}
 
-          {!isLoadingClients && clientOptions.length === 0 && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              No clients are currently linked to your account. Please contact an
-              administrator to request access.
-            </div>
-          )}
+      {!isLoadingClients && clientOptions.length === 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          No clients are currently linked to your account. Please contact an
+          administrator to request access.
+        </div>
+      )}
+
+      {entityStoreError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {entityStoreError}
+        </div>
+      )}
 
       <MultiSelect
         label="Entity"
-        options={entityOptions.map((company) => ({
-          value: company.id,
-          label: company.name,
+        options={entityOptions.map((entity) => ({
+          value: entity.id,
+          label: entity.name,
         }))}
         value={entityIds}
-        onChange={setEntityIds}
-        disabled={!clientId || isLoadingClients}
+        onChange={(values) => {
+          setHasManualEntitySelection(true);
+          setEntityIds(values);
+        }}
+        disabled={!clientId || isLoadingClients || isLoadingEntities}
       />
-
 
       <div
         className="mt-2 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg"
@@ -391,15 +435,16 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
               <span className="text-sm text-gray-900">{selectedFile.name}</span>
               <button
                 type="button"
-              onClick={() => {
-                setSelectedFile(null);
-                setUploads([]);
-                setSelectedSheets([]);
-                setHeaderMap(null);
-                setCombinedRows([]);
-                setClientId(singleClientId ?? '');
-                setEntityIds([]);
-              }}
+                onClick={() => {
+                  setSelectedFile(null);
+                  setUploads([]);
+                  setSelectedSheets([]);
+                  setHeaderMap(null);
+                  setCombinedRows([]);
+                  setClientId(singleClientId ?? '');
+                  setEntityIds([]);
+                  setHasManualEntitySelection(false);
+                }}
                 className="text-gray-500 hover:text-red-500"
               >
                 <X className="h-5 w-5" />
