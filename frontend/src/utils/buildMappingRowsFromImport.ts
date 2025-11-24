@@ -115,7 +115,7 @@ export const buildMappingRowsFromImport = (
     );
     const rawAccountId = (row.accountId ?? '').toString().trim();
     const accountId = rawAccountId.length > 0 ? rawAccountId : `account-${index + 1}`;
-    const compositeKey = `${normalized.id}__${accountId}`;
+    const compositeKey = `${normalized.id}__${accountId}${row.glMonth ? `__${row.glMonth}` : ''}__${index}`;
     const rowId = options.uploadId ? `${options.uploadId}-${compositeKey}` : compositeKey;
     const rawNetChange = Number(row.netChange ?? 0);
     const netChange = Number.isFinite(rawNetChange) ? rawNetChange : 0;
