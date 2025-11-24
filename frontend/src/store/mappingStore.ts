@@ -194,6 +194,67 @@ const getSplitAmount = (
   split: MappingSplitDefinition,
 ): number => Math.abs(getSplitSignedAmount(account, split));
 
+const deriveEntitySummaries = (accounts: GLAccountMappingRow[]): EntitySummary[] => {
+  const entities = new Map<string, EntitySummary>();
+
+  accounts.forEach(account => {
+    const normalizedId = account.entityId?.trim();
+    const normalizedName = account.entityName?.trim();
+
+    if (!normalizedId && !normalizedName) {
+      return;
+    }
+
+    const derivedId = normalizedId ?? slugify(normalizedName ?? 'entity');
+    const derivedName = normalizedName ?? normalizedId ?? 'Entity';
+
+    if (!entities.has(derivedId)) {
+      entities.set(derivedId, { id: derivedId, name: derivedName });
+    }
+  });
+
+  return Array.from(entities.values());
+};
+
+const getAccountsForEntity = (
+  accounts: GLAccountMappingRow[],
+  entityId: string | null,
+): GLAccountMappingRow[] => {
+  if (!entityId) {
+    return accounts;
+  }
+  return accounts.filter(account => account.entityId === entityId);
+};
+
+const getPeriodsForAccounts = (accounts: GLAccountMappingRow[]): string[] => {
+  const periodSet = new Set<string>();
+  accounts.forEach(account => {
+    if (account.glMonth) {
+      periodSet.add(account.glMonth);
+    }
+  });
+  return Array.from(periodSet).sort();
+};
+
+const resolveActivePeriod = (
+  accounts: GLAccountMappingRow[],
+  entityId: string | null,
+  desiredPeriod: string | null,
+): string | null => {
+  const scopedAccounts = getAccountsForEntity(accounts, entityId);
+  const availablePeriods = getPeriodsForAccounts(scopedAccounts);
+
+  if (desiredPeriod && availablePeriods.includes(desiredPeriod)) {
+    return desiredPeriod;
+  }
+
+  if (availablePeriods.length === 1) {
+    return availablePeriods[0] ?? null;
+  }
+
+  return null;
+};
+
 const findStandardScoaOption = (targetId?: string | null) => {
   if (!targetId) {
     return null;
@@ -656,13 +717,7 @@ const resolveEntityConflicts = (
     group.forEach(account => {
       const key = account.entityName.length > 0 ? account.entityName.toLowerCase() : '__blank__';
       if ((nameCounts.get(key) ?? 0) > 1) {
-        const index = normalized.findIndex(candidate => candidate.id === account.id);
-        if (index !== -1) {
-          normalized[index] = {
-            ...normalized[index],
-            requiresEntityAssignment: true,
-          };
-        }
+        account.requiresEntityAssignment = true;
       }
     });
   });
@@ -690,10 +745,12 @@ interface MappingState {
   activeStatuses: MappingStatus[];
   activeUploadId: string | null;
   activeClientId: string | null;
+  activeEntityId: string | null;
   activeEntityIds: string[];
   activeEntities: EntitySummary[];
   activePeriod: string | null;
   setSearchTerm: (term: string) => void;
+  setActiveEntityId: (entityId: string | null) => void;
   setActivePeriod: (period: string | null) => void;
   toggleStatusFilter: (status: MappingStatus) => void;
   clearStatusFilters: () => void;
@@ -751,17 +808,67 @@ interface MappingState {
 
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
+const initialAccounts = createInitialMappingAccounts();
+const initialEntities = deriveEntitySummaries(initialAccounts);
+
 export const useMappingStore = create<MappingState>((set, get) => ({
-  accounts: createInitialMappingAccounts(),
+  accounts: initialAccounts,
   searchTerm: '',
   activeStatuses: [],
   activeUploadId: null,
   activeClientId: null,
-  activeEntityIds: [],
-  activeEntities: [],
+  activeEntityId: null,
+  activeEntityIds: initialEntities.map(entity => entity.id),
+  activeEntities: initialEntities,
   activePeriod: null,
   setSearchTerm: term => set({ searchTerm: term }),
-  setActivePeriod: period => set({ activePeriod: period }),
+  setActiveEntityId: entityId =>
+    set(state => {
+      const normalized = entityId?.trim();
+      const availableEntities =
+        state.activeEntities.length > 0
+          ? state.activeEntities
+          : deriveEntitySummaries(state.accounts);
+      const resolvedEntityId =
+        normalized === undefined || normalized === null || normalized === ''
+          ? null
+          : availableEntities.some(entity => entity.id === normalized)
+            ? normalized
+            : availableEntities[0]?.id ?? null;
+
+      const resolvedPeriod = resolveActivePeriod(
+        state.accounts,
+        resolvedEntityId,
+        state.activePeriod,
+      );
+
+      return {
+        activeEntityId: resolvedEntityId,
+        activePeriod: resolvedPeriod,
+      };
+    }),
+  setActivePeriod: period =>
+    set(state => {
+      if (period === null) {
+        return { activePeriod: null };
+      }
+
+      const scopedAccounts = getAccountsForEntity(
+        state.accounts,
+        state.activeEntityId,
+      );
+      const availablePeriods = getPeriodsForAccounts(scopedAccounts);
+
+      if (availablePeriods.length === 0) {
+        return { activePeriod: null };
+      }
+
+      if (availablePeriods.includes(period)) {
+        return { activePeriod: period };
+      }
+
+      return { activePeriod: availablePeriods[0] ?? null };
+    }),
   toggleStatusFilter: status =>
     set(state => {
       const exists = state.activeStatuses.includes(status);
@@ -1360,20 +1467,29 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
     const resolvedAccounts = resolveEntityConflicts(accountsFromImport, selectedEntities);
 
-    const periodSet = new Set<string>();
-    resolvedAccounts.forEach(account => {
-      if (account.glMonth) {
-        periodSet.add(account.glMonth);
-      }
-    });
+    const resolvedEntities =
+      selectedEntities.length > 0
+        ? selectedEntities
+        : deriveEntitySummaries(resolvedAccounts);
+    const resolvedEntityIds =
+      entityIds?.length && entityIds.length > 0
+        ? entityIds
+        : resolvedEntities.map(entity => entity.id);
+    const resolvedActiveEntityId = resolvedEntityIds[0] ?? resolvedEntities[0]?.id ?? null;
 
-    const uniquePeriods = Array.from(periodSet);
-    const hasMultiplePeriods = uniquePeriods.length > 1;
-    const resolvedPeriod = hasMultiplePeriods
-      ? null
-      : normalizedPeriod ?? uniquePeriods[0] ?? null;
-
-    const resolvedEntityIds = entityIds ?? selectedEntities.map(entity => entity.id);
+    const scopedAccounts = getAccountsForEntity(
+      resolvedAccounts,
+      resolvedActiveEntityId,
+    );
+    const periodSourceAccounts =
+      scopedAccounts.length > 0 ? scopedAccounts : resolvedAccounts;
+    const availablePeriods = getPeriodsForAccounts(periodSourceAccounts);
+    const resolvedPeriod =
+      normalizedPeriod && (availablePeriods.length === 0 || availablePeriods.includes(normalizedPeriod))
+        ? normalizedPeriod
+        : availablePeriods.length === 1
+          ? availablePeriods[0] ?? null
+          : null;
 
     set({
       accounts: resolvedAccounts,
@@ -1381,8 +1497,9 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       activeStatuses: [],
       activeUploadId: uploadId,
       activeClientId: normalizedClientId,
+      activeEntityId: resolvedActiveEntityId,
       activeEntityIds: resolvedEntityIds,
-      activeEntities: selectedEntities,
+      activeEntities: resolvedEntities,
       activePeriod: resolvedPeriod,
     });
 
@@ -1444,34 +1561,47 @@ const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
   return issues;
 };
 
-export const selectAccounts = (state: MappingState): GLAccountMappingRow[] => state.accounts;
+const selectEntityScopedAccounts = (
+  state: MappingState,
+): GLAccountMappingRow[] => getAccountsForEntity(state.accounts, state.activeEntityId);
 
-export const selectTotalAccounts = (state: MappingState): number => state.accounts.length;
+export const selectAccounts = (state: MappingState): GLAccountMappingRow[] =>
+  selectEntityScopedAccounts(state);
+
+export const selectTotalAccounts = (state: MappingState): number =>
+  selectEntityScopedAccounts(state).length;
 
 export const selectMappedAccounts = (state: MappingState): number =>
-  state.accounts.filter(account => account.manualCOAId || account.suggestedCOAId).length;
+  selectEntityScopedAccounts(state).filter(
+    account => account.manualCOAId || account.suggestedCOAId,
+  ).length;
 
 export const selectGrossTotal = (state: MappingState): number =>
-  calculateGrossTotal(state.accounts);
+  calculateGrossTotal(selectEntityScopedAccounts(state));
 
 export const selectExcludedTotal = (state: MappingState): number =>
-  calculateExcludedTotal(state.accounts);
+  calculateExcludedTotal(selectEntityScopedAccounts(state));
 
 export const selectNetTotal = (state: MappingState): number =>
-  calculateGrossTotal(state.accounts) - calculateExcludedTotal(state.accounts);
+  calculateGrossTotal(selectEntityScopedAccounts(state)) -
+  calculateExcludedTotal(selectEntityScopedAccounts(state));
 
 export const selectStatusCounts = (state: MappingState): Record<MappingStatus, number> =>
-  state.accounts.reduce<Record<MappingStatus, number>>((accumulator, account) => {
-    accumulator[account.status] += 1;
-    return accumulator;
-  }, Object.fromEntries(mappingStatuses.map(status => [status, 0])) as Record<MappingStatus, number>);
+  selectEntityScopedAccounts(state).reduce<Record<MappingStatus, number>>(
+    (accumulator, account) => {
+      accumulator[account.status] += 1;
+      return accumulator;
+    },
+    Object.fromEntries(mappingStatuses.map(status => [status, 0])) as Record<MappingStatus, number>,
+  );
 
 export const selectSummaryMetrics = (state: MappingState): SummarySelector => {
-  const grossTotal = calculateGrossTotal(state.accounts);
-  const excludedTotal = calculateExcludedTotal(state.accounts);
+  const scopedAccounts = selectEntityScopedAccounts(state);
+  const grossTotal = calculateGrossTotal(scopedAccounts);
+  const excludedTotal = calculateExcludedTotal(scopedAccounts);
   return {
-    totalAccounts: state.accounts.length,
-    mappedAccounts: state.accounts.filter(account => account.manualCOAId || account.suggestedCOAId).length,
+    totalAccounts: scopedAccounts.length,
+    mappedAccounts: scopedAccounts.filter(account => account.manualCOAId || account.suggestedCOAId).length,
     grossTotal,
     excludedTotal,
     netTotal: grossTotal - excludedTotal,
@@ -1482,36 +1612,43 @@ export const selectActiveStatuses = (state: MappingState): MappingStatus[] => st
 
 export const selectSearchTerm = (state: MappingState): string => state.searchTerm;
 
+export const selectActiveEntityId = (state: MappingState): string | null => state.activeEntityId;
+
 export const selectActivePeriod = (state: MappingState): string | null => state.activePeriod;
 
-export const selectAvailablePeriods = (state: MappingState): string[] => {
-  const periodSet = new Set<string>();
-  state.accounts.forEach(account => {
-    if (account.glMonth) {
-      periodSet.add(account.glMonth);
-    }
-  });
-  return Array.from(periodSet).sort();
+export const selectAvailableEntities = (
+  state: MappingState,
+): EntitySummary[] => {
+  if (state.activeEntities.length > 0) {
+    return state.activeEntities;
+  }
+  return deriveEntitySummaries(state.accounts);
 };
 
+export const selectAvailablePeriods = (state: MappingState): string[] =>
+  getPeriodsForAccounts(selectEntityScopedAccounts(state));
+
 export const selectFilteredAccounts = (state: MappingState): GLAccountMappingRow[] => {
+  const scopedAccounts = selectEntityScopedAccounts(state);
   if (!state.activePeriod) {
-    return state.accounts;
+    return scopedAccounts;
   }
-  return state.accounts.filter(account => account.glMonth === state.activePeriod);
+  return scopedAccounts.filter(account => account.glMonth === state.activePeriod);
 };
 
 export const selectStandardScoaSummaries = (
   state: MappingState,
-): StandardScoaSummary[] => buildStandardScoaSummaries(state.accounts);
+): StandardScoaSummary[] => buildStandardScoaSummaries(selectEntityScopedAccounts(state));
 
 export const selectReconciliationGroups = (
   state: MappingState,
-): ReconciliationSubcategoryGroup[] => buildReconciliationGroups(state.accounts);
+): ReconciliationSubcategoryGroup[] => buildReconciliationGroups(
+    selectEntityScopedAccounts(state),
+  );
 
 export const selectAccountsByPeriod = (state: MappingState): Map<string, GLAccountMappingRow[]> => {
   const byPeriod = new Map<string, GLAccountMappingRow[]>();
-  state.accounts.forEach(account => {
+  selectEntityScopedAccounts(state).forEach(account => {
     const period = account.glMonth || 'unknown';
     const existing = byPeriod.get(period) || [];
     byPeriod.set(period, [...existing, account]);
@@ -1544,10 +1681,10 @@ export const calculateSplitAmount = (
 ): number => getSplitAmount(account, split);
 
 export const selectSplitValidationIssues = (state: MappingState) =>
-  getSplitValidationIssues(state.accounts);
+  getSplitValidationIssues(selectEntityScopedAccounts(state));
 
 export const selectAccountsRequiringSplits = (state: MappingState) =>
-  state.accounts.filter(
+  selectEntityScopedAccounts(state).filter(
     account =>
       account.mappingType === 'percentage' && account.splitDefinitions.length === 0
   );

@@ -19,8 +19,10 @@ describe('mappingStore selectors', () => {
       accounts: createInitialMappingAccounts(),
       searchTerm: '',
       activeStatuses: [],
+      activeEntityId: null,
       activeEntities: [],
       activeEntityIds: [],
+      activePeriod: null,
     });
     useRatioAllocationStore.setState({
       allocations: [],
@@ -265,11 +267,27 @@ describe('mappingStore selectors', () => {
   it('tracks status counts across all mapping rows', () => {
     const counts = selectStatusCounts(useMappingStore.getState());
     expect(counts).toEqual({
-      New: 1,
+      New: 2,
       Unmapped: 0,
-      Mapped: 2,
+      Mapped: 1,
       Excluded: 1,
     });
+  });
+
+  it('filters summary metrics by active entity', () => {
+    act(() => {
+      useMappingStore.setState(state => ({ ...state, activeEntityId: 'comp-acme' }));
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary).toEqual(
+      expect.objectContaining({
+        totalAccounts: 2,
+        grossTotal: 620000,
+        excludedTotal: 0,
+        netTotal: 620000,
+      }),
+    );
   });
 
   it('loads imported rows into mapping state', () => {
@@ -314,6 +332,7 @@ describe('mappingStore selectors', () => {
     );
     expect(state.activeUploadId).toBe('import-1');
     expect(state.activeClientId).toBe('cli-123');
+    expect(state.activeEntityId).toBe('ent-1');
     expect(state.activeEntityIds).toEqual(['ent-1']);
     expect(state.activeEntities).toEqual([
       { id: 'ent-1', name: 'Entity One' },
