@@ -7,7 +7,12 @@ import { useImportStore } from '../store/importStore';
 import ImportHistory from '../components/import/ImportHistory';
 import ImportForm from '../components/import/ImportForm';
 import TemplateGuide from '../components/import/TemplateGuide';
-import type { ClientEntity, EntitySummary, TrialBalanceRow } from '../types';
+import type {
+  ClientEntity,
+  EntitySummary,
+  ImportSheet,
+  TrialBalanceRow,
+} from '../types';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
@@ -71,7 +76,8 @@ export default function Import() {
     _headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
-    file: File
+    file: File,
+    sheetSelections: ImportSheet[]
   ) => {
     setIsImporting(true);
     setError(null);
@@ -159,24 +165,31 @@ export default function Import() {
       const primaryPeriod =
         glMonths.length > 0 ? glMonths[0] : new Date().toISOString().slice(0, 7);
 
-      const sheets = (() => {
-        const counts = new Map<string, number>();
-        if (glMonths.length === 0) {
-          counts.set(primaryPeriod, rows.length);
-        } else {
-          glMonths.forEach((month) => counts.set(month, 0));
-          rows.forEach((row) => {
-            const key = row.glMonth ?? primaryPeriod;
-            counts.set(key, (counts.get(key) ?? 0) + 1);
-          });
-        }
+      const sheets =
+        sheetSelections.length > 0
+          ? sheetSelections.map((sheet) => ({
+              ...sheet,
+              isSelected: sheet.isSelected ?? true,
+            }))
+          : (() => {
+              const counts = new Map<string, number>();
+              if (glMonths.length === 0) {
+                counts.set(primaryPeriod, rows.length);
+              } else {
+                glMonths.forEach((month) => counts.set(month, 0));
+                rows.forEach((row) => {
+                  const key = row.glMonth ?? primaryPeriod;
+                  counts.set(key, (counts.get(key) ?? 0) + 1);
+                });
+              }
 
-        return Array.from(counts.entries()).map(([sheetName, count]) => ({
-          sheetName,
-          glMonth: sheetName,
-          rowCount: count,
-        }));
-      })();
+              return Array.from(counts.entries()).map(([sheetName, count]) => ({
+                sheetName,
+                glMonth: sheetName,
+                rowCount: count,
+                isSelected: true,
+              }));
+            })();
 
       await recordImport({
         id: importId,

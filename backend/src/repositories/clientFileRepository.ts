@@ -7,6 +7,11 @@ export interface ClientFileSheet {
   sheetName: string;
   glMonth?: string;
   rowCount: number;
+  isSelected?: boolean;
+  firstDataRowIndex?: number;
+  insertedDttm?: string;
+  updatedDttm?: string;
+  updatedBy?: string;
 }
 
 export interface ClientFileEntity {
@@ -177,22 +182,29 @@ export const saveClientFileMetadata = async (
   );
 
   if (Array.isArray(record.sheets) && record.sheets.length > 0) {
+    const sheetTimestamp = new Date().toISOString();
     const values = record.sheets
       .map(
         (_sheet, index) =>
-          `(@fileUploadId, @sheetName${index}, @glMonth${index}, @sheetRowCount${index})`
+          `(@fileUploadId, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @inserted${index}, @updated${index}, @updatedBy${index})`
       )
       .join(', ');
 
     const params: Record<string, unknown> = { fileUploadId };
+    const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
+
     record.sheets.forEach((sheet, index) => {
       params[`sheetName${index}`] = sheet.sheetName;
-      params[`glMonth${index}`] = sheet.glMonth ?? null;
+      params[`isSelected${index}`] = sheet.isSelected === false ? 0 : 1;
+      params[`firstDataRowIndex${index}`] = sheet.firstDataRowIndex ?? null;
       params[`sheetRowCount${index}`] = sheet.rowCount;
+      params[`inserted${index}`] = sheetTimestamp;
+      params[`updated${index}`] = sheetTimestamp;
+      params[`updatedBy${index}`] = sheet.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_ID, SHEET_NAME, GL_MONTH, ROW_COUNT)
+      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_ID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, INSERTED_DTTM, UPDATED_DTTM, UPDATED_BY)
       VALUES ${values}`,
       params
     );
@@ -330,10 +342,14 @@ export const listClientFiles = async (
   const sheetsResult = await runQuery<{
     fileUploadId: string;
     sheetName: string;
-    glMonth?: string;
+    isSelected?: boolean | number;
+    firstDataRowIndex?: number;
     rowCount: number;
+    insertedDttm?: string | Date;
+    updatedDttm?: string | Date;
+    updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_ID as fileUploadId, SHEET_NAME as sheetName, GL_MONTH as glMonth, ROW_COUNT as rowCount
+    `SELECT FILE_UPLOAD_ID as fileUploadId, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedDttm, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_SHEETS
     WHERE FILE_UPLOAD_ID IN (${sheetPlaceholders})`,
     sheetParameters
@@ -344,8 +360,18 @@ export const listClientFiles = async (
     const existing = sheetsByFile.get(sheet.fileUploadId) ?? [];
     existing.push({
       sheetName: sheet.sheetName,
-      glMonth: sheet.glMonth ?? undefined,
+      isSelected:
+        sheet.isSelected === undefined ? undefined : Boolean(sheet.isSelected),
+      firstDataRowIndex:
+        typeof sheet.firstDataRowIndex === 'number'
+          ? sheet.firstDataRowIndex
+          : Number.isFinite(Number(sheet.firstDataRowIndex))
+            ? Number(sheet.firstDataRowIndex)
+            : undefined,
       rowCount: sheet.rowCount,
+      insertedDttm: parseDate(sheet.insertedDttm),
+      updatedDttm: parseDate(sheet.updatedDttm),
+      updatedBy: sheet.updatedBy ?? undefined,
     });
     sheetsByFile.set(sheet.fileUploadId, existing);
   });
