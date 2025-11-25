@@ -186,6 +186,8 @@ export interface ImportSheet {
   sheetName: string;
   glMonth?: string;
   rowCount: number;
+  isSelected?: boolean;
+  firstDataRowIndex?: number;
 }
 
 export interface ImportEntity {

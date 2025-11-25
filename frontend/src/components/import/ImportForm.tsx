@@ -16,7 +16,7 @@ import {
   ClientTemplateConfig,
 } from '../../utils/getClientTemplateMapping';
 import PreviewTable from './PreviewTable';
-import type { ClientEntity, TrialBalanceRow } from '../../types';
+import type { ClientEntity, ImportSheet, TrialBalanceRow } from '../../types';
 import { normalizeGlMonth, isValidNormalizedMonth } from '../../utils/extractDateFromText';
 import { detectLikelyEntities } from '../../utils/detectClientEntities';
 
@@ -85,7 +85,8 @@ interface ImportFormProps {
     headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
-    file: File
+    file: File,
+    sheetSelections: ImportSheet[]
   ) => void | Promise<void>;
   isImporting: boolean;
 }
@@ -349,6 +350,23 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         entityIds.includes(entity.id)
       );
 
+      const sheetSelections: ImportSheet[] = selectedSheets.map((sheetIdx) => {
+        const sheetUpload = uploads[sheetIdx];
+        const trimmedGlMonth = sheetUpload.metadata.glMonth?.trim();
+        const inferredMonth =
+          trimmedGlMonth && trimmedGlMonth.length > 0
+            ? trimmedGlMonth
+            : sheetUpload.metadata.sheetNameDate || undefined;
+
+        return {
+          sheetName: sheetUpload.sheetName,
+          glMonth: inferredMonth,
+          rowCount: sheetUpload.rows.length,
+          isSelected: true,
+          firstDataRowIndex: sheetUpload.firstDataRowIndex,
+        };
+      });
+
       await onImport(
         combinedRows,
         clientId,
@@ -356,7 +374,8 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         headerMap,
         glMonths,
         selectedFile.name,
-        selectedFile
+        selectedFile,
+        sheetSelections
       );
     } else {
       setError(

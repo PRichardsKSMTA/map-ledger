@@ -68,6 +68,26 @@ const validateRecord = (payload: unknown): NewClientFileRecord | null => {
       .filter(Boolean)
       .map((entry) => {
         const sheet = entry as Record<string, unknown>;
+        const firstDataRowIndex =
+          typeof sheet.firstDataRowIndex === 'number' &&
+          Number.isFinite(sheet.firstDataRowIndex)
+            ? sheet.firstDataRowIndex
+            : undefined;
+        const isSelected = (() => {
+          if (typeof sheet.isSelected === 'boolean') {
+            return sheet.isSelected;
+          }
+
+          if (typeof sheet.isSelected === 'number') {
+            return sheet.isSelected !== 0;
+          }
+
+          if (typeof sheet.isSelected === 'string') {
+            return sheet.isSelected.trim() !== '0';
+          }
+
+          return true;
+        })();
         return {
           sheetName: String(sheet.sheetName ?? '').trim(),
           glMonth:
@@ -75,6 +95,8 @@ const validateRecord = (payload: unknown): NewClientFileRecord | null => {
               ? sheet.glMonth.trim()
               : undefined,
           rowCount: Number(sheet.rowCount ?? 0),
+          isSelected,
+          firstDataRowIndex,
         };
       })
       .filter((entry) => entry.sheetName.length > 0 && Number.isFinite(entry.rowCount));
