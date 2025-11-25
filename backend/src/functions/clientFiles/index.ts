@@ -1,9 +1,9 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { json, readJson } from '../../http';
 import {
-  ClientFileRecord,
   listClientFiles,
   saveClientFileMetadata,
+  NewClientFileRecord,
 } from '../../repositories/clientFileRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import { buildErrorResponse } from '../datapointConfigs/utils';
@@ -17,52 +17,50 @@ const parseInteger = (value: string | null, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const validateRecord = (payload: unknown): ClientFileRecord | null => {
+const toOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const validateRecord = (payload: unknown): NewClientFileRecord | null => {
   if (!payload || typeof payload !== 'object') {
     return null;
   }
 
   const bag = payload as Record<string, unknown>;
-  const requiredStrings: Array<keyof ClientFileRecord> = [
-    'id',
-    'clientId',
-    'userId',
-    'uploadedBy',
-    'fileName',
-    'fileType',
-    'period',
-  ];
 
-  for (const key of requiredStrings) {
-    if (typeof bag[key] !== 'string' || !(bag[key] as string).trim()) {
-      return null;
-    }
-  }
+  const clientId = toOptionalString(bag.clientId);
+  const sourceFileName = toOptionalString(bag.sourceFileName ?? bag.fileName);
+  const fileStorageUri = toOptionalString(bag.fileStorageUri);
+  const fileStatus = toOptionalString(bag.fileStatus ?? bag.status);
 
-  if (typeof bag.fileSize !== 'number' || Number.isNaN(bag.fileSize)) {
+  if (!clientId || !sourceFileName || !fileStorageUri || !fileStatus) {
     return null;
   }
 
-  if (bag.rowCount !== undefined && typeof bag.rowCount !== 'number') {
-    return null;
-  }
-
-  if (bag.status !== 'completed' && bag.status !== 'failed') {
-    return null;
-  }
-
-  const baseRecord: ClientFileRecord = {
-    id: bag.id as string,
-    clientId: bag.clientId as string,
-    userId: bag.userId as string,
-    uploadedBy: bag.uploadedBy as string,
-    fileName: bag.fileName as string,
-    fileSize: bag.fileSize as number,
-    fileType: bag.fileType as string,
-    status: bag.status as ClientFileRecord['status'],
-    period: bag.period as string,
-    rowCount: bag.rowCount as number | undefined,
-    timestamp: typeof bag.timestamp === 'string' ? bag.timestamp : undefined,
+  const baseRecord: NewClientFileRecord = {
+    clientId,
+    userId: toOptionalString(bag.userId),
+    uploadedBy: toOptionalString(bag.uploadedBy ?? bag.importedBy),
+    sourceFileName,
+    fileStorageUri,
+    fileSize:
+      typeof bag.fileSize === 'number' && Number.isFinite(bag.fileSize)
+        ? bag.fileSize
+        : undefined,
+    fileType: toOptionalString(bag.fileType),
+    status: fileStatus,
+    glPeriodStart: toOptionalString(bag.glPeriodStart ?? bag.period),
+    glPeriodEnd: toOptionalString(bag.glPeriodEnd ?? bag.period),
+    rowCount:
+      typeof bag.rowCount === 'number' && Number.isFinite(bag.rowCount)
+        ? bag.rowCount
+        : undefined,
+    lastStepCompletedDttm: toOptionalString(bag.lastStepCompletedDttm ?? bag.timestamp),
   };
 
   if (Array.isArray(bag.sheets)) {
@@ -131,10 +129,7 @@ export const saveClientFileHandler = async (
       return json({ message: 'Invalid client file payload' }, 400);
     }
 
-    const saved = await saveClientFileMetadata({
-      ...record,
-      timestamp: record.timestamp ?? new Date().toISOString(),
-    });
+    const saved = await saveClientFileMetadata(record);
 
     return json({ item: saved }, 201);
   } catch (error) {
