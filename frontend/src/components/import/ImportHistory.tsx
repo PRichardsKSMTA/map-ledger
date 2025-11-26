@@ -395,8 +395,11 @@ export default function ImportHistory({
                   <h4 className="text-sm font-semibold text-gray-700">Entities</h4>
                   <ul className="mt-2 space-y-2 text-sm text-gray-700">
                     {previewImport.entities.map((entity) => (
-                      <li key={entity.entityName} className="flex justify-between">
-                        <span>{entity.entityName}</span>
+                      <li
+                        key={entity.entityId ?? entity.entityName}
+                        className="flex justify-between"
+                      >
+                        <span>{entity.displayName ?? entity.entityName}</span>
                         <span className="text-gray-500">
                           {entity.rowCount.toLocaleString()} rows
                         </span>

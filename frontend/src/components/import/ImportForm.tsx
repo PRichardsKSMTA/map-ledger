@@ -513,7 +513,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         label="Entity"
         options={entityOptions.map((entity) => ({
           value: entity.id,
-          label: entity.name,
+          label: entity.displayName ?? entity.name,
         }))}
         value={entityIds}
         onChange={(values) => {

@@ -36,7 +36,9 @@ interface ClientEntityState {
 }
 
 interface ClientEntityResponseItem {
-  entityName: string;
+  entityId?: string;
+  entityName?: string;
+  entityDisplayName?: string;
   aliases?: string[] | string | null;
 }
 
@@ -57,12 +59,21 @@ const normalizeAliases = (value?: string[] | string | null): string[] => {
 };
 
 const toClientEntity = (item: ClientEntityResponseItem): ClientEntity => {
-  const name = item.entityName?.trim() || 'Unnamed Entity';
-  const id = slugify(name) || name;
+  const displayName = item.entityDisplayName?.trim();
+  const entityName = item.entityName?.trim();
+  const name = displayName || entityName || 'Unnamed Entity';
+  const id = item.entityId?.trim() || slugify(name) || name;
+  const aliasSet = new Set([
+    ...normalizeAliases(item.aliases),
+    ...(displayName ? [displayName] : []),
+    ...(entityName ? [entityName] : []),
+  ]);
   return {
     id,
     name,
-    aliases: normalizeAliases(item.aliases),
+    displayName: displayName || undefined,
+    entityName: entityName || undefined,
+    aliases: Array.from(aliasSet).filter(Boolean),
   };
 };
 

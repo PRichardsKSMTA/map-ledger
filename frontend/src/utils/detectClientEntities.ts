@@ -71,7 +71,12 @@ export const detectLikelyEntities = ({
 
   const aliasLookup = new Map<string, string>();
   entities.forEach((entity) => {
-    const variants = new Set([entity.name, ...entity.aliases]);
+    const variants = new Set([
+      entity.name,
+      entity.displayName,
+      entity.entityName,
+      ...entity.aliases,
+    ]);
     variants.forEach((variant) => {
       const normalized = normalize(variant);
       if (normalized.length > 0) {
@@ -84,8 +89,12 @@ export const detectLikelyEntities = ({
   const normalizedFileName = normalize(fileName);
 
   const scores: ScoredEntity[] = entities.map((entity) => {
-    const normalizedName = normalize(entity.name);
-    const aliasVariants = entity.aliases.map(normalize).filter(Boolean);
+    const normalizedName = normalize(entity.displayName ?? entity.name);
+    const aliasVariants = Array.from(
+      new Set([entity.name, entity.displayName, entity.entityName, ...entity.aliases])
+    )
+      .map(normalize)
+      .filter(Boolean);
     const candidates = [normalizedName, ...aliasVariants];
     let score = 0;
 

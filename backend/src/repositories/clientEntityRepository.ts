@@ -1,13 +1,17 @@
 import { runQuery } from '../utils/sqlClient';
 
 export interface ClientEntityRecord {
+  entityId: string;
   clientId: string;
   entityName: string;
+  entityDisplayName: string;
   aliases: string[];
 }
 
 interface RawClientEntityRow {
+  entityId: string;
   entityName: string;
+  entityDisplayName: string;
   aliases?: string | null;
 }
 
@@ -31,19 +35,25 @@ export const listClientEntities = async (
 
   const result = await runQuery<RawClientEntityRow>(
     `SELECT
+      ENTITY_ID as entityId,
       ENTITY_NAME as entityName,
+      ENTITY_DISPLAY_NAME as entityDisplayName,
       CASE
         WHEN COL_LENGTH('ml.CLIENT_ENTITIES', 'ALIASES') IS NOT NULL THEN ALIASES
         ELSE NULL
       END as aliases
     FROM ml.CLIENT_ENTITIES
-    WHERE CLIENT_ID = @clientId`,
+    WHERE CLIENT_ID = @clientId
+      AND ISNULL(IS_DELETED, 0) = 0
+      AND (ENTITY_STATUS IS NULL OR UPPER(ENTITY_STATUS) = 'ACTIVE')`,
     { clientId }
   );
 
   return (result.recordset ?? []).map((row) => ({
+    entityId: row.entityId,
     clientId,
     entityName: row.entityName,
+    entityDisplayName: row.entityDisplayName,
     aliases: parseAliases(row.aliases),
   }));
 };
