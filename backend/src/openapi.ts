@@ -37,6 +37,11 @@ const openApiSpec = {
     },
     '/client-entities': {
       get: { summary: 'List entities configured for a client' }
+    },
+    '/client-header-mappings': {
+      get: { summary: 'List saved client header mappings for a client' },
+      post: { summary: 'Create or update client header mappings' },
+      put: { summary: 'Replace client header mappings for specific template headers' }
     }
   }
 };

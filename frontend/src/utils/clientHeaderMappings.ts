@@ -1,0 +1,64 @@
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+
+export interface ClientHeaderMapping {
+  templateHeader: string;
+  sourceHeader: string;
+  updatedAt?: string;
+}
+
+interface ClientHeaderMappingResponse {
+  items?: ClientHeaderMapping[];
+}
+
+export const fetchClientHeaderMappings = async (
+  clientId: string
+): Promise<ClientHeaderMapping[]> => {
+  const normalizedClientId = clientId.trim();
+  if (!normalizedClientId) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/client-header-mappings?clientId=${encodeURIComponent(normalizedClientId)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to load header mappings (${response.status})`);
+  }
+
+  const payload = (await response.json()) as ClientHeaderMappingResponse;
+  return payload.items ?? [];
+};
+
+export const saveClientHeaderMappings = async (
+  clientId: string,
+  mappingByTemplate: Record<string, string | null>
+): Promise<ClientHeaderMapping[]> => {
+  const normalizedClientId = clientId.trim();
+  if (!normalizedClientId) {
+    return [];
+  }
+
+  const payload = {
+    clientId: normalizedClientId,
+    mappings: Object.entries(mappingByTemplate).map(([templateHeader, sourceHeader]) => ({
+      templateHeader,
+      sourceHeader: sourceHeader ?? null,
+    })),
+  };
+
+  const response = await fetch(`${API_BASE_URL}/client-header-mappings`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to save header mappings (${response.status})`);
+  }
+
+  const body = (await response.json()) as ClientHeaderMappingResponse;
+  return body.items ?? [];
+};

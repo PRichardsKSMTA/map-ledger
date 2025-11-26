@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Upload, X, Download } from 'lucide-react';
 import Select from '../ui/Select';
 import MultiSelect from '../ui/MultiSelect';
@@ -15,6 +15,11 @@ import {
   getClientTemplateMapping,
   ClientTemplateConfig,
 } from '../../utils/getClientTemplateMapping';
+import {
+  fetchClientHeaderMappings,
+  saveClientHeaderMappings,
+} from '../../utils/clientHeaderMappings';
+import type { ClientHeaderMapping } from '../../utils/clientHeaderMappings';
 import PreviewTable from './PreviewTable';
 import type { ClientEntity, ImportSheet, TrialBalanceRow } from '../../types';
 import { normalizeGlMonth, isValidNormalizedMonth } from '../../utils/extractDateFromText';
@@ -108,9 +113,25 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     string,
     string | null
   > | null>(null);
+  const [savedHeaderMappings, setSavedHeaderMappings] = useState<
+    Record<string, string>
+  >({});
+  const [isLoadingHeaderMappings, setIsLoadingHeaderMappings] = useState(false);
+  const [headerMappingError, setHeaderMappingError] = useState<string | null>(null);
   const [combinedRows, setCombinedRows] = useState<TrialBalanceRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hasManualEntitySelection, setHasManualEntitySelection] = useState(false);
+
+  const toHeaderMappingRecord = useCallback(
+    (items: ClientHeaderMapping[]): Record<string, string> =>
+      items.reduce((acc, mapping) => {
+        if (templateHeaders.includes(mapping.templateHeader) && mapping.sourceHeader) {
+          acc[mapping.templateHeader] = mapping.sourceHeader;
+        }
+        return acc;
+      }, {} as Record<string, string>),
+    []
+  );
 
   const previewSampleRows = useMemo(() => {
     if (uploads.length === 0 || selectedSheets.length === 0) return [] as Record<string, unknown>[];
@@ -182,6 +203,31 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
   }, [singleClientId]);
 
   useEffect(() => {
+    if (!clientId) {
+      setSavedHeaderMappings({});
+      return;
+    }
+
+    const loadMappings = async () => {
+      setIsLoadingHeaderMappings(true);
+      setHeaderMappingError(null);
+      try {
+        const stored = await fetchClientHeaderMappings(clientId);
+        setSavedHeaderMappings(toHeaderMappingRecord(stored));
+      } catch (err) {
+        setHeaderMappingError(
+          'Unable to load saved header mappings. You can still continue with manual matching.'
+        );
+        setSavedHeaderMappings({});
+      } finally {
+        setIsLoadingHeaderMappings(false);
+      }
+    };
+
+    void loadMappings();
+  }, [clientId, toHeaderMappingRecord]);
+
+  useEffect(() => {
     if (!hasManualEntitySelection && entityOptions.length > 0 && uploads.length > 0) {
       const detected = detectLikelyEntities({
         uploads,
@@ -210,6 +256,19 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setSelectedSheets([0]);
     }
   }, [uploads, selectedSheets.length]);
+
+  const persistHeaderMappings = useCallback(
+    async (map: Record<string, string | null>) => {
+      if (!clientId) {
+        return;
+      }
+
+      const saved = await saveClientHeaderMappings(clientId, map);
+      setSavedHeaderMappings(toHeaderMappingRecord(saved));
+      setHeaderMappingError(null);
+    },
+    [clientId, toHeaderMappingRecord]
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -244,6 +303,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setSelectedSheets([]);  // Will be auto-set by useEffect
       setSelectedFile(file);
       setHeaderMap(null);
+      setHeaderMappingError(null);
       setCombinedRows([]);
       setError(null);
       setHasManualEntitySelection(false);
@@ -253,11 +313,12 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       setSelectedSheets([]);
       setSelectedFile(null);
       setHeaderMap(null);
+      setHeaderMappingError(null);
       setCombinedRows([]);
     }
   };
 
-  const handleColumnMatch = (map: Record<string, string | null>) => {
+  const handleColumnMatch = async (map: Record<string, string | null>) => {
     setHeaderMap(map);
 
     const keyMap = Object.entries(map).reduce(
@@ -334,6 +395,21 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     });
 
     setCombinedRows(combined);
+
+    if (clientId) {
+      try {
+        await persistHeaderMappings(map);
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'Failed to save header mappings for future imports.';
+        setHeaderMappingError(message);
+        throw err instanceof Error
+          ? err
+          : new Error('Failed to save header mappings for future imports.');
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -515,11 +591,23 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       {uploads.length > 0 && selectedSheets.length > 0 && !headerMap && (
         <div className="space-y-6">
           <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <ColumnMatcher
-              sourceHeaders={uploads[selectedSheets[0]].headers}
-              destinationHeaders={templateHeaders}
-              onComplete={handleColumnMatch}
-            />
+            <div className="space-y-3">
+              <ColumnMatcher
+                sourceHeaders={uploads[selectedSheets[0]].headers}
+                destinationHeaders={templateHeaders}
+                initialAssignments={savedHeaderMappings}
+                onComplete={handleColumnMatch}
+              />
+              {(isLoadingHeaderMappings || headerMappingError) && (
+                <p
+                  className={`text-sm ${
+                    headerMappingError ? 'text-amber-700' : 'text-gray-500'
+                  }`}
+                >
+                  {headerMappingError ?? 'Loading saved header preferences…'}
+                </p>
+              )}
+            </div>
 
             <div className="flex flex-col">
               <PreviewTable
