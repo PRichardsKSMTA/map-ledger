@@ -211,6 +211,18 @@ export interface Import {
   entities?: ImportEntity[];
 }
 
+export interface FileRecord {
+  fileUploadId: string;
+  recordId: string;
+  accountId: string;
+  accountName: string;
+  activityAmount: number;
+  entityName?: string;
+  glMonth?: string;
+  sourceSheet?: string;
+  sourceRowNumber?: number;
+}
+
 export interface SyncedAccount {
   id: string;
   accountNumber: string;

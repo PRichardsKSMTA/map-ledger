@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type {
   EntitySummary,
   DynamicBasisAccount,
+  FileRecord,
   GLAccountMappingRow,
   MappingPolarity,
   MappingSplitDefinition,
@@ -23,6 +24,26 @@ import {
   getChartOfAccountOptions,
   isKnownChartOfAccount,
 } from './chartOfAccountsStore';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const shouldLog =
+  import.meta.env.DEV ||
+  (typeof import.meta.env.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
+    import.meta.env.VITE_ENABLE_DEBUG_LOGGING.toLowerCase() === 'true');
+
+const logPrefix = '[MappingStore]';
+
+const logDebug = (...args: unknown[]) => {
+  if (!shouldLog) return;
+  // eslint-disable-next-line no-console
+  console.debug(logPrefix, ...args);
+};
+
+const logError = (...args: unknown[]) => {
+  if (!shouldLog) return;
+  // eslint-disable-next-line no-console
+  console.error(logPrefix, ...args);
+};
 
 const DRIVER_BENEFITS_DESCRIPTION =
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET';
@@ -835,6 +856,8 @@ interface MappingState {
   activeEntityIds: string[];
   activeEntities: EntitySummary[];
   activePeriod: string | null;
+  isLoadingFromApi: boolean;
+  apiError: string | null;
   setSearchTerm: (term: string) => void;
   setActiveEntityId: (entityId: string | null) => void;
   setActivePeriod: (period: string | null) => void;
@@ -890,12 +913,21 @@ interface MappingState {
     period?: string | null;
     rows: TrialBalanceRow[];
   }) => void;
+  fetchFileRecords: (
+    uploadId: string,
+    options?: {
+      clientId?: string | null;
+      entities?: EntitySummary[];
+      entityIds?: string[];
+      period?: string | null;
+    },
+  ) => Promise<void>;
 }
 
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
-const initialAccounts = createInitialMappingAccounts();
-const initialEntities = deriveEntitySummaries(initialAccounts);
+const initialAccounts: GLAccountMappingRow[] = [];
+const initialEntities: EntitySummary[] = [];
 
 export const useMappingStore = create<MappingState>((set, get) => ({
   accounts: initialAccounts,
@@ -907,6 +939,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   activeEntityIds: initialEntities.map(entity => entity.id),
   activeEntities: initialEntities,
   activePeriod: null,
+  isLoadingFromApi: false,
+  apiError: null,
   setSearchTerm: term => set({ searchTerm: term }),
   setActiveEntityId: entityId =>
     set(state => {
@@ -1590,6 +1624,54 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     });
 
     syncDynamicAllocationState(resolvedAccounts, rows, normalizedPeriod);
+  },
+  fetchFileRecords: async (uploadId, options) => {
+    if (!uploadId) {
+      return;
+    }
+
+    set({ isLoadingFromApi: true, apiError: null });
+
+    try {
+      const params = new URLSearchParams({ fileUploadId: uploadId });
+      const response = await fetch(`${API_BASE_URL}/file-records?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load file records (${response.status})`);
+      }
+
+      const payload = (await response.json()) as { items?: FileRecord[] };
+      const records = payload.items ?? [];
+      logDebug('Fetched file records', { count: records.length, uploadId });
+
+      const rows: TrialBalanceRow[] = records.map((record) => ({
+        entity: record.entityName ?? 'Imported Entity',
+        accountId: record.accountId,
+        description: record.accountName,
+        netChange: record.activityAmount ?? 0,
+        glMonth: record.glMonth ?? undefined,
+      }));
+
+      const preferredPeriod =
+        options?.period ?? rows.find((row) => row.glMonth)?.glMonth ?? null;
+
+      get().loadImportedAccounts({
+        uploadId,
+        clientId: options?.clientId ?? null,
+        entityIds: options?.entityIds,
+        entities: options?.entities,
+        period: preferredPeriod,
+        rows,
+      });
+
+      set({ isLoadingFromApi: false, apiError: null });
+    } catch (error) {
+      logError('Unable to load file records', error);
+      set({
+        isLoadingFromApi: false,
+        apiError:
+          error instanceof Error ? error.message : 'Failed to load file records',
+      });
+    }
   },
 }));
 

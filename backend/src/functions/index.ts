@@ -15,5 +15,6 @@ import './datapointConfigs/update';
 import './clientFiles';
 import './clientEntities';
 import './clientHeaderMappings';
+import './fileRecords';
 
 export default app;
