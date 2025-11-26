@@ -183,12 +183,16 @@ const deriveRecordsFromSheet = (
   entities: IngestEntity[],
   fileName?: string,
 ): FileRecordInput[] => {
-  const accountIdHeader = headerLookup.get('glid') ?? headerLookup.get('accountid');
+  const accountIdHeader =
+    headerLookup.get('glid') ?? headerLookup.get('accountid') ?? null;
   const accountNameHeader =
-    headerLookup.get('accountdescription') ?? headerLookup.get('accountname');
+    headerLookup.get('accountdescription') ?? headerLookup.get('accountname') ?? null;
   const activityHeader =
-    headerLookup.get('netchange') || headerLookup.get('activity') || headerLookup.get('amount');
-  const entityHeader = headerLookup.get('entity') ?? headerLookup.get('entityname');
+    headerLookup.get('netchange') ||
+    headerLookup.get('activity') ||
+    headerLookup.get('amount') ||
+    null;
+  const entityHeader = headerLookup.get('entity') ?? headerLookup.get('entityname') ?? null;
 
   const firstRowIndex =
     typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
@@ -254,16 +258,28 @@ const normalizePayload = (body: unknown): IngestPayload | null => {
         return null;
       }
 
-      return {
+      const glMonth = sheet.glMonth
+        ? normalizeGlMonth(normalizeText(sheet.glMonth)) ?? null
+        : null;
+
+      const normalizedSheet: IngestSheet = {
         sheetName: normalizeText(sheet.sheetName),
-        glMonth: sheet.glMonth ? normalizeGlMonth(normalizeText(sheet.glMonth)) : null,
-        isSelected: sheet.isSelected !== false,
-        firstDataRowIndex:
-          typeof sheet.firstDataRowIndex === 'number'
-            ? sheet.firstDataRowIndex
-            : undefined,
         rows,
       };
+
+      if (glMonth !== null) {
+        normalizedSheet.glMonth = glMonth;
+      }
+
+      if (sheet.isSelected !== undefined) {
+        normalizedSheet.isSelected = sheet.isSelected !== false;
+      }
+
+      if (typeof sheet.firstDataRowIndex === 'number') {
+        normalizedSheet.firstDataRowIndex = sheet.firstDataRowIndex;
+      }
+
+      return normalizedSheet;
     })
     .filter((sheet): sheet is IngestSheet => !!sheet && sheet.sheetName.length > 0);
 
@@ -274,12 +290,12 @@ const normalizePayload = (body: unknown): IngestPayload | null => {
   const normalizedEntities: IngestEntity[] = Array.isArray(payload.entities)
     ? (payload.entities as unknown[])
         .filter(Boolean)
-        .map((entity) => {
-          if (!entity || typeof entity !== 'object') {
+        .map((rawEntity) => {
+          if (!rawEntity || typeof rawEntity !== 'object') {
             return null;
           }
 
-          const raw = entity as Record<string, unknown>;
+          const raw = rawEntity as Record<string, unknown>;
           const name = normalizeText(raw.name);
           if (!name) {
             return null;
@@ -291,11 +307,21 @@ const normalizePayload = (body: unknown): IngestPayload | null => {
                 .filter((alias) => alias.length > 0)
             : [];
 
-          return {
-            id: getFirstStringValue(raw.id),
+          const id = getFirstStringValue(raw.id);
+
+          const entity: IngestEntity = {
             name,
-            aliases,
           };
+
+          if (id) {
+            entity.id = id;
+          }
+
+          if (aliases.length > 0) {
+            entity.aliases = aliases;
+          }
+
+          return entity;
         })
         .filter((entity): entity is IngestEntity => entity !== null)
     : [];

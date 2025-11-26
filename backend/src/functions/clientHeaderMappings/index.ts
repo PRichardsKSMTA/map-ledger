@@ -35,7 +35,7 @@ const normalizePayload = (
     : [];
 
   const mappings: ClientHeaderMappingInput[] = mappingsInput
-    .map((entry) => {
+    .map((entry): ClientHeaderMappingInput | null => {
       if (!entry || typeof entry !== 'object') {
         return null;
       }
@@ -45,12 +45,16 @@ const normalizePayload = (
         return null;
       }
 
+      const sourceHeader =
+        typeof mapping.sourceHeader === 'string'
+          ? mapping.sourceHeader
+          : mapping.sourceHeader === null
+            ? null
+            : undefined;
+
       return {
         templateHeader: mapping.templateHeader,
-        sourceHeader:
-          typeof mapping.sourceHeader === 'string'
-            ? mapping.sourceHeader
-            : null,
+        ...(sourceHeader !== undefined ? { sourceHeader } : {}),
       };
     })
     .filter((entry): entry is ClientHeaderMappingInput => entry !== null);
