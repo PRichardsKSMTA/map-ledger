@@ -31,7 +31,7 @@ describe('clientHeaderMappingRepository', () => {
           client_id: 'C1',
           template_header: 'GL ID',
           source_header: 'Account Number',
-          updated_at: new Date('2024-01-01T00:00:00Z'),
+          updated_dttm: new Date('2024-01-01T00:00:00Z'),
         },
       ],
     } as any);
@@ -58,7 +58,7 @@ describe('clientHeaderMappingRepository', () => {
               client_id: 'C1',
               template_header: 'GL ID',
               source_header: 'Account Number',
-              updated_at: null,
+              updated_dttm: null,
             },
           ],
         } as any);
@@ -93,7 +93,7 @@ describe('clientHeaderMappingRepository', () => {
               client_id: 'C1',
               template_header: 'GL ID',
               source_header: 'Updated',
-              updated_at: null,
+              updated_dttm: null,
             },
           ],
         } as any);

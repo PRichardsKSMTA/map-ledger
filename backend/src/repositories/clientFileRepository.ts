@@ -10,7 +10,7 @@ export interface ClientFileSheet {
   isSelected?: boolean;
   firstDataRowIndex?: number;
   insertedDttm?: string;
-  updatedDttm?: string;
+  updatedAt?: string;
   updatedBy?: string;
 }
 
@@ -21,7 +21,7 @@ export interface ClientFileEntity {
   rowCount: number;
   isSelected?: boolean;
   insertedDttm?: string;
-  updatedDttm?: string;
+  updatedAt?: string;
   updatedBy?: string;
 }
 
@@ -117,7 +117,6 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
   return {
     id: row.fileUploadId,
     clientId: row.clientId,
-    userId: row.userId,
     uploadedBy: row.uploadedBy,
     importedBy: row.uploadedBy,
     fileName: row.sourceFileName,
@@ -143,7 +142,6 @@ export const saveClientFileMetadata = async (
     `INSERT INTO ml.CLIENT_FILES (
       FILE_UPLOAD_ID,
       CLIENT_ID,
-      USER_ID,
       UPLOADED_BY,
       SOURCE_FILE_NAME,
       FILE_STORAGE_URI,
@@ -158,7 +156,6 @@ export const saveClientFileMetadata = async (
     VALUES (
       @fileUploadId,
       @clientId,
-      @userId,
       @uploadedBy,
       @sourceFileName,
       @fileStorageUri,
@@ -173,7 +170,6 @@ export const saveClientFileMetadata = async (
     {
       fileUploadId,
       clientId: record.clientId,
-      userId: record.userId ?? null,
       uploadedBy: record.uploadedBy ?? null,
       sourceFileName: record.sourceFileName,
       fileStorageUri: record.fileStorageUri,
@@ -234,7 +230,7 @@ export const saveClientFileMetadata = async (
       params[`entityRowCount${index}`] = entity.rowCount;
       params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
       params[`entityInserted${index}`] = entity.insertedDttm ?? entityTimestamp;
-      params[`entityUpdated${index}`] = entity.updatedDttm ?? entityTimestamp;
+      params[`entityUpdated${index}`] = entity.updatedAt ?? entityTimestamp;
       params[`entityUpdatedBy${index}`] = entity.updatedBy ?? updatedByFallback;
     });
 
@@ -272,11 +268,6 @@ const buildWhereClause = (
 ): { clause: string; parameters: Record<string, unknown> } => {
   const conditions: string[] = [];
   const parameters: Record<string, unknown> = {};
-
-  if (userId) {
-    conditions.push('cf.USER_ID = @userId');
-    parameters.userId = userId;
-  }
 
   if (clientId) {
     conditions.push('cf.CLIENT_ID = @clientId');
@@ -318,7 +309,6 @@ export const listClientFiles = async (
     `SELECT
       cf.FILE_UPLOAD_ID as fileUploadId,
       cf.CLIENT_ID as clientId,
-      cf.USER_ID as userId,
       cf.UPLOADED_BY as uploadedBy,
       cf.SOURCE_FILE_NAME as sourceFileName,
       cf.FILE_STORAGE_URI as fileStorageUri,
@@ -360,10 +350,10 @@ export const listClientFiles = async (
     firstDataRowIndex?: number;
     rowCount: number;
     insertedDttm?: string | Date;
-    updatedDttm?: string | Date;
+    updatedAt?: string | Date;
     updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_ID as fileUploadId, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedDttm, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_ID as fileUploadId, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_SHEETS
     WHERE FILE_UPLOAD_ID IN (${sheetPlaceholders})`,
     sheetParameters
@@ -384,7 +374,7 @@ export const listClientFiles = async (
             : undefined,
       rowCount: sheet.rowCount,
       insertedDttm: parseDate(sheet.insertedDttm),
-      updatedDttm: parseDate(sheet.updatedDttm),
+      updatedAt: parseDate(sheet.updatedAt),
       updatedBy: sheet.updatedBy ?? undefined,
     });
     sheetsByFile.set(sheet.fileUploadId, existing);
@@ -406,10 +396,10 @@ export const listClientFiles = async (
     rowCount: number;
     isSelected?: number | boolean;
     insertedDttm?: string | Date | null;
-    updatedDttm?: string | Date | null;
+    updatedAt?: string | Date | null;
     updatedBy?: string | null;
   }>(
-    `SELECT FILE_UPLOAD_ID as fileUploadId, ENTITY_ID as entityId, ENTITY_NAME as entityName, ROW_COUNT as rowCount, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedDttm, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_ID as fileUploadId, ENTITY_ID as entityId, ENTITY_NAME as entityName, ROW_COUNT as rowCount, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_ENTITIES
     WHERE FILE_UPLOAD_ID IN (${entityPlaceholders})`,
     entityParameters
@@ -428,7 +418,7 @@ export const listClientFiles = async (
           ? undefined
           : Boolean(entity.isSelected),
       insertedDttm: parseDate(entity.insertedDttm),
-      updatedDttm: parseDate(entity.updatedDttm),
+      updatedAt: parseDate(entity.updatedAt),
       updatedBy: entity.updatedBy ?? undefined,
     });
     entitiesByFile.set(entity.fileUploadId, existing);

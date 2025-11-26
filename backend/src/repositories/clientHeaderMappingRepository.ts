@@ -41,7 +41,7 @@ const ensureTable = async () => {
         CLIENT_ID NVARCHAR(128) NOT NULL,
         TEMPLATE_HEADER NVARCHAR(256) NOT NULL,
         SOURCE_HEADER NVARCHAR(256) NOT NULL,
-        UPDATED_AT DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_UPDATED DEFAULT SYSUTCDATETIME(),
+        UPDATED_DTTM DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_UPDATED DEFAULT SYSUTCDATETIME(),
         CONSTRAINT PK_CLIENT_HEADER_MAPPING PRIMARY KEY (CLIENT_ID, TEMPLATE_HEADER)
       );
     END`
@@ -81,12 +81,12 @@ const mapRowToRecord = (row: {
   client_id: string;
   template_header: string;
   source_header: string;
-  updated_at?: Date | string | null;
+  updated_dttm?: Date | string | null;
 }): ClientHeaderMappingRecord => ({
   clientId: row.client_id,
   templateHeader: row.template_header,
   sourceHeader: row.source_header,
-  updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
+  updatedAt: row.updated_dttm ? new Date(row.updated_dttm).toISOString() : undefined,
 });
 
 export const listClientHeaderMappings = async (
@@ -102,16 +102,16 @@ export const listClientHeaderMappings = async (
     client_id: string;
     template_header: string;
     source_header: string;
-    updated_at?: Date | string | null;
+    updated_dttm?: Date | string | null;
   }>(
     `SELECT
       CLIENT_ID AS client_id,
       TEMPLATE_HEADER AS template_header,
       SOURCE_HEADER AS source_header,
       CASE
-        WHEN COL_LENGTH('ml.CLIENT_HEADER_MAPPING', 'UPDATED_AT') IS NOT NULL THEN UPDATED_AT
+        WHEN COL_LENGTH('ml.CLIENT_HEADER_MAPPING', 'UPDATED_DTTM') IS NOT NULL THEN UPDATED_DTTM
         ELSE NULL
-      END AS updated_at
+      END AS updated_dttm
     FROM ${TABLE_NAME}
     WHERE CLIENT_ID = @clientId
     ORDER BY TEMPLATE_HEADER ASC`,
@@ -159,9 +159,9 @@ export const upsertClientHeaderMappings = async (
     USING (VALUES ${valuesClause}) AS source (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER)
       ON target.CLIENT_ID = source.CLIENT_ID AND target.TEMPLATE_HEADER = source.TEMPLATE_HEADER
     WHEN MATCHED THEN
-      UPDATE SET SOURCE_HEADER = source.SOURCE_HEADER, UPDATED_AT = SYSUTCDATETIME()
+      UPDATE SET SOURCE_HEADER = source.SOURCE_HEADER, UPDATED_DTTM = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
-      INSERT (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_AT)
+      INSERT (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_DTTM)
       VALUES (source.CLIENT_ID, source.TEMPLATE_HEADER, source.SOURCE_HEADER, SYSUTCDATETIME());`,
     params
   );
@@ -221,7 +221,7 @@ export const replaceClientHeaderMappings = async (
       .join(', ');
 
     await runQuery(
-      `INSERT INTO ${TABLE_NAME} (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_AT)
+      `INSERT INTO ${TABLE_NAME} (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_DTTM)
       VALUES ${valuesClause}`,
       params
     );

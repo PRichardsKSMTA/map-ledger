@@ -62,7 +62,7 @@ const toClientEntity = (item: ClientEntityResponseItem): ClientEntity => {
   const displayName = item.entityDisplayName?.trim();
   const entityName = item.entityName?.trim();
   const name = displayName || entityName || 'Unnamed Entity';
-  const id = item.entityId?.trim() || slugify(name) || name;
+  const id = item.entityId || slugify(name) || name;
   const aliasSet = new Set([
     ...normalizeAliases(item.aliases),
     ...(displayName ? [displayName] : []),

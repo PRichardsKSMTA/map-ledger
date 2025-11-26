@@ -37,11 +37,7 @@ export const listClientEntities = async (
     `SELECT
       ENTITY_ID as entityId,
       ENTITY_NAME as entityName,
-      ENTITY_DISPLAY_NAME as entityDisplayName,
-      CASE
-        WHEN COL_LENGTH('ml.CLIENT_ENTITIES', 'ALIASES') IS NOT NULL THEN ALIASES
-        ELSE NULL
-      END as aliases
+      ENTITY_DISPLAY_NAME as entityDisplayName
     FROM ml.CLIENT_ENTITIES
     WHERE CLIENT_ID = @clientId
       AND ISNULL(IS_DELETED, 0) = 0

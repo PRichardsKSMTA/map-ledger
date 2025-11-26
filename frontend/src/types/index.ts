@@ -197,7 +197,7 @@ export interface ImportEntity {
   rowCount: number;
   isSelected?: boolean;
   insertedDttm?: string;
-  updatedDttm?: string;
+  updatedAt?: string;
   updatedBy?: string;
 }
 
