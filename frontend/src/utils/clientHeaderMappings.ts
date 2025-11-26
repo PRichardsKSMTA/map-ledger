@@ -22,6 +22,10 @@ export const fetchClientHeaderMappings = async (
     `${API_BASE_URL}/client-header-mappings?clientId=${encodeURIComponent(normalizedClientId)}`
   );
 
+  if (response.status === 404) {
+    return [];
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to load header mappings (${response.status})`);
   }
@@ -32,7 +36,8 @@ export const fetchClientHeaderMappings = async (
 
 export const saveClientHeaderMappings = async (
   clientId: string,
-  mappingByTemplate: Record<string, string | null>
+  mappingByTemplate: Record<string, string | null>,
+  hasExistingMappings: boolean = false
 ): Promise<ClientHeaderMapping[]> => {
   const normalizedClientId = clientId.trim();
   if (!normalizedClientId) {
@@ -41,19 +46,28 @@ export const saveClientHeaderMappings = async (
 
   const payload = {
     clientId: normalizedClientId,
-    mappings: Object.entries(mappingByTemplate).map(([templateHeader, sourceHeader]) => ({
-      templateHeader,
-      sourceHeader: sourceHeader ?? null,
-    })),
+    mappings: Object.entries(mappingByTemplate).map(
+      ([templateHeader, sourceHeader]) => ({
+        templateHeader,
+        sourceHeader: sourceHeader ?? null,
+      })
+    ),
   };
 
-  const response = await fetch(`${API_BASE_URL}/client-header-mappings`, {
-    method: 'PUT',
+  const requestInit: RequestInit = {
+    method: hasExistingMappings ? 'PUT' : 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  });
+  };
+
+  const url = `${API_BASE_URL}/client-header-mappings`;
+  let response = await fetch(url, requestInit);
+
+  if (response.status === 404 && hasExistingMappings) {
+    response = await fetch(url, { ...requestInit, method: 'POST' });
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to save header mappings (${response.status})`);

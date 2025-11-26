@@ -264,11 +264,16 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         return;
       }
 
-      const saved = await saveClientHeaderMappings(clientId, map);
+      const hasExistingMappings = Object.keys(savedHeaderMappings).length > 0;
+      const saved = await saveClientHeaderMappings(
+        clientId,
+        map,
+        hasExistingMappings
+      );
       setSavedHeaderMappings(toHeaderMappingRecord(saved));
       setHeaderMappingError(null);
     },
-    [clientId, toHeaderMappingRecord]
+    [clientId, savedHeaderMappings, toHeaderMappingRecord]
   );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
