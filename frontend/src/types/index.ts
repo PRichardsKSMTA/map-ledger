@@ -191,8 +191,14 @@ export interface ImportSheet {
 }
 
 export interface ImportEntity {
+  entityId?: string;
   entityName: string;
+  displayName?: string;
   rowCount: number;
+  isSelected?: boolean;
+  insertedDttm?: string;
+  updatedDttm?: string;
+  updatedBy?: string;
 }
 
 export interface Import {
@@ -438,6 +444,8 @@ export interface EntitySummary {
 export interface ClientEntity {
   id: string;
   name: string;
+  displayName?: string;
+  entityName?: string;
   aliases: string[];
 }
 

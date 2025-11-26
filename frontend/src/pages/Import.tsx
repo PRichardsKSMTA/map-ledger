@@ -105,7 +105,12 @@ export default function Import() {
 
       const entityLookup = new Map<string, ClientEntity>();
       selectedEntities.forEach((entity) => {
-        const variants = new Set([entity.name, ...entity.aliases]);
+        const variants = new Set([
+          entity.name,
+          entity.displayName,
+          entity.entityName,
+          ...entity.aliases,
+        ]);
         variants.forEach((variant) => {
           const normalized = normalizeEntityValue(variant);
           if (normalized.length > 0 && !entityLookup.has(normalized)) {
@@ -137,11 +142,13 @@ export default function Import() {
           (entityRowCounts.get(matchedEntity.id) ?? 0) + 1,
         );
 
-        if (row.entity === matchedEntity.name) {
+        const canonicalName = matchedEntity.displayName ?? matchedEntity.name;
+
+        if (row.entity === canonicalName) {
           return row;
         }
 
-        return { ...row, entity: matchedEntity.name };
+        return { ...row, entity: canonicalName };
       });
 
       const singleEntity = selectedEntities.length === 1 ? selectedEntities[0] : null;
@@ -150,16 +157,25 @@ export default function Import() {
       }
 
       const entitiesForMetadata = selectedEntities.map((entity) => ({
-        entityName: entity.name,
+        entityId: entity.id,
+        entityName: entity.displayName ?? entity.name,
+        displayName: entity.displayName ?? entity.name,
         rowCount: entityRowCounts.get(entity.id) ?? 0,
+        isSelected: true,
       }));
 
-      const mappingEntities: EntitySummary[] = selectedEntities.map(({ id, name }) => ({
-        id,
-        name,
+      const mappingEntities: EntitySummary[] = selectedEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.displayName ?? entity.name,
       }));
 
       const entityIds = mappingEntities.map((entity) => entity.id);
+
+      const ingestEntities = selectedEntities.map((entity) => ({
+        id: entity.id,
+        name: entity.displayName ?? entity.name,
+        aliases: entity.aliases,
+      }));
 
       const importId = crypto.randomUUID();
       const fileType = file.type || 'application/octet-stream';
@@ -222,11 +238,7 @@ export default function Import() {
           rows: sheet.rows,
           firstDataRowIndex: sheet.firstDataRowIndex,
         })),
-        entities: selectedEntities.map((entity) => ({
-          id: entity.id,
-          name: entity.name,
-          aliases: entity.aliases,
-        })),
+        entities: ingestEntities,
       };
 
       const ingestResponse = await fetch(`${API_BASE_URL}/file-records/ingest`, {

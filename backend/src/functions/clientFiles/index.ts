@@ -107,9 +107,33 @@ const validateRecord = (payload: unknown): NewClientFileRecord | null => {
       .filter(Boolean)
       .map((entry) => {
         const entity = entry as Record<string, unknown>;
+        const entityId = toOptionalString(entity.entityId ?? entity.id);
+        const displayName = toOptionalString(
+          entity.displayName ?? entity.entityDisplayName ?? entity.entityName ?? entity.name
+        );
+        const entityName =
+          displayName ?? toOptionalString(entity.entityName ?? entity.name) ?? '';
+        const isSelected = (() => {
+          if (typeof entity.isSelected === 'boolean') {
+            return entity.isSelected;
+          }
+
+          if (typeof entity.isSelected === 'number') {
+            return entity.isSelected !== 0;
+          }
+
+          if (typeof entity.isSelected === 'string') {
+            return entity.isSelected.trim() !== '0';
+          }
+
+          return true;
+        })();
         return {
-          entityName: String(entity.entityName ?? '').trim(),
+          entityId: entityId ?? undefined,
+          entityName,
+          displayName: displayName ?? undefined,
           rowCount: Number(entity.rowCount ?? 0),
+          isSelected,
         };
       })
       .filter(
