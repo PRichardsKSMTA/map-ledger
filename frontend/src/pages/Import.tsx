@@ -13,10 +13,13 @@ import type {
   ImportSheet,
   TrialBalanceRow,
 } from '../types';
+import type { ParsedUpload } from '../utils/parseTrialBalanceWorkbook';
 import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
 import { slugify } from '../utils/slugify';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 export default function Import() {
   const { user } = useAuthStore();
@@ -38,6 +41,7 @@ export default function Import() {
   const fetchOrganizations = useOrganizationStore((state) => state.fetchForUser);
   const orgLoading = useOrganizationStore((state) => state.isLoading);
   const orgError = useOrganizationStore((state) => state.error);
+  const fetchFileRecords = useMappingStore((state) => state.fetchFileRecords);
 
   useEffect(() => {
     if (user?.email) {
@@ -67,17 +71,16 @@ export default function Import() {
     fetchImports({ userId, clientId: singleClient?.id, page, pageSize });
   }, [fetchImports, userId, singleClient?.id, page, pageSize]);
 
-  const loadImportedAccounts = useMappingStore((state) => state.loadImportedAccounts);
-
   const handleFileImport = async (
     rows: TrialBalanceRow[],
     clientId: string,
     selectedEntities: ClientEntity[],
-    _headerMap: Record<string, string | null>,
+    headerMap: Record<string, string | null>,
     glMonths: string[],
     fileName: string,
     file: File,
-    sheetSelections: ImportSheet[]
+    sheetSelections: ImportSheet[],
+    sheetUploads: ParsedUpload[],
   ) => {
     setIsImporting(true);
     setError(null);
@@ -207,13 +210,42 @@ export default function Import() {
         entities: entitiesForMetadata,
       });
 
-      loadImportedAccounts({
-        uploadId: importId,
+      const ingestPayload = {
+        fileUploadId: importId,
         clientId,
-        entityIds,
+        fileName,
+        headerMap,
+        sheets: sheetUploads.map((sheet) => ({
+          sheetName: sheet.sheetName,
+          glMonth: sheet.metadata.glMonth || sheet.metadata.sheetNameDate || undefined,
+          isSelected: true,
+          rows: sheet.rows,
+          firstDataRowIndex: sheet.firstDataRowIndex,
+        })),
+        entities: selectedEntities.map((entity) => ({
+          id: entity.id,
+          name: entity.name,
+          aliases: entity.aliases,
+        })),
+      };
+
+      const ingestResponse = await fetch(`${API_BASE_URL}/file-records/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(ingestPayload),
+      });
+
+      if (!ingestResponse.ok) {
+        throw new Error(`Failed to ingest file records (${ingestResponse.status})`);
+      }
+
+      await fetchFileRecords(importId, {
+        clientId,
         entities: mappingEntities,
+        entityIds,
         period: primaryPeriod,
-        rows: resolvedRows,
       });
 
       setSuccess('File imported successfully');

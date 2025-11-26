@@ -27,10 +27,12 @@ export default function Mapping() {
   const { uploadId = 'demo' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeClientId = useMappingStore(state => state.activeClientId);
+  const activeUploadId = useMappingStore(state => state.activeUploadId);
   const activeEntityId = useMappingStore(selectActiveEntityId);
   const activeStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
   const setActiveEntityId = useMappingStore(state => state.setActiveEntityId);
   const availableEntities = useMappingStore(selectAvailableEntities);
+  const fetchFileRecords = useMappingStore(state => state.fetchFileRecords);
   const normalizedEntityParam = useMemo(() => {
     const param = searchParams.get('entityId');
     if (!param) {
@@ -45,6 +47,12 @@ export default function Mapping() {
       scrollPageToTop({ behavior: 'auto' });
     }
   }, [activeStep]);
+
+  useEffect(() => {
+    if (uploadId && uploadId !== activeUploadId) {
+      fetchFileRecords(uploadId);
+    }
+  }, [activeUploadId, fetchFileRecords, uploadId]);
 
   useEffect(() => {
     if (normalizedEntityParam !== activeEntityId) {

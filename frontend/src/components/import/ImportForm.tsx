@@ -91,7 +91,8 @@ interface ImportFormProps {
     glMonths: string[],
     fileName: string,
     file: File,
-    sheetSelections: ImportSheet[]
+    sheetSelections: ImportSheet[],
+    selectedSheetUploads: ParsedUpload[],
   ) => void | Promise<void>;
   isImporting: boolean;
 }
@@ -451,7 +452,10 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
         glMonths,
         selectedFile.name,
         selectedFile,
-        sheetSelections
+        sheetSelections,
+        selectedSheets
+          .map((sheetIdx) => uploads[sheetIdx])
+          .filter((upload): upload is ParsedUpload => Boolean(upload))
       );
     } else {
       setError(
