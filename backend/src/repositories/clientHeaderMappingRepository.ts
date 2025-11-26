@@ -1,15 +1,21 @@
 import { runQuery } from '../utils/sqlClient';
 
 export interface ClientHeaderMappingRecord {
+  mappingId: number;
   clientId: string;
   templateHeader: string;
   sourceHeader: string;
+  mappingMethod: string;
+  insertedAt?: string;
   updatedAt?: string;
+  updatedBy?: string | null;
 }
 
 export interface ClientHeaderMappingInput {
   templateHeader: string;
   sourceHeader?: string | null;
+  mappingMethod?: string | null;
+  updatedBy?: string | null;
 }
 
 const TABLE_NAME = 'ml.CLIENT_HEADER_MAPPING';
@@ -38,11 +44,15 @@ const ensureTable = async () => {
     )
     BEGIN
       CREATE TABLE ${TABLE_NAME} (
-        CLIENT_ID NVARCHAR(128) NOT NULL,
-        TEMPLATE_HEADER NVARCHAR(256) NOT NULL,
-        SOURCE_HEADER NVARCHAR(256) NOT NULL,
+        MAPPING_ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        CLIENT_ID INT NOT NULL,
+        SOURCE_HEADER NVARCHAR(100) NOT NULL,
+        TEMPLATE_HEADER NVARCHAR(100) NOT NULL,
+        MAPPING_METHOD NVARCHAR(100) NOT NULL,
+        INSERTED_DTTM DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_INSERTED DEFAULT SYSUTCDATETIME(),
         UPDATED_DTTM DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_UPDATED DEFAULT SYSUTCDATETIME(),
-        CONSTRAINT PK_CLIENT_HEADER_MAPPING PRIMARY KEY (CLIENT_ID, TEMPLATE_HEADER)
+        UPDATED_BY NVARCHAR(100) NULL,
+        CONSTRAINT UX_CLIENT_HEADER_MAPPING UNIQUE (CLIENT_ID, TEMPLATE_HEADER)
       );
     END`
   );
@@ -53,40 +63,56 @@ const ensureTable = async () => {
 type NormalizedMapping = {
   templateHeader: string;
   sourceHeader: string | null;
+  mappingMethod: string;
+  updatedBy: string | null;
 };
 
 const normalizeMappings = (
   mappings: ClientHeaderMappingInput[]
 ): NormalizedMapping[] => {
-  const unique = new Map<string, string | null>();
+  const unique = new Map<string, NormalizedMapping>();
 
-  mappings.forEach(({ templateHeader, sourceHeader }) => {
+  mappings.forEach(({ templateHeader, sourceHeader, mappingMethod, updatedBy }) => {
     const normalizedTemplate = normalizeHeader(templateHeader);
     const normalizedSource = normalizeHeader(sourceHeader ?? null);
+    const normalizedMethod = normalizeHeader(mappingMethod ?? 'manual') ?? 'manual';
+    const normalizedUpdatedBy = normalizeHeader(updatedBy ?? 'system');
 
     if (!normalizedTemplate) {
       return;
     }
 
-    unique.set(normalizedTemplate, normalizedSource);
+    unique.set(normalizedTemplate, {
+      templateHeader: normalizedTemplate,
+      sourceHeader: normalizedSource,
+      mappingMethod: normalizedMethod,
+      updatedBy: normalizedUpdatedBy,
+    });
   });
 
-  return Array.from(unique.entries()).map(([templateHeader, sourceHeader]) => ({
-    templateHeader,
-    sourceHeader,
-  }));
+  return Array.from(unique.values());
 };
 
 const mapRowToRecord = (row: {
+  mapping_id: number;
   client_id: string;
   template_header: string;
   source_header: string;
+  mapping_method: string;
+  inserted_dttm?: Date | string | null;
   updated_dttm?: Date | string | null;
+  updated_by?: string | null;
 }): ClientHeaderMappingRecord => ({
+  mappingId: Number(row.mapping_id),
   clientId: row.client_id,
   templateHeader: row.template_header,
   sourceHeader: row.source_header,
+  mappingMethod: row.mapping_method,
+  insertedAt: row.inserted_dttm
+    ? new Date(row.inserted_dttm).toISOString()
+    : undefined,
   updatedAt: row.updated_dttm ? new Date(row.updated_dttm).toISOString() : undefined,
+  updatedBy: row.updated_by ?? null,
 });
 
 export const listClientHeaderMappings = async (
@@ -99,19 +125,33 @@ export const listClientHeaderMappings = async (
   await ensureTable();
 
   const result = await runQuery<{
+    mapping_id: number;
     client_id: string;
     template_header: string;
     source_header: string;
+    mapping_method: string;
+    inserted_dttm?: Date | string | null;
     updated_dttm?: Date | string | null;
+    updated_by?: string | null;
   }>(
     `SELECT
+      MAPPING_ID AS mapping_id,
       CLIENT_ID AS client_id,
       TEMPLATE_HEADER AS template_header,
       SOURCE_HEADER AS source_header,
+      MAPPING_METHOD AS mapping_method,
+      CASE
+        WHEN COL_LENGTH('ml.CLIENT_HEADER_MAPPING', 'INSERTED_DTTM') IS NOT NULL THEN INSERTED_DTTM
+        ELSE NULL
+      END AS inserted_dttm,
       CASE
         WHEN COL_LENGTH('ml.CLIENT_HEADER_MAPPING', 'UPDATED_DTTM') IS NOT NULL THEN UPDATED_DTTM
         ELSE NULL
-      END AS updated_dttm
+      END AS updated_dttm,
+      CASE
+        WHEN COL_LENGTH('ml.CLIENT_HEADER_MAPPING', 'UPDATED_BY') IS NOT NULL THEN UPDATED_BY
+        ELSE NULL
+      END AS updated_by
     FROM ${TABLE_NAME}
     WHERE CLIENT_ID = @clientId
     ORDER BY TEMPLATE_HEADER ASC`,
@@ -148,21 +188,45 @@ export const upsertClientHeaderMappings = async (
     .map((mapping, index) => {
       const templateKey = `templateHeader${index}`;
       const sourceKey = `sourceHeader${index}`;
+      const methodKey = `mappingMethod${index}`;
+      const updatedByKey = `updatedBy${index}`;
       params[templateKey] = mapping.templateHeader;
       params[sourceKey] = mapping.sourceHeader;
-      return `(@clientId, @${templateKey}, @${sourceKey})`;
+      params[methodKey] = mapping.mappingMethod;
+      params[updatedByKey] = mapping.updatedBy;
+      return `(@clientId, @${templateKey}, @${sourceKey}, @${methodKey}, @${updatedByKey})`;
     })
     .join(', ');
 
   await runQuery(
     `MERGE ${TABLE_NAME} AS target
-    USING (VALUES ${valuesClause}) AS source (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER)
+    USING (VALUES ${valuesClause}) AS source (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, MAPPING_METHOD, UPDATED_BY)
       ON target.CLIENT_ID = source.CLIENT_ID AND target.TEMPLATE_HEADER = source.TEMPLATE_HEADER
     WHEN MATCHED THEN
-      UPDATE SET SOURCE_HEADER = source.SOURCE_HEADER, UPDATED_DTTM = SYSUTCDATETIME()
+      UPDATE SET
+        SOURCE_HEADER = source.SOURCE_HEADER,
+        MAPPING_METHOD = source.MAPPING_METHOD,
+        UPDATED_BY = source.UPDATED_BY,
+        UPDATED_DTTM = SYSUTCDATETIME()
     WHEN NOT MATCHED THEN
-      INSERT (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_DTTM)
-      VALUES (source.CLIENT_ID, source.TEMPLATE_HEADER, source.SOURCE_HEADER, SYSUTCDATETIME());`,
+      INSERT (
+        CLIENT_ID,
+        TEMPLATE_HEADER,
+        SOURCE_HEADER,
+        MAPPING_METHOD,
+        INSERTED_DTTM,
+        UPDATED_DTTM,
+        UPDATED_BY
+      )
+      VALUES (
+        source.CLIENT_ID,
+        source.TEMPLATE_HEADER,
+        source.SOURCE_HEADER,
+        source.MAPPING_METHOD,
+        SYSUTCDATETIME(),
+        SYSUTCDATETIME(),
+        source.UPDATED_BY
+      );`,
     params
   );
 
@@ -198,6 +262,8 @@ export const replaceClientHeaderMappings = async (
     params[`templateHeader${index}`] = mapping.templateHeader;
     if (mapping.sourceHeader !== null) {
       params[`sourceHeader${index}`] = mapping.sourceHeader;
+      params[`mappingMethod${index}`] = mapping.mappingMethod;
+      params[`updatedBy${index}`] = mapping.updatedBy;
     }
   });
 
@@ -217,11 +283,22 @@ export const replaceClientHeaderMappings = async (
 
   if (inserts.length > 0) {
     const valuesClause = inserts
-      .map(({ index }) => `(@clientId, @templateHeader${index}, @sourceHeader${index}, SYSUTCDATETIME())`)
+      .map(
+        ({ index }) =>
+          `(@clientId, @templateHeader${index}, @sourceHeader${index}, @mappingMethod${index}, SYSUTCDATETIME(), SYSUTCDATETIME(), @updatedBy${index})`
+      )
       .join(', ');
 
     await runQuery(
-      `INSERT INTO ${TABLE_NAME} (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, UPDATED_DTTM)
+      `INSERT INTO ${TABLE_NAME} (
+        CLIENT_ID,
+        TEMPLATE_HEADER,
+        SOURCE_HEADER,
+        MAPPING_METHOD,
+        INSERTED_DTTM,
+        UPDATED_DTTM,
+        UPDATED_BY
+      )
       VALUES ${valuesClause}`,
       params
     );

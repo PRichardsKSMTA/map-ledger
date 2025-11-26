@@ -52,9 +52,15 @@ const normalizePayload = (
             ? null
             : undefined;
 
+      const mappingMethod =
+        typeof mapping.mappingMethod === 'string'
+          ? mapping.mappingMethod
+          : undefined;
+
       return {
         templateHeader: mapping.templateHeader,
         ...(sourceHeader !== undefined ? { sourceHeader } : {}),
+        ...(mappingMethod !== undefined ? { mappingMethod } : {}),
       };
     })
     .filter((entry): entry is ClientHeaderMappingInput => entry !== null);

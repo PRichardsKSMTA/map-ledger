@@ -1,9 +1,13 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
 export interface ClientHeaderMapping {
+  mappingId: number;
   templateHeader: string;
   sourceHeader: string;
+  mappingMethod: string;
+  insertedAt?: string;
   updatedAt?: string;
+  updatedBy?: string | null;
 }
 
 interface ClientHeaderMappingResponse {
@@ -50,6 +54,7 @@ export const saveClientHeaderMappings = async (
       ([templateHeader, sourceHeader]) => ({
         templateHeader,
         sourceHeader: sourceHeader ?? null,
+        mappingMethod: 'manual',
       })
     ),
   };
