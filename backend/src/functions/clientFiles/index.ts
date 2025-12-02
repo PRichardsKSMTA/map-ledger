@@ -3,10 +3,39 @@ import { json, readJson } from '../../http';
 import {
   listClientFiles,
   saveClientFileMetadata,
+  ClientFileEntity,
+  ClientFileSheet,
+  ImportStatus,
   NewClientFileRecord,
 } from '../../repositories/clientFileRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import { buildErrorResponse } from '../datapointConfigs/utils';
+
+export interface ClientFileMetadataPayload {
+  clientId?: string;
+  userId?: string;
+  uploadedBy?: string;
+  importedBy?: string;
+  sourceFileName?: string;
+  fileName?: string;
+  fileStorageUri?: string;
+  fileUri?: string;
+  fileUrl?: string;
+  blobUrl?: string;
+  blobUri?: string;
+  uploadContext?: Record<string, unknown>;
+  fileSize?: number;
+  fileType?: string;
+  status?: ImportStatus;
+  fileStatus?: ImportStatus;
+  glPeriodStart?: string;
+  glPeriodEnd?: string;
+  period?: string;
+  rowCount?: number;
+  lastStepCompletedDttm?: string;
+  sheets?: ClientFileSheet[];
+  entities?: ClientFileEntity[];
+}
 
 const parseInteger = (value: string | null, fallback: number): number => {
   if (!value) {
@@ -26,7 +55,31 @@ const toOptionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
-const validateRecord = (payload: unknown): { record: NewClientFileRecord | null; errors: string[] } => {
+const resolveFileStorageUri = (bag: Record<string, unknown>): string | undefined => {
+  const directUri =
+    toOptionalString(bag.fileStorageUri) ??
+    toOptionalString(bag.fileUri ?? bag.fileUrl) ??
+    toOptionalString(bag.blobUrl ?? bag.blobUri);
+
+  if (directUri) {
+    return directUri;
+  }
+
+  if (bag.uploadContext && typeof bag.uploadContext === 'object') {
+    const uploadContext = bag.uploadContext as Record<string, unknown>;
+    return (
+      toOptionalString(uploadContext.fileStorageUri) ??
+      toOptionalString(uploadContext.fileUri ?? uploadContext.fileUrl) ??
+      toOptionalString(uploadContext.blobUrl ?? uploadContext.blobUri)
+    );
+  }
+
+  return undefined;
+};
+
+export const validateRecord = (
+  payload: ClientFileMetadataPayload | unknown
+): { record: NewClientFileRecord | null; errors: string[] } => {
   if (!payload || typeof payload !== 'object') {
     return { record: null, errors: ['Payload is not an object'] };
   }
@@ -35,13 +88,13 @@ const validateRecord = (payload: unknown): { record: NewClientFileRecord | null;
 
   const clientId = toOptionalString(bag.clientId);
   const sourceFileName = toOptionalString(bag.sourceFileName ?? bag.fileName);
-  const fileStorageUri = toOptionalString(bag.fileStorageUri);
   const fileStatus = toOptionalString(bag.fileStatus ?? bag.status);
+  const fileStorageUri = resolveFileStorageUri(bag);
 
   const missingFields = [
     !clientId ? 'clientId is required' : null,
     !sourceFileName ? 'sourceFileName is required' : null,
-    !fileStorageUri ? 'fileStorageUri is required' : null,
+    !fileStorageUri ? 'fileStorageUri (or fileUri/blobUrl) is required' : null,
     !fileStatus ? 'fileStatus is required' : null,
   ].filter(Boolean) as string[];
 
