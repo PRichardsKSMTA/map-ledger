@@ -51,4 +51,48 @@ describe('clientFiles.validateRecord', () => {
     expect(record).toBeNull();
     expect(errors).toContain('fileStorageUri (or fileUri/blobUrl) is required');
   });
+
+  it('parses sheet and entity selections with sensible defaults', () => {
+    const payload: ClientFileMetadataPayload = {
+      ...basePayload,
+      fileStorageUri: 'https://storage.example.com/blob.csv',
+      sheets: [
+        {
+          sheetName: ' Sheet A ',
+          rowCount: '12' as unknown as number,
+          isSelected: 'false' as unknown as boolean,
+          firstDataRowIndex: '3' as unknown as number,
+        },
+      ],
+      entities: [
+        {
+          entityId: '42' as unknown as number,
+          entityName: 'Consolidated',
+          rowCount: '9' as unknown as number,
+          isSelected: '0' as unknown as boolean,
+        },
+      ],
+    };
+
+    const { record, errors } = validateRecord(payload);
+
+    expect(errors).toHaveLength(0);
+    expect(record?.sheets).toEqual([
+      {
+        sheetName: 'Sheet A',
+        rowCount: 12,
+        isSelected: false,
+        firstDataRowIndex: 3,
+      },
+    ]);
+    expect(record?.entities).toEqual([
+      {
+        entityId: 42,
+        entityName: 'Consolidated',
+        displayName: undefined,
+        rowCount: 9,
+        isSelected: false,
+      },
+    ]);
+  });
 });

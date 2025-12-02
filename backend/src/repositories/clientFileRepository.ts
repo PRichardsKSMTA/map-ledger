@@ -14,7 +14,7 @@ export interface ClientFileSheet {
 }
 
 export interface ClientFileEntity {
-  entityId?: string;
+  entityId?: number;
   entityName: string;
   displayName?: string;
   rowCount: number;
@@ -200,7 +200,10 @@ export const saveClientFileMetadata = async (
     record.sheets.forEach((sheet, index) => {
       params[`sheetName${index}`] = sheet.sheetName;
       params[`isSelected${index}`] = sheet.isSelected === false ? 0 : 1;
-      params[`firstDataRowIndex${index}`] = sheet.firstDataRowIndex ?? null;
+      params[`firstDataRowIndex${index}`] =
+        typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
+          ? sheet.firstDataRowIndex
+          : null;
       params[`sheetRowCount${index}`] = sheet.rowCount;
       params[`inserted${index}`] = sheetTimestamp;
       params[`updated${index}`] = sheetTimestamp;
@@ -227,7 +230,10 @@ export const saveClientFileMetadata = async (
     const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
     record.entities.forEach((entity, index) => {
       const entityName = entity.displayName ?? entity.entityName;
-      params[`entityId${index}`] = entity.entityId ?? null;
+      params[`entityId${index}`] =
+        typeof entity.entityId === 'number' && Number.isFinite(entity.entityId)
+          ? entity.entityId
+          : null;
       params[`entityName${index}`] = entityName;
       params[`entityRowCount${index}`] = entity.rowCount;
       params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
@@ -411,7 +417,7 @@ export const listClientFiles = async (
 
   const entitiesResult = await runQuery<{
     fileUploadId: number;
-    entityId?: string;
+    entityId?: number;
     entityName: string;
     rowCount: number;
     isSelected?: number | boolean;
@@ -429,7 +435,9 @@ export const listClientFiles = async (
   (entitiesResult.recordset ?? []).forEach((entity) => {
     const existing = entitiesByFile.get(entity.fileUploadId) ?? [];
     existing.push({
-      entityId: entity.entityId ?? undefined,
+      entityId: Number.isFinite(entity.entityId)
+        ? (entity.entityId as number)
+        : undefined,
       entityName: entity.entityName,
       displayName: entity.entityName,
       rowCount: entity.rowCount,
