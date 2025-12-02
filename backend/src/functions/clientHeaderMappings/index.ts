@@ -21,6 +21,48 @@ const parseClientId = (request: HttpRequest): string | undefined =>
     request.query.get('clientID'),
   ]);
 
+const logPayloadDetails = (
+  context: InvocationContext,
+  scope: 'create' | 'update',
+  parsed: unknown,
+  normalized: ClientHeaderMappingPayload | null
+) => {
+  const parsedClientId =
+    typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>).clientId
+      : undefined;
+
+  const mappingsInput =
+    typeof parsed === 'object' && parsed !== null
+      ? (parsed as Record<string, unknown>).mappings
+      : undefined;
+
+  const mappingSummary = Array.isArray(mappingsInput)
+    ? {
+        received: mappingsInput.length,
+        validEntries: mappingsInput.filter(
+          (entry) => entry && typeof entry === 'object'
+        ).length,
+      }
+    : { received: 0, validEntries: 0 };
+
+  if (!normalized) {
+    context.warn('Invalid client header mapping payload', {
+      scope,
+      parsedClientId,
+      mappingSummary,
+    });
+    return;
+  }
+
+  context.log('Normalized client header mapping payload', {
+    scope,
+    clientId: normalized.clientId,
+    mappingCount: normalized.mappings.length,
+    templates: normalized.mappings.map((mapping) => mapping.templateHeader),
+  });
+};
+
 const normalizePayload = (
   body: unknown
 ): ClientHeaderMappingPayload | null => {
@@ -57,10 +99,18 @@ const normalizePayload = (
           ? mapping.mappingMethod
           : undefined;
 
+      const updatedBy =
+        typeof mapping.updatedBy === 'string'
+          ? mapping.updatedBy
+          : mapping.updatedBy === null
+            ? null
+            : undefined;
+
       return {
         templateHeader: mapping.templateHeader,
         ...(sourceHeader !== undefined ? { sourceHeader } : {}),
         ...(mappingMethod !== undefined ? { mappingMethod } : {}),
+        ...(updatedBy !== undefined ? { updatedBy } : {}),
       };
     })
     .filter((entry): entry is ClientHeaderMappingInput => entry !== null);
@@ -99,7 +149,9 @@ export const createClientHeaderMappingsHandler = async (
 ): Promise<HttpResponseInit> => {
   try {
     const parsed = await readJson(request);
+    context.log('Received request to create client header mappings', parsed);
     const payload = normalizePayload(parsed);
+    logPayloadDetails(context, 'create', parsed, payload);
 
     if (!payload) {
       return json({ message: 'Invalid client header mapping payload' }, 400);
@@ -109,6 +161,12 @@ export const createClientHeaderMappingsHandler = async (
       payload.clientId,
       payload.mappings
     );
+
+    context.log('Persisted client header mappings', {
+      scope: 'create',
+      clientId: payload.clientId,
+      persistedCount: mappings.length,
+    });
 
     return json({ items: mappings }, 201);
   } catch (error) {
@@ -126,7 +184,9 @@ export const updateClientHeaderMappingsHandler = async (
 ): Promise<HttpResponseInit> => {
   try {
     const parsed = await readJson(request);
+    context.log('Received request to update client header mappings', parsed);
     const payload = normalizePayload(parsed);
+    logPayloadDetails(context, 'update', parsed, payload);
 
     if (!payload) {
       return json({ message: 'Invalid client header mapping payload' }, 400);
@@ -136,6 +196,12 @@ export const updateClientHeaderMappingsHandler = async (
       payload.clientId,
       payload.mappings
     );
+
+    context.log('Updated client header mappings', {
+      scope: 'update',
+      clientId: payload.clientId,
+      persistedCount: mappings.length,
+    });
 
     return json({ items: mappings });
   } catch (error) {

@@ -4,7 +4,6 @@ jest.mock('../src/utils/sqlClient', () => ({
   
   import { runQuery } from '../src/utils/sqlClient';
   import {
-    __resetDatapointConfigurationRepositoryForTests,
     createDatapointConfiguration,
     getDatapointConfigurationById,
     listDatapointConfigurations,
@@ -21,7 +20,6 @@ jest.mock('../src/utils/sqlClient', () => ({
     beforeEach(() => {
       mockedRunQuery = runQuery as RunQueryMock;
       mockedRunQuery.mockReset();
-      __resetDatapointConfigurationRepositoryForTests();
       process.env = {
         ...ORIGINAL_ENV,
         SQL_CONN_STR: 'Server=fake;Database=fake;User Id=fake;Password=fake;',

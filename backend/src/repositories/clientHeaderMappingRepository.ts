@@ -19,7 +19,16 @@ export interface ClientHeaderMappingInput {
 }
 
 const TABLE_NAME = 'ml.CLIENT_HEADER_MAPPING';
-let tableEnsured = false;
+const logPrefix = '[clientHeaderMappingRepository]';
+const shouldLog = process.env.NODE_ENV !== 'test';
+
+const logInfo = (...args: unknown[]) => {
+  if (!shouldLog) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.info(logPrefix, ...args);
+};
 
 const normalizeHeader = (value?: string | null): string | null => {
   if (value === undefined || value === null) {
@@ -30,40 +39,10 @@ const normalizeHeader = (value?: string | null): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const ensureTable = async () => {
-  if (tableEnsured) {
-    return;
-  }
-
-  await runQuery(
-    `IF NOT EXISTS (
-      SELECT 1
-      FROM sys.tables t
-      JOIN sys.schemas s ON t.schema_id = s.schema_id
-      WHERE t.name = 'CLIENT_HEADER_MAPPING' AND s.name = 'ml'
-    )
-    BEGIN
-      CREATE TABLE ${TABLE_NAME} (
-        MAPPING_ID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-        CLIENT_ID INT NOT NULL,
-        SOURCE_HEADER NVARCHAR(100) NOT NULL,
-        TEMPLATE_HEADER NVARCHAR(100) NOT NULL,
-        MAPPING_METHOD NVARCHAR(100) NOT NULL,
-        INSERTED_DTTM DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_INSERTED DEFAULT SYSUTCDATETIME(),
-        UPDATED_DTTM DATETIME2 NOT NULL CONSTRAINT DF_CLIENT_HEADER_MAPPING_UPDATED DEFAULT SYSUTCDATETIME(),
-        UPDATED_BY NVARCHAR(100) NULL,
-        CONSTRAINT UX_CLIENT_HEADER_MAPPING UNIQUE (CLIENT_ID, TEMPLATE_HEADER)
-      );
-    END`
-  );
-
-  tableEnsured = true;
-};
-
 type NormalizedMapping = {
   templateHeader: string;
   sourceHeader: string | null;
-  mappingMethod: string;
+  mappingMethod: string | null;
   updatedBy: string | null;
 };
 
@@ -75,8 +54,8 @@ const normalizeMappings = (
   mappings.forEach(({ templateHeader, sourceHeader, mappingMethod, updatedBy }) => {
     const normalizedTemplate = normalizeHeader(templateHeader);
     const normalizedSource = normalizeHeader(sourceHeader ?? null);
-    const normalizedMethod = normalizeHeader(mappingMethod ?? 'manual') ?? 'manual';
-    const normalizedUpdatedBy = normalizeHeader(updatedBy ?? 'system');
+    const normalizedMethod = normalizeHeader(mappingMethod ?? null);
+    const normalizedUpdatedBy = normalizeHeader(updatedBy ?? null);
 
     if (!normalizedTemplate) {
       return;
@@ -121,8 +100,6 @@ export const listClientHeaderMappings = async (
   if (!normalizeHeader(clientId)) {
     return [];
   }
-
-  await ensureTable();
 
   const result = await runQuery<{
     mapping_id: number;
@@ -170,21 +147,45 @@ export const upsertClientHeaderMappings = async (
     return [];
   }
 
-  const normalizedMappings = normalizeMappings(mappings).filter(
-    (mapping) => mapping.sourceHeader !== null
-  );
+  const normalizedMappings = normalizeMappings(mappings);
 
   if (normalizedMappings.length === 0) {
+    logInfo('No normalized mappings to upsert; returning current mappings', {
+      clientId: normalizedClientId,
+    });
     return listClientHeaderMappings(normalizedClientId);
   }
 
-  await ensureTable();
+  const existingMappings = await listClientHeaderMappings(normalizedClientId);
+  const existingByTemplate = new Map(
+    existingMappings.map((mapping) => [mapping.templateHeader, mapping])
+  );
+
+  logInfo('Preparing to upsert client header mappings', {
+    clientId: normalizedClientId,
+    requestedMappings: mappings.length,
+    normalizedMappings: normalizedMappings.length,
+  });
+
+  const resolvedMappings = normalizedMappings.map((mapping) => {
+    const existing = existingByTemplate.get(mapping.templateHeader);
+    const resolvedMethod =
+      mapping.mappingMethod ??
+      (existing && existing.sourceHeader === mapping.sourceHeader
+        ? existing.mappingMethod
+        : 'manual');
+
+    return {
+      ...mapping,
+      mappingMethod: resolvedMethod ?? 'manual',
+    };
+  });
 
   const params: Record<string, unknown> = {
     clientId: normalizedClientId,
   };
 
-  const valuesClause = normalizedMappings
+  const valuesClause = resolvedMappings
     .map((mapping, index) => {
       const templateKey = `templateHeader${index}`;
       const sourceKey = `sourceHeader${index}`;
@@ -202,33 +203,36 @@ export const upsertClientHeaderMappings = async (
     `MERGE ${TABLE_NAME} AS target
     USING (VALUES ${valuesClause}) AS source (CLIENT_ID, TEMPLATE_HEADER, SOURCE_HEADER, MAPPING_METHOD, UPDATED_BY)
       ON target.CLIENT_ID = source.CLIENT_ID AND target.TEMPLATE_HEADER = source.TEMPLATE_HEADER
-    WHEN MATCHED THEN
+    WHEN MATCHED AND (
+      ISNULL(target.SOURCE_HEADER, '') <> ISNULL(source.SOURCE_HEADER, '') OR
+      ISNULL(target.MAPPING_METHOD, '') <> ISNULL(source.MAPPING_METHOD, '')
+    ) THEN
       UPDATE SET
         SOURCE_HEADER = source.SOURCE_HEADER,
         MAPPING_METHOD = source.MAPPING_METHOD,
         UPDATED_BY = source.UPDATED_BY,
         UPDATED_DTTM = SYSUTCDATETIME()
-    WHEN NOT MATCHED THEN
+    WHEN NOT MATCHED AND source.SOURCE_HEADER IS NOT NULL THEN
       INSERT (
         CLIENT_ID,
         TEMPLATE_HEADER,
         SOURCE_HEADER,
         MAPPING_METHOD,
-        INSERTED_DTTM,
-        UPDATED_DTTM,
-        UPDATED_BY
+        INSERTED_DTTM
       )
       VALUES (
         source.CLIENT_ID,
         source.TEMPLATE_HEADER,
         source.SOURCE_HEADER,
         source.MAPPING_METHOD,
-        SYSUTCDATETIME(),
-        SYSUTCDATETIME(),
-        source.UPDATED_BY
+        SYSUTCDATETIME()
       );`,
     params
   );
+
+  logInfo('Upsert complete; fetching stored mappings', {
+    clientId: normalizedClientId,
+  });
 
   return listClientHeaderMappings(normalizedClientId);
 };
@@ -243,68 +247,12 @@ export const replaceClientHeaderMappings = async (
   }
 
   const normalizedMappings = normalizeMappings(mappings);
-  if (normalizedMappings.length === 0) {
-    return listClientHeaderMappings(normalizedClientId);
-  }
-
-  await ensureTable();
-
-  const params: Record<string, unknown> = {
+  logInfo('Preparing to replace client header mappings', {
     clientId: normalizedClientId,
-  };
-
-  const mappingsWithIndex = normalizedMappings.map((mapping, index) => ({
-    mapping,
-    index,
-  }));
-
-  mappingsWithIndex.forEach(({ mapping, index }) => {
-    params[`templateHeader${index}`] = mapping.templateHeader;
-    if (mapping.sourceHeader !== null) {
-      params[`sourceHeader${index}`] = mapping.sourceHeader;
-      params[`mappingMethod${index}`] = mapping.mappingMethod;
-      params[`updatedBy${index}`] = mapping.updatedBy;
-    }
+    requestedMappings: mappings.length,
+    normalizedMappings: normalizedMappings.length,
   });
-
-  const deletePlaceholders = mappingsWithIndex
-    .map(({ index }) => `@templateHeader${index}`)
-    .join(', ');
-
-  await runQuery(
-    `DELETE FROM ${TABLE_NAME}
-    WHERE CLIENT_ID = @clientId AND TEMPLATE_HEADER IN (${deletePlaceholders})`,
-    params
-  );
-
-  const inserts = mappingsWithIndex.filter(
-    ({ mapping }) => mapping.sourceHeader !== null
-  );
-
-  if (inserts.length > 0) {
-    const valuesClause = inserts
-      .map(
-        ({ index }) =>
-          `(@clientId, @templateHeader${index}, @sourceHeader${index}, @mappingMethod${index}, SYSUTCDATETIME(), SYSUTCDATETIME(), @updatedBy${index})`
-      )
-      .join(', ');
-
-    await runQuery(
-      `INSERT INTO ${TABLE_NAME} (
-        CLIENT_ID,
-        TEMPLATE_HEADER,
-        SOURCE_HEADER,
-        MAPPING_METHOD,
-        INSERTED_DTTM,
-        UPDATED_DTTM,
-        UPDATED_BY
-      )
-      VALUES ${valuesClause}`,
-      params
-    );
-  }
-
-  return listClientHeaderMappings(normalizedClientId);
+  return upsertClientHeaderMappings(normalizedClientId, normalizedMappings);
 };
 
 export default listClientHeaderMappings;
