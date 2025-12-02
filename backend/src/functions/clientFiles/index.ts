@@ -46,6 +46,46 @@ const parseInteger = (value: string | null, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseBoolean = (value: unknown, defaultValue: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+
+    if (['true', '1', 'yes', 'y'].includes(normalized)) {
+      return true;
+    }
+
+    if (['false', '0', 'no', 'n'].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return defaultValue;
+};
+
+const parseOptionalInteger = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.trunc(parsed) : undefined;
+  }
+
+  return undefined;
+};
+
+const parseIntegerWithDefault = (value: unknown, fallback: number): number =>
+  parseOptionalInteger(value) ?? fallback;
+
 const toOptionalString = (value: unknown): string | undefined => {
   if (typeof value !== 'string') {
     return undefined;
@@ -133,33 +173,16 @@ export const validateRecord = (
       .filter(Boolean)
       .map((entry) => {
         const sheet = entry as Record<string, unknown>;
-        const firstDataRowIndex =
-          typeof sheet.firstDataRowIndex === 'number' &&
-          Number.isFinite(sheet.firstDataRowIndex)
-            ? sheet.firstDataRowIndex
-            : undefined;
-        const isSelected = (() => {
-          if (typeof sheet.isSelected === 'boolean') {
-            return sheet.isSelected;
-          }
+        const sheetName =
+          toOptionalString(sheet.sheetName ?? sheet.name ?? sheet.title) ?? '';
+        const firstDataRowIndex = parseOptionalInteger(
+          sheet.firstDataRowIndex ?? sheet.firstDataRow ?? sheet.startRow
+        );
+        const isSelected = parseBoolean(sheet.isSelected, true);
 
-          if (typeof sheet.isSelected === 'number') {
-            return sheet.isSelected !== 0;
-          }
-
-          if (typeof sheet.isSelected === 'string') {
-            return sheet.isSelected.trim() !== '0';
-          }
-
-          return true;
-        })();
         return {
-          sheetName: String(sheet.sheetName ?? '').trim(),
-          glMonth:
-            typeof sheet.glMonth === 'string' && sheet.glMonth.trim()
-              ? sheet.glMonth.trim()
-              : undefined,
-          rowCount: Number(sheet.rowCount ?? 0),
+          sheetName,
+          rowCount: parseIntegerWithDefault(sheet.rowCount, 0),
           isSelected,
           firstDataRowIndex,
         };
@@ -172,33 +195,18 @@ export const validateRecord = (
       .filter(Boolean)
       .map((entry) => {
         const entity = entry as Record<string, unknown>;
-        const entityId = toOptionalString(entity.entityId ?? entity.id);
+        const entityId = parseOptionalInteger(entity.entityId ?? entity.id);
         const displayName = toOptionalString(
-          entity.displayName ?? entity.entityDisplayName ?? entity.entityName ?? entity.name
+          entity.displayName ?? entity.entityDisplayName
         );
         const entityName =
-          displayName ?? toOptionalString(entity.entityName ?? entity.name) ?? '';
-        const isSelected = (() => {
-          if (typeof entity.isSelected === 'boolean') {
-            return entity.isSelected;
-          }
-
-          if (typeof entity.isSelected === 'number') {
-            return entity.isSelected !== 0;
-          }
-
-          if (typeof entity.isSelected === 'string') {
-            return entity.isSelected.trim() !== '0';
-          }
-
-          return true;
-        })();
+          toOptionalString(entity.entityName ?? entity.name) ?? displayName ?? '';
         return {
           entityId: entityId ?? undefined,
           entityName,
           displayName: displayName ?? undefined,
-          rowCount: Number(entity.rowCount ?? 0),
-          isSelected,
+          rowCount: parseIntegerWithDefault(entity.rowCount, 0),
+          isSelected: parseBoolean(entity.isSelected, true),
         };
       })
       .filter(
