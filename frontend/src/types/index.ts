@@ -207,12 +207,17 @@ export interface Import {
   fileName: string;
   fileSize: number;
   fileType: string;
+  fileStorageUri?: string;
+  fileUri?: string;
+  blobUrl?: string;
+  blobUri?: string;
   period: string;
   timestamp: string;
   status: 'completed' | 'failed';
   rowCount?: number;
   importedBy: string;
   userId: string;
+  uploadContext?: Record<string, unknown>;
   sheets?: ImportSheet[];
   entities?: ImportEntity[];
 }
