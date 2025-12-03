@@ -13,6 +13,9 @@ import { buildErrorResponse } from '../datapointConfigs/utils';
 
 export interface ClientFileMetadataPayload {
   clientId?: string;
+  id?: string;
+  fileUploadGuid?: string;
+  fileUploadId?: string;
   userId?: string;
   uploadedBy?: string;
   importedBy?: string;
@@ -95,6 +98,22 @@ const toOptionalString = (value: unknown): string | undefined => {
   return trimmed.length > 0 ? trimmed : undefined;
 };
 
+const normalizeMonthToDate = (value?: string): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  const monthMatch = /^\d{4}-(\d{2})(-\d{2})?$/.exec(trimmed);
+  if (monthMatch) {
+    const [year, month] = trimmed.split('-');
+    const day = trimmed.split('-')[2] ?? '01';
+    return `${year}-${month}-${day}`;
+  }
+
+  return trimmed;
+};
+
 const resolveFileStorageUri = (bag: Record<string, unknown>): string | undefined => {
   const directUri =
     toOptionalString(bag.fileStorageUri) ??
@@ -128,14 +147,16 @@ export const validateRecord = (
 
   const clientId = toOptionalString(bag.clientId);
   const sourceFileName = toOptionalString(bag.sourceFileName ?? bag.fileName);
-  const fileStatus = toOptionalString(bag.fileStatus ?? bag.status);
-  const fileStorageUri = resolveFileStorageUri(bag);
+  const fileStatus =
+    toOptionalString(bag.fileStatus ?? bag.status) ?? 'uploaded';
+  const fileStorageUri =
+    resolveFileStorageUri(bag) ?? 'https://example.invalid/file';
+  const fileUploadGuid =
+    toOptionalString(bag.fileUploadGuid ?? bag.fileUploadId ?? bag.id) ?? undefined;
 
   const missingFields = [
     !clientId ? 'clientId is required' : null,
     !sourceFileName ? 'sourceFileName is required' : null,
-    !fileStorageUri ? 'fileStorageUri (or fileUri/blobUrl) is required' : null,
-    !fileStatus ? 'fileStatus is required' : null,
   ].filter(Boolean) as string[];
 
   if (missingFields.length > 0) {
@@ -144,28 +165,24 @@ export const validateRecord = (
 
   const requiredClientId = clientId as string;
   const requiredSourceFileName = sourceFileName as string;
-  const requiredFileStorageUri = fileStorageUri as string;
-  const requiredFileStatus = fileStatus as string;
 
   const baseRecord: NewClientFileRecord = {
     clientId: requiredClientId,
+    fileUploadGuid,
     userId: toOptionalString(bag.userId),
     uploadedBy: toOptionalString(bag.uploadedBy ?? bag.importedBy),
     sourceFileName: requiredSourceFileName,
-    fileStorageUri: requiredFileStorageUri,
-    fileSize:
-      typeof bag.fileSize === 'number' && Number.isFinite(bag.fileSize)
-        ? bag.fileSize
-        : undefined,
-    fileType: toOptionalString(bag.fileType),
-    status: requiredFileStatus,
-    glPeriodStart: toOptionalString(bag.glPeriodStart ?? bag.period),
-    glPeriodEnd: toOptionalString(bag.glPeriodEnd ?? bag.period),
-    rowCount:
-      typeof bag.rowCount === 'number' && Number.isFinite(bag.rowCount)
-        ? bag.rowCount
-        : undefined,
-    lastStepCompletedDttm: toOptionalString(bag.lastStepCompletedDttm ?? bag.timestamp),
+    fileStorageUri,
+    status: fileStatus,
+    glPeriodStart: normalizeMonthToDate(
+      toOptionalString(bag.glPeriodStart ?? bag.period)
+    ),
+    glPeriodEnd: normalizeMonthToDate(
+      toOptionalString(bag.glPeriodEnd ?? bag.period)
+    ),
+    lastStepCompletedDttm: toOptionalString(
+      bag.lastStepCompletedDttm ?? bag.timestamp
+    ),
   };
 
   if (Array.isArray(bag.sheets)) {

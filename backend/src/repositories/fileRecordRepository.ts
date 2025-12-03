@@ -5,10 +5,8 @@ export interface FileRecordInput {
   accountName: string;
   activityAmount: number;
   entityId?: string | null;
-  entityName?: string | null;
   glMonth?: string | null;
-  sourceSheet?: string | null;
-  sourceRowNumber?: number | null;
+  sourceSheetName?: string | null;
   openingBalance?: number | null;
   closingBalance?: number | null;
   userDefined1?: string | null;
@@ -41,15 +39,13 @@ export const insertFileRecords = async (
       params[`openingBalance${index}`] = record.openingBalance ?? null;
       params[`closingBalance${index}`] = record.closingBalance ?? null;
       params[`entityId${index}`] = record.entityId ?? null;
-      params[`entityName${index}`] = record.entityName ?? null;
       params[`glMonth${index}`] = record.glMonth ?? null;
-      params[`sourceSheetName${index}`] = record.sourceSheet ?? null;
-      params[`sourceRowNumber${index}`] = record.sourceRowNumber ?? null;
+      params[`sourceSheetName${index}`] = record.sourceSheetName ?? null;
       params[`userDefined1_${index}`] = record.userDefined1 ?? null;
       params[`userDefined2_${index}`] = record.userDefined2 ?? null;
       params[`userDefined3_${index}`] = record.userDefined3 ?? null;
 
-      return `(@fileUploadGuid, @sourceSheetName${index}, @sourceRowNumber${index}, @entityId${index}, @entityName${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index})`;
+      return `(@fileUploadGuid, @sourceSheetName${index}, @entityId${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index}, NULL, NULL)`;
     })
     .join(', ');
 
@@ -57,9 +53,7 @@ export const insertFileRecords = async (
     `INSERT INTO ${TABLE_NAME} (
       FILE_UPLOAD_GUID,
       SOURCE_SHEET_NAME,
-      SOURCE_ROW_NUMBER,
       ENTITY_ID,
-      ENTITY_NAME,
       ACCOUNT_ID,
       ACCOUNT_NAME,
       OPENING_BALANCE,
@@ -69,7 +63,6 @@ export const insertFileRecords = async (
       USER_DEFINED1,
       USER_DEFINED2,
       USER_DEFINED3,
-      INSERTED_DTTM,
       UPDATED_DTTM,
       UPDATED_BY
     )
@@ -111,9 +104,7 @@ export const listFileRecords = async (fileUploadGuid?: string): Promise<FileReco
     file_upload_guid: string;
     record_id: number;
     source_sheet_name?: string | null;
-    source_row_number?: number | null;
     entity_id?: string | null;
-    entity_name?: string | null;
     account_id: string;
     account_name: string;
     opening_balance?: number | null;
@@ -129,9 +120,7 @@ export const listFileRecords = async (fileUploadGuid?: string): Promise<FileReco
       FILE_UPLOAD_GUID as file_upload_guid,
       RECORD_ID as record_id,
       SOURCE_SHEET_NAME as source_sheet_name,
-      SOURCE_ROW_NUMBER as source_row_number,
       ENTITY_ID as entity_id,
-      ENTITY_NAME as entity_name,
       ACCOUNT_ID as account_id,
       ACCOUNT_NAME as account_name,
       OPENING_BALANCE as opening_balance,
@@ -151,10 +140,8 @@ export const listFileRecords = async (fileUploadGuid?: string): Promise<FileReco
   return (result.recordset ?? []).map((row) => ({
     fileUploadGuid: row.file_upload_guid,
     recordId: row.record_id,
-    sourceSheet: row.source_sheet_name ?? undefined,
-    sourceRowNumber: row.source_row_number ?? undefined,
+    sourceSheetName: row.source_sheet_name ?? undefined,
     entityId: row.entity_id ?? undefined,
-    entityName: row.entity_name ?? undefined,
     accountId: row.account_id,
     accountName: row.account_name,
     openingBalance: row.opening_balance ?? undefined,

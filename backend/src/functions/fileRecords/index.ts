@@ -223,7 +223,6 @@ const deriveRecordsFromSheet = (
       const entityValue = normalizeText(getValueFromRow(row, entityHeader));
       const matchedEntity = matchEntity(entityValue, entities);
       const normalizedEntityId = matchedEntity?.id || undefined;
-      const normalizedEntityName = matchedEntity?.name || entityValue || undefined;
 
       const userDefined1 = getOptionalText(getValueFromRow(row, userDefined1Header));
       const userDefined2 = getOptionalText(getValueFromRow(row, userDefined2Header));
@@ -236,10 +235,8 @@ const deriveRecordsFromSheet = (
         accountName,
         activityAmount,
         entityId: normalizedEntityId,
-        entityName: normalizedEntityName,
         glMonth,
-        sourceSheet: sheet.sheetName,
-        sourceRowNumber: firstRowIndex + index,
+        sourceSheetName: sheet.sheetName,
         userDefined1,
         userDefined2,
         userDefined3,
@@ -254,7 +251,9 @@ const normalizePayload = (body: unknown): { payload: IngestPayload | null; error
   }
 
   const payload = body as Record<string, unknown>;
-  const fileUploadGuid = getFirstStringValue(payload.fileUploadGuid)?.trim();
+  const fileUploadGuid =
+    getFirstStringValue(payload.fileUploadGuid)?.trim() ??
+    getFirstStringValue(payload.fileUploadId)?.trim();
 
   const normalizedFileUploadGuid = fileUploadGuid;
   const headerMap = payload.headerMap as HeaderMap;
