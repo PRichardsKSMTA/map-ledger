@@ -315,6 +315,26 @@ export interface ClientFileHistoryResult {
   pageSize: number;
 }
 
+export const findFileUploadGuidById = async (
+  fileUploadId: number
+): Promise<string | null> => {
+  if (!fileUploadId || !Number.isFinite(fileUploadId)) {
+    return null;
+  }
+
+  const result = await runQuery<{ file_upload_guid?: string }>(
+    `SELECT FILE_UPLOAD_GUID as file_upload_guid
+    FROM ml.CLIENT_FILES
+    WHERE FILE_UPLOAD_ID = @fileUploadId AND IS_DELETED = 0`,
+    { fileUploadId }
+  );
+
+  const fileUploadGuid = result.recordset?.[0]?.file_upload_guid;
+  return typeof fileUploadGuid === 'string' && fileUploadGuid.length === 36
+    ? fileUploadGuid
+    : null;
+};
+
 export const findFileUploadIdByGuid = async (
   fileUploadGuid: string
 ): Promise<number | null> => {
