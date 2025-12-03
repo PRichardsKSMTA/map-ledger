@@ -1,7 +1,21 @@
 import crypto from 'node:crypto';
 import { runQuery } from '../utils/sqlClient';
 
-export type ImportStatus = 'completed' | 'failed' | string;
+export const ALLOWED_IMPORT_STATUSES = [
+  'uploaded',
+  'mapping',
+  'distribution',
+  'review',
+  'completed',
+] as const;
+
+export type ImportStatus = (typeof ALLOWED_IMPORT_STATUSES)[number];
+
+export const isImportStatus = (value: unknown): value is ImportStatus =>
+  typeof value === 'string' && ALLOWED_IMPORT_STATUSES.includes(value as ImportStatus);
+
+export const coerceImportStatus = (value: unknown): ImportStatus =>
+  isImportStatus(value) ? (value as ImportStatus) : 'uploaded';
 
 export interface ClientFileSheet {
   sheetName: string;
@@ -70,7 +84,7 @@ interface RawClientFileRow {
   fileStorageUri: string;
   fileSize?: number;
   fileType?: string;
-  fileStatus: ImportStatus;
+  fileStatus: string;
   glPeriodStart?: string;
   glPeriodEnd?: string;
   rowCount?: number;
@@ -123,7 +137,7 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
     fileStorageUri: row.fileStorageUri,
     fileSize: row.fileSize,
     fileType: row.fileType,
-    status: row.fileStatus,
+    status: coerceImportStatus(row.fileStatus),
     glPeriodStart: row.glPeriodStart,
     glPeriodEnd: row.glPeriodEnd,
     period: buildPeriodLabel(row.glPeriodStart, row.glPeriodEnd),
@@ -140,6 +154,7 @@ export const saveClientFileMetadata = async (
     record.fileUploadGuid && record.fileUploadGuid.length === 36
       ? record.fileUploadGuid
       : crypto.randomUUID();
+  const status = coerceImportStatus(record.status);
 
   const insertResult = await runQuery<{
     file_upload_guid: string;
@@ -173,7 +188,7 @@ export const saveClientFileMetadata = async (
       uploadedBy: record.uploadedBy ?? null,
       sourceFileName: record.sourceFileName,
       fileStorageUri: record.fileStorageUri,
-      fileStatus: record.status,
+      fileStatus: status,
       glPeriodStart: record.glPeriodStart ?? null,
       glPeriodEnd: record.glPeriodEnd ?? null,
       lastStepCompletedDttm,
@@ -253,7 +268,7 @@ export const saveClientFileMetadata = async (
     importedBy: record.uploadedBy,
     fileName: record.sourceFileName,
     fileStorageUri: record.fileStorageUri,
-    status: record.status,
+    status,
     glPeriodStart: record.glPeriodStart,
     glPeriodEnd: record.glPeriodEnd,
     period: buildPeriodLabel(record.glPeriodStart, record.glPeriodEnd),
