@@ -58,7 +58,7 @@ export interface ClientFileRecord {
 export interface NewClientFileRecord {
   fileUploadGuid?: string;
   clientId: string;
-  insertedBy: string;
+  insertedBy?: string;
   sourceFileName: string;
   fileStorageUri: string;
   status: ImportStatus;
