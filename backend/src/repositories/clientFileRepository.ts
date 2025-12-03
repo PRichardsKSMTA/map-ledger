@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { runQuery } from '../utils/sqlClient';
 
 export type ImportStatus = 'completed' | 'failed' | string;
@@ -26,6 +27,7 @@ export interface ClientFileEntity {
 
 export interface ClientFileRecord {
   id: number;
+  fileUploadGuid: string;
   clientId: string;
   userId?: string;
   uploadedBy?: string;
@@ -63,6 +65,7 @@ export interface NewClientFileRecord {
 
 interface RawClientFileRow {
   fileUploadId: number;
+  fileUploadGuid: string;
   clientId: string;
   userId?: string;
   uploadedBy?: string;
@@ -115,6 +118,7 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
 
   return {
     id: row.fileUploadId,
+    fileUploadGuid: row.fileUploadGuid,
     clientId: row.clientId,
     uploadedBy: row.uploadedBy,
     importedBy: row.uploadedBy,
@@ -135,9 +139,14 @@ export const saveClientFileMetadata = async (
   record: NewClientFileRecord
 ): Promise<ClientFileRecord> => {
   const lastStepCompletedDttm = record.lastStepCompletedDttm ?? new Date().toISOString();
+  const fileUploadGuid = crypto.randomUUID();
 
-  const insertResult = await runQuery<{ file_upload_id: number }>(
+  const insertResult = await runQuery<{
+    file_upload_id: number;
+    file_upload_guid: string;
+  }>(
     `INSERT INTO ml.CLIENT_FILES (
+      FILE_UPLOAD_GUID,
       CLIENT_ID,
       UPLOADED_BY,
       SOURCE_FILE_NAME,
@@ -150,8 +159,9 @@ export const saveClientFileMetadata = async (
       ROW_COUNT,
       LAST_STEP_COMPLETED_DTTM
     )
-    OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id
+    OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id, INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
+      @fileUploadGuid,
       @clientId,
       @uploadedBy,
       @sourceFileName,
@@ -165,6 +175,7 @@ export const saveClientFileMetadata = async (
       @lastStepCompletedDttm
     )`,
     {
+      fileUploadGuid,
       clientId: record.clientId,
       uploadedBy: record.uploadedBy ?? null,
       sourceFileName: record.sourceFileName,
@@ -180,6 +191,8 @@ export const saveClientFileMetadata = async (
   );
 
   const fileUploadId = insertResult.recordset?.[0]?.file_upload_id;
+  const persistedFileUploadGuid =
+    insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
 
   if (fileUploadId === undefined) {
     throw new Error('Failed to persist client file metadata');
@@ -190,11 +203,11 @@ export const saveClientFileMetadata = async (
     const values = record.sheets
       .map(
         (_sheet, index) =>
-          `(@fileUploadId, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @inserted${index}, @updated${index}, @updatedBy${index})`
+          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @updated${index}, @updatedBy${index})`
       )
       .join(', ');
 
-    const params: Record<string, unknown> = { fileUploadId };
+    const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
     const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
 
     record.sheets.forEach((sheet, index) => {
@@ -205,13 +218,12 @@ export const saveClientFileMetadata = async (
           ? sheet.firstDataRowIndex
           : null;
       params[`sheetRowCount${index}`] = sheet.rowCount;
-      params[`inserted${index}`] = sheetTimestamp;
       params[`updated${index}`] = sheetTimestamp;
       params[`updatedBy${index}`] = sheet.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_ID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, INSERTED_DTTM, UPDATED_DTTM, UPDATED_BY)
+      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_GUID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, UPDATED_DTTM, UPDATED_BY)
       VALUES ${values}`,
       params
     );
@@ -222,11 +234,11 @@ export const saveClientFileMetadata = async (
     const values = record.entities
       .map(
         (_entity, index) =>
-          `(@fileUploadId, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index}, @entityInserted${index}, @entityUpdated${index}, @entityUpdatedBy${index})`
+          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index}, @entityUpdated${index}, @entityUpdatedBy${index})`
       )
       .join(', ');
 
-    const params: Record<string, unknown> = { fileUploadId };
+    const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
     const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
     record.entities.forEach((entity, index) => {
       const entityName = entity.displayName ?? entity.entityName;
@@ -237,13 +249,12 @@ export const saveClientFileMetadata = async (
       params[`entityName${index}`] = entityName;
       params[`entityRowCount${index}`] = entity.rowCount;
       params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
-      params[`entityInserted${index}`] = entity.insertedDttm ?? entityTimestamp;
       params[`entityUpdated${index}`] = entity.updatedAt ?? entityTimestamp;
       params[`entityUpdatedBy${index}`] = entity.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_ID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED, INSERTED_DTTM, UPDATED_DTTM, UPDATED_BY)
+      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED, UPDATED_DTTM, UPDATED_BY)
       VALUES ${values}`,
       params
     );
@@ -251,6 +262,7 @@ export const saveClientFileMetadata = async (
 
   return {
     id: fileUploadId,
+    fileUploadGuid: persistedFileUploadGuid,
     clientId: record.clientId,
     userId: record.userId,
     uploadedBy: record.uploadedBy,
@@ -274,7 +286,7 @@ const buildWhereClause = (
   userId?: string,
   clientId?: string
 ): { clause: string; parameters: Record<string, unknown> } => {
-  const conditions: string[] = [];
+  const conditions: string[] = ['cf.IS_DELETED = 0'];
   const parameters: Record<string, unknown> = {};
 
   if (clientId) {
@@ -303,12 +315,26 @@ export const findFileUploadIdByGuid = async (
   const result = await runQuery<{ file_upload_id?: number }>(
     `SELECT FILE_UPLOAD_ID as file_upload_id
     FROM ml.CLIENT_FILES
-    WHERE FILE_UPLOAD_GUID = @fileUploadGuid`,
+    WHERE FILE_UPLOAD_GUID = @fileUploadGuid AND IS_DELETED = 0`,
     { fileUploadGuid }
   );
 
   const fileUploadId = result.recordset?.[0]?.file_upload_id;
   return Number.isFinite(fileUploadId) ? (fileUploadId as number) : null;
+};
+
+export const softDeleteClientFile = async (fileUploadGuid: string): Promise<void> => {
+  if (!fileUploadGuid || typeof fileUploadGuid !== 'string') {
+    return;
+  }
+
+  await runQuery(
+    `UPDATE ml.CLIENT_FILES
+    SET IS_DELETED = 1,
+        DELETED_DTTM = CURRENT_TIMESTAMP
+    WHERE FILE_UPLOAD_GUID = @fileUploadGuid`,
+    { fileUploadGuid }
+  );
 };
 
 export const listClientFiles = async (
@@ -334,6 +360,7 @@ export const listClientFiles = async (
   const filesResult = await runQuery<RawClientFileRow>(
     `SELECT
       cf.FILE_UPLOAD_ID as fileUploadId,
+      cf.FILE_UPLOAD_GUID as fileUploadGuid,
       cf.CLIENT_ID as clientId,
       cf.UPLOADED_BY as uploadedBy,
       cf.SOURCE_FILE_NAME as sourceFileName,
@@ -354,23 +381,23 @@ export const listClientFiles = async (
   );
 
   const items = (filesResult.recordset ?? []).map(mapClientFileRow);
-  const fileIds = items.map((item) => item.id);
+  const fileGuids = items.map((item) => item.fileUploadGuid);
 
-  if (fileIds.length === 0) {
+  if (fileGuids.length === 0) {
     return { items, total, page, pageSize };
   }
 
   const sheetParameters: Record<string, unknown> = {};
-  const sheetPlaceholders = fileIds
-    .map((id, index) => {
-      const key = `sheetFileId${index}`;
-      sheetParameters[key] = id;
+  const sheetPlaceholders = fileGuids
+    .map((guid, index) => {
+      const key = `sheetFileGuid${index}`;
+      sheetParameters[key] = guid;
       return `@${key}`;
     })
     .join(', ');
 
   const sheetsResult = await runQuery<{
-    fileUploadId: number;
+    fileUploadGuid: string;
     sheetName: string;
     isSelected?: boolean | number;
     firstDataRowIndex?: number;
@@ -379,15 +406,15 @@ export const listClientFiles = async (
     updatedAt?: string | Date;
     updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_ID as fileUploadId, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_SHEETS
-    WHERE FILE_UPLOAD_ID IN (${sheetPlaceholders})`,
+    WHERE FILE_UPLOAD_GUID IN (${sheetPlaceholders})`,
     sheetParameters
   );
 
-  const sheetsByFile = new Map<number, ClientFileSheet[]>();
+  const sheetsByFile = new Map<string, ClientFileSheet[]>();
   (sheetsResult.recordset ?? []).forEach((sheet) => {
-    const existing = sheetsByFile.get(sheet.fileUploadId) ?? [];
+    const existing = sheetsByFile.get(sheet.fileUploadGuid) ?? [];
     existing.push({
       sheetName: sheet.sheetName,
       isSelected:
@@ -403,20 +430,20 @@ export const listClientFiles = async (
       updatedAt: parseDate(sheet.updatedAt),
       updatedBy: sheet.updatedBy ?? undefined,
     });
-    sheetsByFile.set(sheet.fileUploadId, existing);
+    sheetsByFile.set(sheet.fileUploadGuid, existing);
   });
 
   const entityParameters: Record<string, unknown> = {};
-  const entityPlaceholders = fileIds
-    .map((id, index) => {
-      const key = `entityFileId${index}`;
-      entityParameters[key] = id;
+  const entityPlaceholders = fileGuids
+    .map((guid, index) => {
+      const key = `entityFileGuid${index}`;
+      entityParameters[key] = guid;
       return `@${key}`;
     })
     .join(', ');
 
   const entitiesResult = await runQuery<{
-    fileUploadId: number;
+    fileUploadGuid: string;
     entityId?: number;
     entityName: string;
     rowCount: number;
@@ -425,15 +452,15 @@ export const listClientFiles = async (
     updatedAt?: string | Date | null;
     updatedBy?: string | null;
   }>(
-    `SELECT FILE_UPLOAD_ID as fileUploadId, ENTITY_ID as entityId, ENTITY_NAME as entityName, ROW_COUNT as rowCount, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, ENTITY_ID as entityId, ENTITY_NAME as entityName, ROW_COUNT as rowCount, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_ENTITIES
-    WHERE FILE_UPLOAD_ID IN (${entityPlaceholders})`,
+    WHERE FILE_UPLOAD_GUID IN (${entityPlaceholders})`,
     entityParameters
   );
 
-  const entitiesByFile = new Map<number, ClientFileEntity[]>();
+  const entitiesByFile = new Map<string, ClientFileEntity[]>();
   (entitiesResult.recordset ?? []).forEach((entity) => {
-    const existing = entitiesByFile.get(entity.fileUploadId) ?? [];
+    const existing = entitiesByFile.get(entity.fileUploadGuid) ?? [];
     existing.push({
       entityId: Number.isFinite(entity.entityId)
         ? (entity.entityId as number)
@@ -449,13 +476,13 @@ export const listClientFiles = async (
       updatedAt: parseDate(entity.updatedAt),
       updatedBy: entity.updatedBy ?? undefined,
     });
-    entitiesByFile.set(entity.fileUploadId, existing);
+    entitiesByFile.set(entity.fileUploadGuid, existing);
   });
 
   const enrichedItems = items.map((item) => ({
     ...item,
-    sheets: sheetsByFile.get(item.id) ?? [],
-    entities: entitiesByFile.get(item.id) ?? [],
+    sheets: sheetsByFile.get(item.fileUploadGuid) ?? [],
+    entities: entitiesByFile.get(item.fileUploadGuid) ?? [],
   }));
 
   return { items: enrichedItems, total, page, pageSize };
