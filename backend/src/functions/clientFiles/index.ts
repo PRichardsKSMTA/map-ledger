@@ -7,6 +7,7 @@ import {
   ClientFileSheet,
   ImportStatus,
   NewClientFileRecord,
+  coerceImportStatus,
 } from '../../repositories/clientFileRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import { buildErrorResponse } from '../datapointConfigs/utils';
@@ -147,8 +148,8 @@ export const validateRecord = (
 
   const clientId = toOptionalString(bag.clientId);
   const sourceFileName = toOptionalString(bag.sourceFileName ?? bag.fileName);
-  const fileStatus =
-    toOptionalString(bag.fileStatus ?? bag.status) ?? 'uploaded';
+  const rawStatus = toOptionalString(bag.fileStatus ?? bag.status);
+  const fileStatus = coerceImportStatus(rawStatus);
   const fileStorageUri =
     resolveFileStorageUri(bag) ?? 'https://example.invalid/file';
   const fileUploadGuid =
