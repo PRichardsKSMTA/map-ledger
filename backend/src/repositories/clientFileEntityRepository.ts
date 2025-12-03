@@ -195,7 +195,11 @@ export const softDeleteClientFileEntity = async (
     { fileUploadGuid, entityId, updatedBy: updatedBy ?? null }
   );
 
-  return (result.rowsAffected?.[0] ?? 0) > 0;
+  const rowsAffected = (
+    result as typeof result & { rowsAffected?: number[] }
+  ).rowsAffected?.[0];
+
+  return (rowsAffected ?? 0) > 0;
 };
 
 export const listClientFileEntities = async (

@@ -207,7 +207,11 @@ export const softDeleteClientFileSheet = async (
     { fileUploadGuid, sheetName, updatedBy: updatedBy ?? null }
   );
 
-  return (result.rowsAffected?.[0] ?? 0) > 0;
+  const rowsAffected = (
+    result as typeof result & { rowsAffected?: number[] }
+  ).rowsAffected?.[0];
+
+  return (rowsAffected ?? 0) > 0;
 };
 
 export const listClientFileSheets = async (
