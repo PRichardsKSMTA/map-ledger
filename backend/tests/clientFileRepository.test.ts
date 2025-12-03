@@ -2,7 +2,10 @@ jest.mock('../src/utils/sqlClient', () => ({
   runQuery: jest.fn(),
 }));
 
-import { saveClientFileMetadata } from '../src/repositories/clientFileRepository';
+import {
+  saveClientFileMetadata,
+  type NewClientFileRecord,
+} from '../src/repositories/clientFileRepository';
 import crypto from 'node:crypto';
 import {
   listClientFiles,
@@ -32,7 +35,7 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
       .mockResolvedValueOnce({ recordset: [] } as any)
       .mockResolvedValueOnce({ recordset: [] } as any);
 
-    const record = {
+    const record: NewClientFileRecord = {
       clientId: 'client-1',
       uploadedBy: 'Uploader',
       sourceFileName: 'file.csv',
@@ -55,7 +58,7 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
       .mockResolvedValueOnce({ recordset: [] } as any)
       .mockResolvedValueOnce({ recordset: [] } as any);
 
-    const record = {
+    const record: NewClientFileRecord = {
       clientId: 'client-1',
       userId: 'user-1',
       uploadedBy: 'Uploader',

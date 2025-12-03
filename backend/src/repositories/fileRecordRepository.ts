@@ -1,4 +1,39 @@
+import { normalizeGlMonth } from '../utils/glMonth';
 import { runQuery } from '../utils/sqlClient';
+
+const logPrefix = '[fileRecordRepository]';
+
+const logWarn = (...args: unknown[]) => {
+  if (process.env.NODE_ENV === 'test') {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.warn(logPrefix, ...args);
+};
+
+const toSqlCompatibleGlMonth = (glMonth?: string | null): string | null => {
+  if (!glMonth) {
+    return null;
+  }
+
+  const normalizedMonth = normalizeGlMonth(glMonth);
+  if (!normalizedMonth) {
+    logWarn('Unable to normalize glMonth value; skipping assignment', { glMonth });
+    return null;
+  }
+
+  const isoDate = `${normalizedMonth}-01`;
+  const parsed = new Date(isoDate);
+  if (Number.isNaN(parsed.getTime())) {
+    logWarn('Normalized glMonth is not a valid date; skipping assignment', {
+      glMonth,
+      normalizedMonth,
+    });
+    return null;
+  }
+
+  return isoDate;
+};
 
 export interface FileRecordInput {
   accountId: string;
@@ -39,7 +74,7 @@ export const insertFileRecords = async (
       params[`openingBalance${index}`] = record.openingBalance ?? null;
       params[`closingBalance${index}`] = record.closingBalance ?? null;
       params[`entityId${index}`] = record.entityId ?? null;
-      params[`glMonth${index}`] = record.glMonth ?? null;
+      params[`glMonth${index}`] = toSqlCompatibleGlMonth(record.glMonth ?? null);
       params[`sourceSheetName${index}`] = record.sourceSheetName ?? null;
       params[`userDefined1_${index}`] = record.userDefined1 ?? null;
       params[`userDefined2_${index}`] = record.userDefined2 ?? null;
