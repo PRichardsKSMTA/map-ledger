@@ -31,13 +31,11 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
 
   it('generates and returns a 36-character file upload GUID', async () => {
     mockedRunQuery
-      .mockResolvedValueOnce({ recordset: [{ file_upload_id: 7, file_upload_guid: guid }] } as any)
-      .mockResolvedValueOnce({ recordset: [] } as any)
-      .mockResolvedValueOnce({ recordset: [] } as any);
+      .mockResolvedValueOnce({ recordset: [{ file_upload_id: 7, file_upload_guid: guid }] } as any);
 
     const record: NewClientFileRecord = {
       clientId: 'client-1',
-      uploadedBy: 'Uploader',
+      insertedBy: 'uploader@example.com',
       sourceFileName: 'file.csv',
       fileStorageUri: 'https://storage.example.com/file.csv',
       status: 'completed',
@@ -49,82 +47,26 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
     expect(saved.fileUploadGuid).toHaveLength(36);
     expect(mockedRunQuery.mock.calls[0][1]).toMatchObject({
       fileUploadGuid: guid,
+      insertedBy: 'uploader@example.com',
     });
   });
 
-  it('propagates GUID to selected sheets and entities with schema columns and timestamps', async () => {
-    mockedRunQuery
-      .mockResolvedValueOnce({ recordset: [{ file_upload_guid: guid }] } as any)
-      .mockResolvedValueOnce({ recordset: [] } as any)
-      .mockResolvedValueOnce({ recordset: [] } as any);
+  it('returns last-step timestamps only when provided', async () => {
+    mockedRunQuery.mockResolvedValueOnce({ recordset: [{ file_upload_guid: guid }] } as any);
 
     const record: NewClientFileRecord = {
       clientId: 'client-1',
-      userId: 'user-1',
-      uploadedBy: 'Uploader',
+      insertedBy: 'uploader@example.com',
       sourceFileName: 'file.csv',
       fileStorageUri: 'https://storage.example.com/file.csv',
       status: 'completed',
-      sheets: [
-        { sheetName: 'Sheet 1', rowCount: 5, isSelected: true, firstDataRowIndex: 2 },
-        { sheetName: 'Sheet 2', rowCount: 0, isSelected: false },
-      ],
-      entities: [
-        { entityId: 101, entityName: 'Entity One', rowCount: 10, isSelected: true },
-        { entityId: 202, entityName: 'Entity Two', rowCount: 0, isSelected: false },
-      ],
     };
 
     const saved = await saveClientFileMetadata(record);
 
     expect(saved.id).toBe(guid);
-    expect(saved.fileUploadGuid).toBe(guid);
-    expect(mockedRunQuery).toHaveBeenCalledTimes(3);
-
-    expect(mockedRunQuery).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_GUID'),
-      expect.objectContaining({
-        fileUploadGuid: guid,
-        sheetName0: 'Sheet 1',
-        isSelected0: 1,
-        firstDataRowIndex0: 2,
-        sheetRowCount0: 5,
-        sheetName1: 'Sheet 2',
-        isSelected1: 0,
-        firstDataRowIndex1: null,
-        sheetRowCount1: 0,
-        updatedBy0: 'Uploader',
-        updatedBy1: 'Uploader',
-      })
-    );
-
-    expect(mockedRunQuery).toHaveBeenNthCalledWith(
-      3,
-      expect.stringContaining('INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID'),
-      expect.objectContaining({
-        fileUploadGuid: guid,
-        entityId0: 101,
-        entityName0: 'Entity One',
-        entityRowCount0: 10,
-        entityIsSelected0: 1,
-        entityId1: 202,
-        entityName1: 'Entity Two',
-        entityRowCount1: 0,
-        entityIsSelected1: 0,
-        entityUpdatedBy0: 'Uploader',
-        entityUpdatedBy1: 'Uploader',
-      })
-    );
-
-    const sheetParams = mockedRunQuery.mock.calls[1][1] as Record<string, unknown>;
-    const entityParams = mockedRunQuery.mock.calls[2][1] as Record<string, unknown>;
-
-    expect(sheetParams.updated0).toEqual(expect.any(String));
-    expect(sheetParams.updated1).toEqual(expect.any(String));
-
-    expect(entityParams.entityUpdated0).toEqual(expect.any(String));
-    expect(entityParams.entityUpdated1).toEqual(expect.any(String));
+    expect(saved.lastStepCompletedDttm).toBeUndefined();
+    expect(mockedRunQuery).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -164,15 +106,12 @@ describe('clientFileRepository.listClientFiles', () => {
           {
             fileUploadGuid: 'guid-1',
             clientId: 'client-1',
-            uploadedBy: 'user-1',
+            insertedBy: 'user@example.com',
             sourceFileName: 'file.csv',
             fileStorageUri: 'uri',
-            fileSize: 100,
-            fileType: 'csv',
             fileStatus: 'completed',
             glPeriodStart: '2023-01',
             glPeriodEnd: '2023-02',
-            rowCount: 10,
             lastStepCompletedDttm: new Date().toISOString(),
           },
         ],
@@ -180,7 +119,7 @@ describe('clientFileRepository.listClientFiles', () => {
       .mockResolvedValueOnce({ recordset: [] } as any)
       .mockResolvedValueOnce({ recordset: [] } as any);
 
-    const result = await listClientFiles(undefined, undefined, 1, 10);
+    const result = await listClientFiles(undefined, 1, 10);
 
     expect(mockedRunQuery.mock.calls[0][0]).toContain('cf.IS_DELETED = 0');
     expect(mockedRunQuery.mock.calls[1][0]).toContain('cf.IS_DELETED = 0');
