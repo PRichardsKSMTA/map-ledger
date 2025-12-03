@@ -373,3 +373,22 @@ export const listClientFiles = async (
 
   return { items: enrichedItems, total, page, pageSize };
 };
+
+export const clientFileExists = async (
+  fileUploadGuid: string
+): Promise<boolean> => {
+  if (!fileUploadGuid) {
+    return false;
+  }
+
+  const result = await runQuery<{ exists: number }>(
+    `SELECT CASE WHEN EXISTS (
+      SELECT 1 FROM ml.CLIENT_FILES
+      WHERE FILE_UPLOAD_GUID = @fileUploadGuid
+        AND IS_DELETED = 0
+    ) THEN 1 ELSE 0 END as exists`,
+    { fileUploadGuid }
+  );
+
+  return result.recordset?.[0]?.exists === 1;
+};
