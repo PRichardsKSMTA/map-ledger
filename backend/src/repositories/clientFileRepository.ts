@@ -198,16 +198,14 @@ export const saveClientFileMetadata = async (
   const persistedFileUploadGuid = insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
 
   if (Array.isArray(record.sheets) && record.sheets.length > 0) {
-    const sheetTimestamp = new Date().toISOString();
     const values = record.sheets
       .map(
         (_sheet, index) =>
-          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @updated${index}, @updatedBy${index})`
+          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, NULL, NULL)`
       )
       .join(', ');
 
     const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
-    const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
 
     record.sheets.forEach((sheet, index) => {
       params[`sheetName${index}`] = sheet.sheetName;
@@ -217,8 +215,6 @@ export const saveClientFileMetadata = async (
           ? sheet.firstDataRowIndex
           : null;
       params[`sheetRowCount${index}`] = sheet.rowCount;
-      params[`updated${index}`] = sheetTimestamp;
-      params[`updatedBy${index}`] = sheet.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
