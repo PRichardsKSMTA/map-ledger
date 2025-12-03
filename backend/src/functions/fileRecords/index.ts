@@ -6,7 +6,10 @@ import {
   FileRecordInput,
   FileRecordRow,
 } from '../../repositories/fileRecordRepository';
-import { findFileUploadIdByGuid } from '../../repositories/clientFileRepository';
+import {
+  findFileUploadGuidById,
+  findFileUploadIdByGuid,
+} from '../../repositories/clientFileRepository';
 import { buildErrorResponse } from '../datapointConfigs/utils';
 import {
   detectGlMonthFromRow,
@@ -42,7 +45,8 @@ interface IngestPayload {
   entities?: IngestEntity[];
 }
 
-type ResolvedIngestPayload = IngestPayload & { fileUploadId: number };
+type ResolvedIngestPayload = IngestPayload & { fileUploadId: number; fileUploadGuid: string };
+type ResolvedFileUpload = { fileUploadId: number; fileUploadGuid: string };
 
 const normalizeText = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -257,7 +261,7 @@ const normalizePayload = (body: unknown): { payload: IngestPayload | null; error
 
   const payload = body as Record<string, unknown>;
   const fileUploadIdRaw = getFirstStringValue(payload.fileUploadId);
-  const fileUploadGuid = getFirstStringValue(payload.fileUploadGuid);
+  const fileUploadGuid = getFirstStringValue(payload.fileUploadGuid)?.trim();
 
   const parsedFileUploadId = fileUploadIdRaw ? Number(fileUploadIdRaw) : NaN;
   const fileUploadId = Number.isFinite(parsedFileUploadId) ? parsedFileUploadId : undefined;
@@ -272,6 +276,10 @@ const normalizePayload = (body: unknown): { payload: IngestPayload | null; error
 
   if (!fileUploadId && !normalizedFileUploadGuid) {
     errors.push('fileUploadId or fileUploadGuid is required');
+  }
+
+  if (normalizedFileUploadGuid && normalizedFileUploadGuid.length !== 36) {
+    errors.push('fileUploadGuid must be a 36-character string');
   }
 
   if (!headerMap || typeof headerMap !== 'object') {
@@ -390,22 +398,36 @@ const buildRecords = (payload: ResolvedIngestPayload): FileRecordInput[] => {
     .flatMap((sheet) => deriveRecordsFromSheet(sheet, headerLookup, entities, payload.fileName));
 };
 
-const resolveFileUploadId = async (
+const resolveFileUpload = async (
   payload: Pick<IngestPayload, 'fileUploadId' | 'fileUploadGuid'>,
   context: InvocationContext,
-): Promise<number | null> => {
-  if (payload.fileUploadId && Number.isFinite(payload.fileUploadId)) {
-    return payload.fileUploadId;
-  }
+): Promise<ResolvedFileUpload | null> => {
+  const normalizedGuid = payload.fileUploadGuid?.trim();
+  const normalizedId = payload.fileUploadId && Number.isFinite(payload.fileUploadId)
+    ? payload.fileUploadId
+    : undefined;
 
-  if (payload.fileUploadGuid) {
-    const resolvedFileUploadId = await findFileUploadIdByGuid(payload.fileUploadGuid);
+  if (normalizedGuid && normalizedGuid.length === 36) {
+    const resolvedFileUploadId =
+      normalizedId ?? (await findFileUploadIdByGuid(normalizedGuid));
+
     if (resolvedFileUploadId) {
-      return resolvedFileUploadId;
+      return { fileUploadId: resolvedFileUploadId, fileUploadGuid: normalizedGuid };
     }
 
     context.warn('Unable to resolve file upload identifier from GUID', {
-      fileUploadGuid: payload.fileUploadGuid,
+      fileUploadGuid: normalizedGuid,
+    });
+  }
+
+  if (normalizedId) {
+    const fileUploadGuid = await findFileUploadGuidById(normalizedId);
+    if (fileUploadGuid && fileUploadGuid.length === 36) {
+      return { fileUploadId: normalizedId, fileUploadGuid };
+    }
+
+    context.warn('Unable to resolve file upload GUID from ID', {
+      fileUploadId: normalizedId,
     });
   }
 
@@ -425,17 +447,17 @@ export const ingestFileRecordsHandler = async (
       return json({ message: 'Invalid ingest payload', errors }, 400);
     }
 
-    const fileUploadId = await resolveFileUploadId(payload, context);
-    if (!fileUploadId) {
+    const resolvedFileUpload = await resolveFileUpload(payload, context);
+    if (!resolvedFileUpload) {
       return json({ message: 'Invalid or unknown file upload identifier' }, 400);
     }
 
-    const resolvedPayload: ResolvedIngestPayload = { ...payload, fileUploadId };
+    const resolvedPayload: ResolvedIngestPayload = { ...payload, ...resolvedFileUpload };
 
     const records = buildRecords(resolvedPayload);
     if (records.length === 0) {
       context.warn('No valid records found to ingest', {
-        fileUploadId,
+        fileUploadId: resolvedFileUpload.fileUploadId,
         sheetCount: payload.sheets.length,
         headerMapKeys: Object.keys(payload.headerMap ?? {}),
       });
@@ -443,12 +465,17 @@ export const ingestFileRecordsHandler = async (
     }
 
     context.info('Persisting file records', {
-      fileUploadId,
+      fileUploadId: resolvedFileUpload.fileUploadId,
+      fileUploadGuid: resolvedFileUpload.fileUploadGuid,
       recordCount: records.length,
       sheetCount: payload.sheets.length,
     });
 
-    const inserted = await insertFileRecords(fileUploadId, records);
+    const inserted = await insertFileRecords(
+      resolvedFileUpload.fileUploadId,
+      resolvedFileUpload.fileUploadGuid,
+      records,
+    );
 
     return json({ items: inserted }, 201);
   } catch (error) {
@@ -468,20 +495,27 @@ export const listFileRecordsHandler = async (
     const normalizedFileUploadGuid =
       fileUploadGuid || (!Number.isFinite(parsedFileUploadId) ? fileUploadIdParam : undefined);
 
-    const resolvedFileUploadId = await resolveFileUploadId(
+    const resolvedFileUpload = await resolveFileUpload(
       {
         fileUploadId: Number.isFinite(parsedFileUploadId) ? parsedFileUploadId : undefined,
         fileUploadGuid: normalizedFileUploadGuid,
       },
       context,
     );
-    if (!resolvedFileUploadId) {
+    if (!resolvedFileUpload) {
       return json({ message: 'Missing fileUploadId query parameter' }, 400);
     }
 
-    const items: FileRecordRow[] = await listFileRecords(resolvedFileUploadId);
+    const items: FileRecordRow[] = await listFileRecords(
+      resolvedFileUpload.fileUploadId,
+      resolvedFileUpload.fileUploadGuid,
+    );
 
-    return json({ items, fileUploadId: resolvedFileUploadId });
+    return json({
+      items,
+      fileUploadId: resolvedFileUpload.fileUploadId,
+      fileUploadGuid: resolvedFileUpload.fileUploadGuid,
+    });
   } catch (error) {
     context.error('Failed to list file records', error);
     return json(buildErrorResponse('Failed to list file records', error), 500);
