@@ -18,7 +18,7 @@ export interface FileRecordInput {
 
 export interface FileRecordRow extends FileRecordInput {
   recordId: number;
-  fileUploadId: number;
+  fileUploadId: string;
   fileUploadGuid: string;
   insertedDttm?: string | null;
 }
@@ -26,15 +26,14 @@ export interface FileRecordRow extends FileRecordInput {
 const TABLE_NAME = 'ml.FILE_RECORDS';
 
 export const insertFileRecords = async (
-  fileUploadId: number,
   fileUploadGuid: string,
   records: FileRecordInput[],
 ): Promise<FileRecordRow[]> => {
-  if (!fileUploadId || !fileUploadGuid || fileUploadGuid.length !== 36 || records.length === 0) {
+  if (!fileUploadGuid || fileUploadGuid.length !== 36 || records.length === 0) {
     return [];
   }
 
-  const params: Record<string, unknown> = { fileUploadId, fileUploadGuid };
+  const params: Record<string, unknown> = { fileUploadGuid };
   const valuesClause = records
     .map((record, index) => {
       params[`accountId${index}`] = record.accountId;
@@ -51,13 +50,12 @@ export const insertFileRecords = async (
       params[`userDefined2_${index}`] = record.userDefined2 ?? null;
       params[`userDefined3_${index}`] = record.userDefined3 ?? null;
 
-      return `(@fileUploadId, @fileUploadGuid, @sourceSheetName${index}, @sourceRowNumber${index}, @entityId${index}, @entityName${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index})`;
+      return `(@fileUploadGuid, @sourceSheetName${index}, @sourceRowNumber${index}, @entityId${index}, @entityName${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index})`;
     })
     .join(', ');
 
   const insertResult = await runQuery<{ record_id: number; inserted_dttm?: string | Date | null }>(
     `INSERT INTO ${TABLE_NAME} (
-      FILE_UPLOAD_ID,
       FILE_UPLOAD_GUID,
       SOURCE_SHEET_NAME,
       SOURCE_ROW_NUMBER,
@@ -93,7 +91,7 @@ export const insertFileRecords = async (
     return {
       ...record,
       recordId: insertedRecordId,
-      fileUploadId,
+      fileUploadId: fileUploadGuid,
       fileUploadGuid,
       insertedDttm:
         insertedRecords[index]?.inserted_dttm instanceof Date
@@ -103,29 +101,15 @@ export const insertFileRecords = async (
   });
 };
 
-export const listFileRecords = async (
-  fileUploadId?: number,
-  fileUploadGuid?: string,
-): Promise<FileRecordRow[]> => {
-  if (!fileUploadId && !fileUploadGuid) {
+export const listFileRecords = async (fileUploadGuid?: string): Promise<FileRecordRow[]> => {
+  if (!fileUploadGuid) {
     return [];
   }
 
-  const params: Record<string, unknown> = {};
-  const conditions: string[] = [];
-  if (fileUploadId) {
-    params.fileUploadId = fileUploadId;
-    conditions.push('FILE_UPLOAD_ID = @fileUploadId');
-  }
-  if (fileUploadGuid) {
-    params.fileUploadGuid = fileUploadGuid;
-    conditions.push('FILE_UPLOAD_GUID = @fileUploadGuid');
-  }
-
-  const whereClause = `WHERE ${conditions.join(' OR ')}`;
+  const params: Record<string, unknown> = { fileUploadGuid };
+  const whereClause = 'WHERE FILE_UPLOAD_GUID = @fileUploadGuid';
 
   const result = await runQuery<{
-    file_upload_id: number;
     file_upload_guid: string;
     record_id: number;
     source_sheet_name?: string | null;
@@ -144,7 +128,6 @@ export const listFileRecords = async (
     inserted_dttm?: Date | string | null;
   }>(
     `SELECT
-      FILE_UPLOAD_ID as file_upload_id,
       FILE_UPLOAD_GUID as file_upload_guid,
       RECORD_ID as record_id,
       SOURCE_SHEET_NAME as source_sheet_name,
@@ -168,7 +151,7 @@ export const listFileRecords = async (
   );
 
   return (result.recordset ?? []).map((row) => ({
-    fileUploadId: row.file_upload_id,
+    fileUploadId: row.file_upload_guid,
     fileUploadGuid: row.file_upload_guid,
     recordId: row.record_id,
     sourceSheet: row.source_sheet_name ?? undefined,

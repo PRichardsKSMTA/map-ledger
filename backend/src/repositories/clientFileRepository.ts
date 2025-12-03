@@ -26,7 +26,7 @@ export interface ClientFileEntity {
 }
 
 export interface ClientFileRecord {
-  id: number;
+  id: string;
   fileUploadGuid: string;
   clientId: string;
   userId?: string;
@@ -64,7 +64,6 @@ export interface NewClientFileRecord {
 }
 
 interface RawClientFileRow {
-  fileUploadId: number;
   fileUploadGuid: string;
   clientId: string;
   userId?: string;
@@ -117,7 +116,7 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
     (row.lastStepCompletedDttm ? String(row.lastStepCompletedDttm) : new Date().toISOString());
 
   return {
-    id: row.fileUploadId,
+    id: row.fileUploadGuid,
     fileUploadGuid: row.fileUploadGuid,
     clientId: row.clientId,
     uploadedBy: row.uploadedBy,
@@ -142,7 +141,6 @@ export const saveClientFileMetadata = async (
   const fileUploadGuid = crypto.randomUUID();
 
   const insertResult = await runQuery<{
-    file_upload_id: number;
     file_upload_guid: string;
   }>(
     `INSERT INTO ml.CLIENT_FILES (
@@ -159,7 +157,7 @@ export const saveClientFileMetadata = async (
       ROW_COUNT,
       LAST_STEP_COMPLETED_DTTM
     )
-    OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id, INSERTED.FILE_UPLOAD_GUID as file_upload_guid
+    OUTPUT INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
       @fileUploadGuid,
       @clientId,
@@ -190,13 +188,7 @@ export const saveClientFileMetadata = async (
     }
   );
 
-  const fileUploadId = insertResult.recordset?.[0]?.file_upload_id;
-  const persistedFileUploadGuid =
-    insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
-
-  if (fileUploadId === undefined) {
-    throw new Error('Failed to persist client file metadata');
-  }
+  const persistedFileUploadGuid = insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
 
   if (Array.isArray(record.sheets) && record.sheets.length > 0) {
     const sheetTimestamp = new Date().toISOString();
@@ -261,7 +253,7 @@ export const saveClientFileMetadata = async (
   }
 
   return {
-    id: fileUploadId,
+    id: persistedFileUploadGuid,
     fileUploadGuid: persistedFileUploadGuid,
     clientId: record.clientId,
     userId: record.userId,
@@ -305,44 +297,6 @@ export interface ClientFileHistoryResult {
   pageSize: number;
 }
 
-export const findFileUploadGuidById = async (
-  fileUploadId: number
-): Promise<string | null> => {
-  if (!fileUploadId || !Number.isFinite(fileUploadId)) {
-    return null;
-  }
-
-  const result = await runQuery<{ file_upload_guid?: string }>(
-    `SELECT FILE_UPLOAD_GUID as file_upload_guid
-    FROM ml.CLIENT_FILES
-    WHERE FILE_UPLOAD_ID = @fileUploadId AND IS_DELETED = 0`,
-    { fileUploadId }
-  );
-
-  const fileUploadGuid = result.recordset?.[0]?.file_upload_guid;
-  return typeof fileUploadGuid === 'string' && fileUploadGuid.length === 36
-    ? fileUploadGuid
-    : null;
-};
-
-export const findFileUploadIdByGuid = async (
-  fileUploadGuid: string
-): Promise<number | null> => {
-  if (!fileUploadGuid || typeof fileUploadGuid !== 'string') {
-    return null;
-  }
-
-  const result = await runQuery<{ file_upload_id?: number }>(
-    `SELECT FILE_UPLOAD_ID as file_upload_id
-    FROM ml.CLIENT_FILES
-    WHERE FILE_UPLOAD_GUID = @fileUploadGuid AND IS_DELETED = 0`,
-    { fileUploadGuid }
-  );
-
-  const fileUploadId = result.recordset?.[0]?.file_upload_id;
-  return Number.isFinite(fileUploadId) ? (fileUploadId as number) : null;
-};
-
 export const softDeleteClientFile = async (fileUploadGuid: string): Promise<void> => {
   if (!fileUploadGuid || typeof fileUploadGuid !== 'string') {
     return;
@@ -379,7 +333,6 @@ export const listClientFiles = async (
 
   const filesResult = await runQuery<RawClientFileRow>(
     `SELECT
-      cf.FILE_UPLOAD_ID as fileUploadId,
       cf.FILE_UPLOAD_GUID as fileUploadGuid,
       cf.CLIENT_ID as clientId,
       cf.UPLOADED_BY as uploadedBy,
