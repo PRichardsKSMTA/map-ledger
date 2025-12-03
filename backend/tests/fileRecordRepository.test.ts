@@ -26,10 +26,8 @@ describe('fileRecordRepository', () => {
         accountName: 'Cash',
         activityAmount: 50,
         entityId: 'ent-1',
-        entityName: 'Entity One',
         glMonth: '2024-01',
-        sourceSheet: 'Sheet1',
-        sourceRowNumber: 10,
+        sourceSheetName: 'Sheet1',
         openingBalance: 5,
         closingBalance: 55,
         userDefined1: 'u1',
@@ -40,31 +38,25 @@ describe('fileRecordRepository', () => {
         accountId: '200',
         accountName: 'Receivables',
         activityAmount: -5,
-        sourceSheet: 'Sheet1',
-        sourceRowNumber: 11,
+        sourceSheetName: 'Sheet1',
       },
     ]);
 
     expect(mockedRunQuery).toHaveBeenCalledTimes(1);
     const [sql, params] = mockedRunQuery.mock.calls[0];
     expect(sql).toContain('FILE_UPLOAD_GUID');
-    expect(sql).toContain('SOURCE_ROW_NUMBER');
-    expect(sql).toContain('ENTITY_NAME');
-
     expect(params).toMatchObject({
       fileUploadGuid: guid,
-      sourceRowNumber0: 10,
-      entityName0: 'Entity One',
-      glMonth0: '2024-01',
-      sourceRowNumber1: 11,
+      glMonth0: '2024-01-01',
+      sourceSheetName0: 'Sheet1',
+      sourceSheetName1: 'Sheet1',
     });
 
     expect(insertedRecords[0]).toEqual(
       expect.objectContaining({
         fileUploadGuid: guid,
         insertedDttm: inserted.toISOString(),
-        sourceRowNumber: 10,
-        entityName: 'Entity One',
+        sourceSheetName: 'Sheet1',
       }),
     );
   });
@@ -103,10 +95,8 @@ describe('fileRecordRepository', () => {
     expect(results[0]).toEqual({
       fileUploadGuid: guid,
       recordId: 20,
-      sourceSheet: 'Sheet1',
-      sourceRowNumber: 3,
+      sourceSheetName: 'Sheet1',
       entityId: 'ent-1',
-      entityName: 'Entity One',
       accountId: '300',
       accountName: 'Equity',
       openingBalance: 0,
