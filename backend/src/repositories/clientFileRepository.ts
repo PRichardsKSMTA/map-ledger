@@ -43,31 +43,11 @@ export interface ClientFileRecord {
   id: string;
   fileUploadGuid: string;
   clientId: string;
-  userId?: string;
-  uploadedBy?: string;
-  importedBy?: string;
+  insertedBy?: string;
   fileName: string;
   fileStorageUri: string;
-  fileSize?: number;
-  fileType?: string;
   status: ImportStatus;
   period: string;
-  glPeriodStart?: string;
-  glPeriodEnd?: string;
-  rowCount?: number;
-  timestamp: string;
-  sheets?: ClientFileSheet[];
-  entities?: ClientFileEntity[];
-}
-
-export interface NewClientFileRecord {
-  fileUploadGuid?: string;
-  clientId: string;
-  userId?: string;
-  uploadedBy?: string;
-  sourceFileName: string;
-  fileStorageUri: string;
-  status: ImportStatus;
   glPeriodStart?: string;
   glPeriodEnd?: string;
   lastStepCompletedDttm?: string;
@@ -75,19 +55,27 @@ export interface NewClientFileRecord {
   entities?: ClientFileEntity[];
 }
 
+export interface NewClientFileRecord {
+  fileUploadGuid?: string;
+  clientId: string;
+  insertedBy: string;
+  sourceFileName: string;
+  fileStorageUri: string;
+  status: ImportStatus;
+  glPeriodStart?: string;
+  glPeriodEnd?: string;
+  lastStepCompletedDttm?: string;
+}
+
 interface RawClientFileRow {
   fileUploadGuid: string;
   clientId: string;
-  userId?: string;
-  uploadedBy?: string;
+  insertedBy?: string;
   sourceFileName: string;
   fileStorageUri: string;
-  fileSize?: number;
-  fileType?: string;
   fileStatus: string;
   glPeriodStart?: string;
   glPeriodEnd?: string;
-  rowCount?: number;
   lastStepCompletedDttm?: string | Date;
 }
 
@@ -123,38 +111,30 @@ const buildPeriodLabel = (
 };
 
 const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
-  const timestamp =
-    parseDate(row.lastStepCompletedDttm) ??
-    (row.lastStepCompletedDttm ? String(row.lastStepCompletedDttm) : new Date().toISOString());
-
   return {
     id: row.fileUploadGuid,
     fileUploadGuid: row.fileUploadGuid,
     clientId: row.clientId,
-    uploadedBy: row.uploadedBy,
-    importedBy: row.uploadedBy,
+    insertedBy: row.insertedBy,
     fileName: row.sourceFileName,
     fileStorageUri: row.fileStorageUri,
-    fileSize: row.fileSize,
-    fileType: row.fileType,
     status: coerceImportStatus(row.fileStatus),
     glPeriodStart: row.glPeriodStart,
     glPeriodEnd: row.glPeriodEnd,
     period: buildPeriodLabel(row.glPeriodStart, row.glPeriodEnd),
-    rowCount: row.rowCount,
-    timestamp,
+    lastStepCompletedDttm: parseDate(row.lastStepCompletedDttm),
   };
 };
 
 export const saveClientFileMetadata = async (
   record: NewClientFileRecord
 ): Promise<ClientFileRecord> => {
-  const lastStepCompletedDttm = record.lastStepCompletedDttm ?? new Date().toISOString();
+  const lastStepCompletedDttm = record.lastStepCompletedDttm ?? null;
   const fileUploadGuid =
     record.fileUploadGuid && record.fileUploadGuid.length === 36
       ? record.fileUploadGuid
       : crypto.randomUUID();
-  const status = coerceImportStatus(record.status);
+  const status = coerceImportStatus(record.status ?? 'uploaded');
 
   const insertResult = await runQuery<{
     file_upload_guid: string;
@@ -178,14 +158,14 @@ export const saveClientFileMetadata = async (
       @fileStorageUri,
       @glPeriodStart,
       @glPeriodEnd,
-      @uploadedBy,
+      @insertedBy,
       @fileStatus,
       @lastStepCompletedDttm
     )`,
     {
       fileUploadGuid,
       clientId: record.clientId,
-      uploadedBy: record.uploadedBy ?? null,
+      insertedBy: record.insertedBy,
       sourceFileName: record.sourceFileName,
       fileStorageUri: record.fileStorageUri,
       fileStatus: status,
@@ -197,81 +177,22 @@ export const saveClientFileMetadata = async (
 
   const persistedFileUploadGuid = insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
 
-  if (Array.isArray(record.sheets) && record.sheets.length > 0) {
-    const values = record.sheets
-      .map(
-        (_sheet, index) =>
-          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, NULL, NULL)`
-      )
-      .join(', ');
-
-    const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
-
-    record.sheets.forEach((sheet, index) => {
-      params[`sheetName${index}`] = sheet.sheetName;
-      params[`isSelected${index}`] = sheet.isSelected === false ? 0 : 1;
-      params[`firstDataRowIndex${index}`] =
-        typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
-          ? sheet.firstDataRowIndex
-          : null;
-      params[`sheetRowCount${index}`] = sheet.rowCount;
-    });
-
-    await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_GUID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, UPDATED_DTTM, UPDATED_BY)
-      VALUES ${values}`,
-      params
-    );
-  }
-
-  if (Array.isArray(record.entities) && record.entities.length > 0) {
-    const values = record.entities
-      .map(
-        (_entity, index) =>
-          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index})`
-      )
-      .join(', ');
-
-    const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
-    record.entities.forEach((entity, index) => {
-      const entityName = entity.displayName ?? entity.entityName;
-      params[`entityId${index}`] =
-        typeof entity.entityId === 'number' && Number.isFinite(entity.entityId)
-          ? entity.entityId
-          : null;
-      params[`entityName${index}`] = entityName;
-      params[`entityRowCount${index}`] = entity.rowCount;
-      params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
-    });
-
-    await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED)
-      VALUES ${values}`,
-      params
-    );
-  }
-
   return {
     id: persistedFileUploadGuid,
     fileUploadGuid: persistedFileUploadGuid,
     clientId: record.clientId,
-    userId: record.userId,
-    uploadedBy: record.uploadedBy,
-    importedBy: record.uploadedBy,
+    insertedBy: record.insertedBy,
     fileName: record.sourceFileName,
     fileStorageUri: record.fileStorageUri,
     status,
     glPeriodStart: record.glPeriodStart,
     glPeriodEnd: record.glPeriodEnd,
     period: buildPeriodLabel(record.glPeriodStart, record.glPeriodEnd),
-    timestamp: lastStepCompletedDttm,
-    sheets: record.sheets,
-    entities: record.entities,
+    lastStepCompletedDttm: lastStepCompletedDttm ?? undefined,
   };
 };
 
 const buildWhereClause = (
-  userId?: string,
   clientId?: string
 ): { clause: string; parameters: Record<string, unknown> } => {
   const conditions: string[] = ['cf.IS_DELETED = 0'];
@@ -308,12 +229,11 @@ export const softDeleteClientFile = async (fileUploadGuid: string): Promise<void
 };
 
 export const listClientFiles = async (
-  userId: string | undefined,
   clientId: string | undefined,
   page: number,
   pageSize: number
 ): Promise<ClientFileHistoryResult> => {
-  const { clause, parameters } = buildWhereClause(userId, clientId);
+  const { clause, parameters } = buildWhereClause(clientId);
   const offset = Math.max(page - 1, 0) * pageSize;
 
   const totalResult = await runQuery<{ total: number }>(
@@ -331,15 +251,12 @@ export const listClientFiles = async (
     `SELECT
       cf.FILE_UPLOAD_GUID as fileUploadGuid,
       cf.CLIENT_ID as clientId,
-      cf.UPLOADED_BY as uploadedBy,
+      cf.INSERTED_BY as insertedBy,
       cf.SOURCE_FILE_NAME as sourceFileName,
       cf.FILE_STORAGE_URI as fileStorageUri,
-      cf.FILE_SIZE as fileSize,
-      cf.FILE_TYPE as fileType,
       cf.FILE_STATUS as fileStatus,
       cf.GL_PERIOD_START as glPeriodStart,
       cf.GL_PERIOD_END as glPeriodEnd,
-      cf.ROW_COUNT as rowCount,
       cf.LAST_STEP_COMPLETED_DTTM as lastStepCompletedDttm
     FROM ml.CLIENT_FILES cf
     ${clause}
