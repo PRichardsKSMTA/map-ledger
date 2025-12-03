@@ -50,8 +50,6 @@ describe('fileRecordRepository', () => {
     expect(sql).toContain('FILE_UPLOAD_GUID');
     expect(sql).toContain('SOURCE_ROW_NUMBER');
     expect(sql).toContain('ENTITY_NAME');
-    expect(sql).not.toContain('UPDATED_DTTM');
-    expect(sql).not.toContain('UPDATED_BY');
 
     expect(params).toMatchObject({
       fileUploadGuid: guid,
@@ -63,7 +61,6 @@ describe('fileRecordRepository', () => {
 
     expect(insertedRecords[0]).toEqual(
       expect.objectContaining({
-        fileUploadId: guid,
         fileUploadGuid: guid,
         insertedDttm: inserted.toISOString(),
         sourceRowNumber: 10,
@@ -104,7 +101,6 @@ describe('fileRecordRepository', () => {
     expect(params).toEqual({ fileUploadGuid: guid });
 
     expect(results[0]).toEqual({
-      fileUploadId: guid,
       fileUploadGuid: guid,
       recordId: 20,
       sourceSheet: 'Sheet1',

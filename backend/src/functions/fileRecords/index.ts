@@ -32,7 +32,6 @@ interface IngestSheet {
 }
 
 interface IngestPayload {
-  fileUploadId?: string;
   fileUploadGuid?: string;
   clientId?: string;
   fileName?: string;
@@ -255,10 +254,9 @@ const normalizePayload = (body: unknown): { payload: IngestPayload | null; error
   }
 
   const payload = body as Record<string, unknown>;
-  const fileUploadIdRaw = getFirstStringValue(payload.fileUploadId)?.trim();
   const fileUploadGuid = getFirstStringValue(payload.fileUploadGuid)?.trim();
 
-  const normalizedFileUploadGuid = fileUploadGuid || fileUploadIdRaw;
+  const normalizedFileUploadGuid = fileUploadGuid;
   const headerMap = payload.headerMap as HeaderMap;
   const sheets = Array.isArray(payload.sheets)
     ? (payload.sheets as unknown[]).filter(Boolean)
@@ -437,9 +435,8 @@ export const listFileRecordsHandler = async (
   context: InvocationContext,
 ): Promise<HttpResponseInit> => {
   try {
-    const fileUploadIdParam = getFirstStringValue(request.query.get('fileUploadId'));
     const fileUploadGuid = getFirstStringValue(request.query.get('fileUploadGuid'));
-    const normalizedFileUploadGuid = (fileUploadGuid ?? fileUploadIdParam)?.trim();
+    const normalizedFileUploadGuid = fileUploadGuid?.trim();
 
     if (!normalizedFileUploadGuid || normalizedFileUploadGuid.length !== 36) {
       return json({ message: 'fileUploadGuid is required' }, 400);

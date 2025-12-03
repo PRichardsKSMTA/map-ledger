@@ -38,7 +38,6 @@ describe('fileRecords.ingestFileRecordsHandler', () => {
     mockInsertFileRecords.mockResolvedValue([
       {
         recordId: 1,
-        fileUploadId: basePayload.fileUploadGuid,
         fileUploadGuid: basePayload.fileUploadGuid,
         accountId: '100',
         accountName: 'Cash',
@@ -57,9 +56,7 @@ describe('fileRecords.ingestFileRecordsHandler', () => {
 
   it('rejects requests when the GUID is missing', async () => {
     const request = {
-      json: jest
-        .fn()
-        .mockResolvedValue({ ...basePayload, fileUploadGuid: undefined, fileUploadId: undefined }),
+      json: jest.fn().mockResolvedValue({ ...basePayload, fileUploadGuid: undefined }),
     } as any;
     const context = { warn: jest.fn(), info: jest.fn(), error: jest.fn() } as any;
 
@@ -67,26 +64,5 @@ describe('fileRecords.ingestFileRecordsHandler', () => {
 
     expect(response.status).toBe(400);
     expect(mockInsertFileRecords).not.toHaveBeenCalled();
-  });
-
-  it('accepts fileUploadId as a GUID alias when GUID is not supplied', async () => {
-    mockInsertFileRecords.mockResolvedValue([
-      {
-        recordId: 1,
-        fileUploadId: basePayload.fileUploadGuid,
-        fileUploadGuid: basePayload.fileUploadGuid,
-        accountId: '100',
-        accountName: 'Cash',
-        activityAmount: 25,
-      },
-    ]);
-
-    const request = { json: jest.fn().mockResolvedValue({ ...basePayload, fileUploadId: basePayload.fileUploadGuid, fileUploadGuid: undefined }) } as any;
-    const context = { warn: jest.fn(), info: jest.fn(), error: jest.fn() } as any;
-
-    const response = await ingestFileRecordsHandler(request, context);
-
-    expect(mockInsertFileRecords).toHaveBeenCalledWith(basePayload.fileUploadGuid, expect.any(Array));
-    expect(response.status).toBe(201);
   });
 });

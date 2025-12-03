@@ -18,7 +18,6 @@ export interface FileRecordInput {
 
 export interface FileRecordRow extends FileRecordInput {
   recordId: number;
-  fileUploadId: string;
   fileUploadGuid: string;
   insertedDttm?: string | null;
 }
@@ -91,7 +90,6 @@ export const insertFileRecords = async (
     return {
       ...record,
       recordId: insertedRecordId,
-      fileUploadId: fileUploadGuid,
       fileUploadGuid,
       insertedDttm:
         insertedRecords[index]?.inserted_dttm instanceof Date
@@ -151,7 +149,6 @@ export const listFileRecords = async (fileUploadGuid?: string): Promise<FileReco
   );
 
   return (result.recordset ?? []).map((row) => ({
-    fileUploadId: row.file_upload_guid,
     fileUploadGuid: row.file_upload_guid,
     recordId: row.record_id,
     sourceSheet: row.source_sheet_name ?? undefined,
