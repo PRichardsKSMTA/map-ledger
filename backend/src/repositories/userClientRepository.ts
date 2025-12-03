@@ -336,7 +336,7 @@ export const fetchUserClientAccess = async (
       [
         'SELECT CLIENT_ID, CLIENT_NAME, CLIENT_SCAC, OPERATIONAL_SCAC, OPERATION_CD, OPERATION_NAME',
         'FROM ML.V_CLIENT_OPERATIONS',
-        'ORDER BY CLIENT_ID ASC, OPERATIONAL_SCAC ASC',
+        'ORDER BY CLIENT_NAME ASC',
       ].join(' '),
       {}
     );
