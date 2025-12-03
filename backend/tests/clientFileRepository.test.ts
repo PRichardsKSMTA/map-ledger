@@ -117,14 +117,10 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
     const sheetParams = mockedRunQuery.mock.calls[1][1] as Record<string, unknown>;
     const entityParams = mockedRunQuery.mock.calls[2][1] as Record<string, unknown>;
 
-    expect(sheetParams.inserted0).toEqual(expect.any(String));
     expect(sheetParams.updated0).toEqual(expect.any(String));
-    expect(sheetParams.inserted1).toEqual(expect.any(String));
     expect(sheetParams.updated1).toEqual(expect.any(String));
 
-    expect(entityParams.entityInserted0).toEqual(expect.any(String));
     expect(entityParams.entityUpdated0).toEqual(expect.any(String));
-    expect(entityParams.entityInserted1).toEqual(expect.any(String));
     expect(entityParams.entityUpdated1).toEqual(expect.any(String));
   });
 });

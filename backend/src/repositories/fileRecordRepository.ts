@@ -71,7 +71,10 @@ export const insertFileRecords = async (
       GL_MONTH,
       USER_DEFINED1,
       USER_DEFINED2,
-      USER_DEFINED3
+      USER_DEFINED3,
+      INSERTED_DTTM,
+      UPDATED_DTTM,
+      UPDATED_BY
     )
     OUTPUT INSERTED.RECORD_ID as record_id, INSERTED.INSERTED_DTTM as inserted_dttm
     VALUES ${valuesClause}`,
