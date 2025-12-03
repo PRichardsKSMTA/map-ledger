@@ -34,8 +34,7 @@ export const insertFileRecords = async (
     return [];
   }
 
-  const insertedDttm = new Date().toISOString();
-  const params: Record<string, unknown> = { fileUploadId, fileUploadGuid, insertedDttm };
+  const params: Record<string, unknown> = { fileUploadId, fileUploadGuid };
   const valuesClause = records
     .map((record, index) => {
       params[`accountId${index}`] = record.accountId;
@@ -52,11 +51,11 @@ export const insertFileRecords = async (
       params[`userDefined2_${index}`] = record.userDefined2 ?? null;
       params[`userDefined3_${index}`] = record.userDefined3 ?? null;
 
-      return `(@fileUploadId, @fileUploadGuid, @sourceSheetName${index}, @sourceRowNumber${index}, @entityId${index}, @entityName${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index}, @insertedDttm, NULL, NULL)`;
+      return `(@fileUploadId, @fileUploadGuid, @sourceSheetName${index}, @sourceRowNumber${index}, @entityId${index}, @entityName${index}, @accountId${index}, @accountName${index}, @openingBalance${index}, @closingBalance${index}, @activityAmount${index}, @glMonth${index}, @userDefined1_${index}, @userDefined2_${index}, @userDefined3_${index})`;
     })
     .join(', ');
 
-  const insertResult = await runQuery<{ record_id: number }>(
+  const insertResult = await runQuery<{ record_id: number; inserted_dttm?: string | Date | null }>(
     `INSERT INTO ${TABLE_NAME} (
       FILE_UPLOAD_ID,
       FILE_UPLOAD_GUID,
@@ -77,7 +76,7 @@ export const insertFileRecords = async (
       UPDATED_DTTM,
       UPDATED_BY
     )
-    OUTPUT INSERTED.RECORD_ID as record_id
+    OUTPUT INSERTED.RECORD_ID as record_id, INSERTED.INSERTED_DTTM as inserted_dttm
     VALUES ${valuesClause}`,
     params,
   );
@@ -96,7 +95,10 @@ export const insertFileRecords = async (
       recordId: insertedRecordId,
       fileUploadId,
       fileUploadGuid,
-      insertedDttm,
+      insertedDttm:
+        insertedRecords[index]?.inserted_dttm instanceof Date
+          ? insertedRecords[index]?.inserted_dttm.toISOString()
+          : insertedRecords[index]?.inserted_dttm ?? undefined,
     };
   });
 };

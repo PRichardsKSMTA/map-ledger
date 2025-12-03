@@ -10,22 +10,17 @@ type RunQueryMock = jest.MockedFunction<typeof runQuery>;
 describe('fileRecordRepository', () => {
   let mockedRunQuery: RunQueryMock;
   const guid = '12345678-1234-1234-1234-1234567890ab';
-  const fixedDate = new Date('2024-01-01T00:00:00.000Z');
 
   beforeEach(() => {
     mockedRunQuery = runQuery as RunQueryMock;
     mockedRunQuery.mockReset();
-    jest.useFakeTimers({ now: fixedDate });
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
+  it('inserts file records with GUID, metadata, and relies on defaults for timestamps', async () => {
+    const inserted = new Date('2024-01-01T00:00:00.000Z');
+    mockedRunQuery.mockResolvedValue({ recordset: [{ record_id: 10, inserted_dttm: inserted }, { record_id: 11 }] } as any);
 
-  it('inserts file records with GUID, metadata, and timestamps', async () => {
-    mockedRunQuery.mockResolvedValue({ recordset: [{ record_id: 10 }, { record_id: 11 }] } as any);
-
-    const inserted = await insertFileRecords(5, guid, [
+    const insertedRecords = await insertFileRecords(5, guid, [
       {
         accountId: '100',
         accountName: 'Cash',
@@ -55,25 +50,23 @@ describe('fileRecordRepository', () => {
     expect(sql).toContain('FILE_UPLOAD_GUID');
     expect(sql).toContain('SOURCE_ROW_NUMBER');
     expect(sql).toContain('ENTITY_NAME');
-    expect(sql).toContain('INSERTED_DTTM');
-    expect(sql).toContain('UPDATED_DTTM');
-    expect(sql).toContain('UPDATED_BY');
+    expect(sql).not.toContain('UPDATED_DTTM');
+    expect(sql).not.toContain('UPDATED_BY');
 
     expect(params).toMatchObject({
       fileUploadId: 5,
       fileUploadGuid: guid,
-      insertedDttm: fixedDate.toISOString(),
       sourceRowNumber0: 10,
       entityName0: 'Entity One',
       glMonth0: '2024-01',
       sourceRowNumber1: 11,
     });
 
-    expect(inserted[0]).toEqual(
+    expect(insertedRecords[0]).toEqual(
       expect.objectContaining({
         fileUploadId: 5,
         fileUploadGuid: guid,
-        insertedDttm: fixedDate.toISOString(),
+        insertedDttm: inserted.toISOString(),
         sourceRowNumber: 10,
         entityName: 'Entity One',
       }),

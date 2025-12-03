@@ -157,10 +157,7 @@ export const saveClientFileMetadata = async (
       GL_PERIOD_START,
       GL_PERIOD_END,
       ROW_COUNT,
-      LAST_STEP_COMPLETED_DTTM,
-      INSERTED_DTTM,
-      IS_DELETED,
-      DELETED_DTTM
+      LAST_STEP_COMPLETED_DTTM
     )
     OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id, INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
@@ -175,10 +172,7 @@ export const saveClientFileMetadata = async (
       @glPeriodStart,
       @glPeriodEnd,
       @rowCount,
-      @lastStepCompletedDttm,
-      @insertedDttm,
-      0,
-      NULL
+      @lastStepCompletedDttm
     )`,
     {
       fileUploadGuid,
@@ -193,7 +187,6 @@ export const saveClientFileMetadata = async (
       glPeriodEnd: record.glPeriodEnd ?? null,
       rowCount: record.rowCount ?? null,
       lastStepCompletedDttm,
-      insertedDttm,
     }
   );
 
