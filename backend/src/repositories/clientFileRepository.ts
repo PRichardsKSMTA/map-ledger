@@ -47,17 +47,15 @@ export interface ClientFileRecord {
 }
 
 export interface NewClientFileRecord {
+  fileUploadGuid?: string;
   clientId: string;
   userId?: string;
   uploadedBy?: string;
   sourceFileName: string;
   fileStorageUri: string;
-  fileSize?: number;
-  fileType?: string;
   status: ImportStatus;
   glPeriodStart?: string;
   glPeriodEnd?: string;
-  rowCount?: number;
   lastStepCompletedDttm?: string;
   sheets?: ClientFileSheet[];
   entities?: ClientFileEntity[];
@@ -138,38 +136,35 @@ export const saveClientFileMetadata = async (
   record: NewClientFileRecord
 ): Promise<ClientFileRecord> => {
   const lastStepCompletedDttm = record.lastStepCompletedDttm ?? new Date().toISOString();
-  const fileUploadGuid = crypto.randomUUID();
+  const fileUploadGuid =
+    record.fileUploadGuid && record.fileUploadGuid.length === 36
+      ? record.fileUploadGuid
+      : crypto.randomUUID();
 
   const insertResult = await runQuery<{
     file_upload_guid: string;
   }>(
     `INSERT INTO ml.CLIENT_FILES (
-      FILE_UPLOAD_GUID,
       CLIENT_ID,
-      UPLOADED_BY,
+      FILE_UPLOAD_GUID,
       SOURCE_FILE_NAME,
       FILE_STORAGE_URI,
-      FILE_SIZE,
-      FILE_TYPE,
-      FILE_STATUS,
       GL_PERIOD_START,
       GL_PERIOD_END,
-      ROW_COUNT,
+      INSERTED_BY,
+      FILE_STATUS,
       LAST_STEP_COMPLETED_DTTM
     )
     OUTPUT INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
-      @fileUploadGuid,
       @clientId,
-      @uploadedBy,
+      @fileUploadGuid,
       @sourceFileName,
       @fileStorageUri,
-      @fileSize,
-      @fileType,
-      @fileStatus,
       @glPeriodStart,
       @glPeriodEnd,
-      @rowCount,
+      @uploadedBy,
+      @fileStatus,
       @lastStepCompletedDttm
     )`,
     {
@@ -178,12 +173,9 @@ export const saveClientFileMetadata = async (
       uploadedBy: record.uploadedBy ?? null,
       sourceFileName: record.sourceFileName,
       fileStorageUri: record.fileStorageUri,
-      fileSize: record.fileSize ?? null,
-      fileType: record.fileType ?? null,
       fileStatus: record.status,
       glPeriodStart: record.glPeriodStart ?? null,
       glPeriodEnd: record.glPeriodEnd ?? null,
-      rowCount: record.rowCount ?? null,
       lastStepCompletedDttm,
     }
   );
@@ -261,13 +253,10 @@ export const saveClientFileMetadata = async (
     importedBy: record.uploadedBy,
     fileName: record.sourceFileName,
     fileStorageUri: record.fileStorageUri,
-    fileSize: record.fileSize,
-    fileType: record.fileType,
     status: record.status,
     glPeriodStart: record.glPeriodStart,
     glPeriodEnd: record.glPeriodEnd,
     period: buildPeriodLabel(record.glPeriodStart, record.glPeriodEnd),
-    rowCount: record.rowCount,
     timestamp: lastStepCompletedDttm,
     sheets: record.sheets,
     entities: record.entities,
