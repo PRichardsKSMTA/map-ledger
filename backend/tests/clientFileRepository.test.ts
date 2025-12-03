@@ -51,7 +51,7 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
 
   it('propagates GUID to selected sheets and entities with schema columns and timestamps', async () => {
     mockedRunQuery
-      .mockResolvedValueOnce({ recordset: [{ file_upload_id: 7, file_upload_guid: guid }] } as any)
+      .mockResolvedValueOnce({ recordset: [{ file_upload_guid: guid }] } as any)
       .mockResolvedValueOnce({ recordset: [] } as any)
       .mockResolvedValueOnce({ recordset: [] } as any);
 
@@ -74,7 +74,7 @@ describe('clientFileRepository.saveClientFileMetadata', () => {
 
     const saved = await saveClientFileMetadata(record);
 
-    expect(saved.id).toBe(7);
+    expect(saved.id).toBe(guid);
     expect(saved.fileUploadGuid).toBe(guid);
     expect(mockedRunQuery).toHaveBeenCalledTimes(3);
 
@@ -159,7 +159,6 @@ describe('clientFileRepository.listClientFiles', () => {
       .mockResolvedValueOnce({
         recordset: [
           {
-            fileUploadId: 9,
             fileUploadGuid: 'guid-1',
             clientId: 'client-1',
             uploadedBy: 'user-1',

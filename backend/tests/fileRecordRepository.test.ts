@@ -20,7 +20,7 @@ describe('fileRecordRepository', () => {
     const inserted = new Date('2024-01-01T00:00:00.000Z');
     mockedRunQuery.mockResolvedValue({ recordset: [{ record_id: 10, inserted_dttm: inserted }, { record_id: 11 }] } as any);
 
-    const insertedRecords = await insertFileRecords(5, guid, [
+    const insertedRecords = await insertFileRecords(guid, [
       {
         accountId: '100',
         accountName: 'Cash',
@@ -50,11 +50,8 @@ describe('fileRecordRepository', () => {
     expect(sql).toContain('FILE_UPLOAD_GUID');
     expect(sql).toContain('SOURCE_ROW_NUMBER');
     expect(sql).toContain('ENTITY_NAME');
-    expect(sql).not.toContain('UPDATED_DTTM');
-    expect(sql).not.toContain('UPDATED_BY');
 
     expect(params).toMatchObject({
-      fileUploadId: 5,
       fileUploadGuid: guid,
       sourceRowNumber0: 10,
       entityName0: 'Entity One',
@@ -64,7 +61,6 @@ describe('fileRecordRepository', () => {
 
     expect(insertedRecords[0]).toEqual(
       expect.objectContaining({
-        fileUploadId: 5,
         fileUploadGuid: guid,
         insertedDttm: inserted.toISOString(),
         sourceRowNumber: 10,
@@ -73,12 +69,11 @@ describe('fileRecordRepository', () => {
     );
   });
 
-  it('retrieves file records by GUID as well as ID', async () => {
+  it('retrieves file records by GUID', async () => {
     const insertedDttm = new Date('2024-01-02T00:00:00.000Z');
     mockedRunQuery.mockResolvedValue({
       recordset: [
         {
-          file_upload_id: 5,
           file_upload_guid: guid,
           record_id: 20,
           source_sheet_name: 'Sheet1',
@@ -99,15 +94,13 @@ describe('fileRecordRepository', () => {
       ],
     } as any);
 
-    const results = await listFileRecords(5, guid);
+    const results = await listFileRecords(guid);
 
     const [sql, params] = mockedRunQuery.mock.calls[0];
-    expect(sql).toContain('FILE_UPLOAD_ID = @fileUploadId');
     expect(sql).toContain('FILE_UPLOAD_GUID = @fileUploadGuid');
-    expect(params).toEqual({ fileUploadId: 5, fileUploadGuid: guid });
+    expect(params).toEqual({ fileUploadGuid: guid });
 
     expect(results[0]).toEqual({
-      fileUploadId: 5,
       fileUploadGuid: guid,
       recordId: 20,
       sourceSheet: 'Sheet1',
