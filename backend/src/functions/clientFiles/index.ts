@@ -115,7 +115,10 @@ const normalizeMonthToDate = (value?: string): string | undefined => {
   return trimmed;
 };
 
-const resolveFileStorageUri = (bag: Record<string, unknown>): string | undefined => {
+const resolveFileStorageUri = (
+  bag: Record<string, unknown>,
+  uploadContext?: Record<string, unknown> | null
+): string | undefined => {
   const directUri =
     toOptionalString(bag.fileStorageUri) ??
     toOptionalString(bag.fileUri ?? bag.fileUrl) ??
@@ -125,12 +128,17 @@ const resolveFileStorageUri = (bag: Record<string, unknown>): string | undefined
     return directUri;
   }
 
-  if (bag.uploadContext && typeof bag.uploadContext === 'object') {
-    const uploadContext = bag.uploadContext as Record<string, unknown>;
+  const context =
+    uploadContext ??
+    (bag.uploadContext && typeof bag.uploadContext === 'object'
+      ? (bag.uploadContext as Record<string, unknown>)
+      : null);
+
+  if (context) {
     return (
-      toOptionalString(uploadContext.fileStorageUri) ??
-      toOptionalString(uploadContext.fileUri ?? uploadContext.fileUrl) ??
-      toOptionalString(uploadContext.blobUrl ?? uploadContext.blobUri)
+      toOptionalString(context.fileStorageUri) ??
+      toOptionalString(context.fileUri ?? context.fileUrl) ??
+      toOptionalString(context.blobUrl ?? context.blobUri)
     );
   }
 
@@ -145,19 +153,23 @@ export const validateRecord = (
   }
 
   const bag = payload as Record<string, unknown>;
+  const uploadContext =
+    bag.uploadContext && typeof bag.uploadContext === 'object'
+      ? (bag.uploadContext as Record<string, unknown>)
+      : null;
 
   const clientId = toOptionalString(bag.clientId);
   const sourceFileName = toOptionalString(bag.sourceFileName ?? bag.fileName);
   const rawStatus = toOptionalString(bag.fileStatus ?? bag.status);
   const fileStatus = coerceImportStatus(rawStatus);
-  const fileStorageUri =
-    resolveFileStorageUri(bag) ?? 'https://example.invalid/file';
+  const fileStorageUri = resolveFileStorageUri(bag, uploadContext);
   const fileUploadGuid =
     toOptionalString(bag.fileUploadGuid ?? bag.fileUploadId ?? bag.id) ?? undefined;
 
   const missingFields = [
     !clientId ? 'clientId is required' : null,
     !sourceFileName ? 'sourceFileName is required' : null,
+    !fileStorageUri ? 'fileStorageUri (or fileUri/blobUrl) is required' : null,
   ].filter(Boolean) as string[];
 
   if (missingFields.length > 0) {
@@ -166,6 +178,7 @@ export const validateRecord = (
 
   const requiredClientId = clientId as string;
   const requiredSourceFileName = sourceFileName as string;
+  const requiredFileStorageUri = fileStorageUri as string;
 
   const baseRecord: NewClientFileRecord = {
     clientId: requiredClientId,
@@ -173,7 +186,7 @@ export const validateRecord = (
     userId: toOptionalString(bag.userId),
     uploadedBy: toOptionalString(bag.uploadedBy ?? bag.importedBy),
     sourceFileName: requiredSourceFileName,
-    fileStorageUri,
+    fileStorageUri: requiredFileStorageUri,
     status: fileStatus,
     glPeriodStart: normalizeMonthToDate(
       toOptionalString(bag.glPeriodStart ?? bag.period)
@@ -186,8 +199,15 @@ export const validateRecord = (
     ),
   };
 
-  if (Array.isArray(bag.sheets)) {
-    baseRecord.sheets = bag.sheets
+  const normalizeSheets = (
+    input: unknown,
+    defaultSelected: boolean
+  ): ClientFileSheet[] => {
+    if (!Array.isArray(input)) {
+      return [];
+    }
+
+    return input
       .filter(Boolean)
       .map((entry) => {
         const sheet = entry as Record<string, unknown>;
@@ -196,7 +216,7 @@ export const validateRecord = (
         const firstDataRowIndex = parseOptionalInteger(
           sheet.firstDataRowIndex ?? sheet.firstDataRow ?? sheet.startRow
         );
-        const isSelected = parseBoolean(sheet.isSelected, true);
+        const isSelected = parseBoolean(sheet.isSelected, defaultSelected);
 
         return {
           sheetName,
@@ -206,6 +226,33 @@ export const validateRecord = (
         };
       })
       .filter((entry) => entry.sheetName.length > 0 && Number.isFinite(entry.rowCount));
+  };
+
+  const detectedSheets = normalizeSheets(uploadContext?.sheets, false);
+  const selectedSheets = normalizeSheets(bag.sheets, true);
+
+  const mergedSheets = new Map<string, ClientFileSheet>();
+
+  detectedSheets.forEach((sheet) => {
+    mergedSheets.set(sheet.sheetName, sheet);
+  });
+
+  selectedSheets.forEach((sheet) => {
+    const existing = mergedSheets.get(sheet.sheetName);
+    mergedSheets.set(sheet.sheetName, {
+      ...existing,
+      ...sheet,
+      isSelected: sheet.isSelected ?? existing?.isSelected ?? true,
+      rowCount: Number.isFinite(sheet.rowCount)
+        ? sheet.rowCount
+        : existing?.rowCount ?? 0,
+      firstDataRowIndex:
+        sheet.firstDataRowIndex ?? existing?.firstDataRowIndex,
+    });
+  });
+
+  if (mergedSheets.size > 0) {
+    baseRecord.sheets = Array.from(mergedSheets.values());
   }
 
   if (Array.isArray(bag.entities)) {

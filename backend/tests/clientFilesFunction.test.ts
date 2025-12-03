@@ -95,4 +95,41 @@ describe('clientFiles.validateRecord', () => {
       },
     ]);
   });
+
+  it('merges detected sheets from the upload context with user selections', () => {
+    const payload: ClientFileMetadataPayload = {
+      ...basePayload,
+      fileStorageUri: 'https://storage.example.com/blob.csv',
+      uploadContext: {
+        sheets: [
+          { sheetName: 'Sheet A', rowCount: 10, firstDataRowIndex: 2 },
+          { sheetName: 'Sheet B', rowCount: 5 },
+        ],
+      },
+      sheets: [
+        {
+          sheetName: 'Sheet B',
+          rowCount: 7,
+          isSelected: true,
+        },
+      ],
+    };
+
+    const { record, errors } = validateRecord(payload);
+
+    expect(errors).toHaveLength(0);
+    expect(record?.sheets).toEqual([
+      {
+        sheetName: 'Sheet A',
+        rowCount: 10,
+        isSelected: false,
+        firstDataRowIndex: 2,
+      },
+      {
+        sheetName: 'Sheet B',
+        rowCount: 7,
+        isSelected: true,
+      },
+    ]);
+  });
 });
