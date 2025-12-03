@@ -140,7 +140,6 @@ export const saveClientFileMetadata = async (
 ): Promise<ClientFileRecord> => {
   const lastStepCompletedDttm = record.lastStepCompletedDttm ?? new Date().toISOString();
   const fileUploadGuid = crypto.randomUUID();
-  const insertedDttm = new Date().toISOString();
 
   const insertResult = await runQuery<{
     file_upload_id: number;
@@ -158,10 +157,7 @@ export const saveClientFileMetadata = async (
       GL_PERIOD_START,
       GL_PERIOD_END,
       ROW_COUNT,
-      LAST_STEP_COMPLETED_DTTM,
-      INSERTED_DTTM,
-      IS_DELETED,
-      DELETED_DTTM
+      LAST_STEP_COMPLETED_DTTM
     )
     OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id, INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
@@ -176,10 +172,7 @@ export const saveClientFileMetadata = async (
       @glPeriodStart,
       @glPeriodEnd,
       @rowCount,
-      @lastStepCompletedDttm,
-      @insertedDttm,
-      0,
-      NULL
+      @lastStepCompletedDttm
     )`,
     {
       fileUploadGuid,
@@ -194,7 +187,6 @@ export const saveClientFileMetadata = async (
       glPeriodEnd: record.glPeriodEnd ?? null,
       rowCount: record.rowCount ?? null,
       lastStepCompletedDttm,
-      insertedDttm,
     }
   );
 
@@ -211,7 +203,7 @@ export const saveClientFileMetadata = async (
     const values = record.sheets
       .map(
         (_sheet, index) =>
-          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @inserted${index}, @updated${index}, @updatedBy${index})`
+          `(@fileUploadGuid, @sheetName${index}, @isSelected${index}, @firstDataRowIndex${index}, @sheetRowCount${index}, @updated${index}, @updatedBy${index})`
       )
       .join(', ');
 
@@ -226,13 +218,12 @@ export const saveClientFileMetadata = async (
           ? sheet.firstDataRowIndex
           : null;
       params[`sheetRowCount${index}`] = sheet.rowCount;
-      params[`inserted${index}`] = sheetTimestamp;
       params[`updated${index}`] = sheetTimestamp;
       params[`updatedBy${index}`] = sheet.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_GUID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, INSERTED_DTTM, UPDATED_DTTM, UPDATED_BY)
+      `INSERT INTO ml.CLIENT_FILE_SHEETS (FILE_UPLOAD_GUID, SHEET_NAME, IS_SELECTED, FIRST_DATA_ROW_INDEX, ROW_COUNT, UPDATED_DTTM, UPDATED_BY)
       VALUES ${values}`,
       params
     );
@@ -243,7 +234,7 @@ export const saveClientFileMetadata = async (
     const values = record.entities
       .map(
         (_entity, index) =>
-          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index}, @entityInserted${index}, @entityUpdated${index}, @entityUpdatedBy${index})`
+          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index}, @entityUpdated${index}, @entityUpdatedBy${index})`
       )
       .join(', ');
 
@@ -258,13 +249,12 @@ export const saveClientFileMetadata = async (
       params[`entityName${index}`] = entityName;
       params[`entityRowCount${index}`] = entity.rowCount;
       params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
-      params[`entityInserted${index}`] = entity.insertedDttm ?? entityTimestamp;
       params[`entityUpdated${index}`] = entity.updatedAt ?? entityTimestamp;
       params[`entityUpdatedBy${index}`] = entity.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED, INSERTED_DTTM, UPDATED_DTTM, UPDATED_BY)
+      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED, UPDATED_DTTM, UPDATED_BY)
       VALUES ${values}`,
       params
     );
@@ -314,6 +304,26 @@ export interface ClientFileHistoryResult {
   page: number;
   pageSize: number;
 }
+
+export const findFileUploadGuidById = async (
+  fileUploadId: number
+): Promise<string | null> => {
+  if (!fileUploadId || !Number.isFinite(fileUploadId)) {
+    return null;
+  }
+
+  const result = await runQuery<{ file_upload_guid?: string }>(
+    `SELECT FILE_UPLOAD_GUID as file_upload_guid
+    FROM ml.CLIENT_FILES
+    WHERE FILE_UPLOAD_ID = @fileUploadId AND IS_DELETED = 0`,
+    { fileUploadId }
+  );
+
+  const fileUploadGuid = result.recordset?.[0]?.file_upload_guid;
+  return typeof fileUploadGuid === 'string' && fileUploadGuid.length === 36
+    ? fileUploadGuid
+    : null;
+};
 
 export const findFileUploadIdByGuid = async (
   fileUploadGuid: string
