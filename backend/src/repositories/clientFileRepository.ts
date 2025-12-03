@@ -229,16 +229,14 @@ export const saveClientFileMetadata = async (
   }
 
   if (Array.isArray(record.entities) && record.entities.length > 0) {
-    const entityTimestamp = new Date().toISOString();
     const values = record.entities
       .map(
         (_entity, index) =>
-          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index}, @entityUpdated${index}, @entityUpdatedBy${index})`
+          `(@fileUploadGuid, @entityId${index}, @entityName${index}, @entityRowCount${index}, @entityIsSelected${index})`
       )
       .join(', ');
 
     const params: Record<string, unknown> = { fileUploadGuid: persistedFileUploadGuid };
-    const updatedByFallback = record.uploadedBy ?? record.userId ?? null;
     record.entities.forEach((entity, index) => {
       const entityName = entity.displayName ?? entity.entityName;
       params[`entityId${index}`] =
@@ -248,12 +246,10 @@ export const saveClientFileMetadata = async (
       params[`entityName${index}`] = entityName;
       params[`entityRowCount${index}`] = entity.rowCount;
       params[`entityIsSelected${index}`] = entity.isSelected === false ? 0 : 1;
-      params[`entityUpdated${index}`] = entity.updatedAt ?? entityTimestamp;
-      params[`entityUpdatedBy${index}`] = entity.updatedBy ?? updatedByFallback;
     });
 
     await runQuery(
-      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED, UPDATED_DTTM, UPDATED_BY)
+      `INSERT INTO ml.CLIENT_FILE_ENTITIES (FILE_UPLOAD_GUID, ENTITY_ID, ENTITY_NAME, ROW_COUNT, IS_SELECTED)
       VALUES ${values}`,
       params
     );
