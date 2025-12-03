@@ -13,6 +13,7 @@ import './datapointConfigs/create';
 import './datapointConfigs/list';
 import './datapointConfigs/update';
 import './clientFiles';
+import './clientFileSheets';
 import './clientFileEntities';
 import './clientEntities';
 import './clientHeaderMappings';
