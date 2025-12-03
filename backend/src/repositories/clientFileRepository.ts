@@ -157,7 +157,10 @@ export const saveClientFileMetadata = async (
       GL_PERIOD_START,
       GL_PERIOD_END,
       ROW_COUNT,
-      LAST_STEP_COMPLETED_DTTM
+      LAST_STEP_COMPLETED_DTTM,
+      INSERTED_DTTM,
+      IS_DELETED,
+      DELETED_DTTM
     )
     OUTPUT INSERTED.FILE_UPLOAD_ID as file_upload_id, INSERTED.FILE_UPLOAD_GUID as file_upload_guid
     VALUES (
@@ -172,7 +175,10 @@ export const saveClientFileMetadata = async (
       @glPeriodStart,
       @glPeriodEnd,
       @rowCount,
-      @lastStepCompletedDttm
+      @lastStepCompletedDttm,
+      @insertedDttm,
+      0,
+      NULL
     )`,
     {
       fileUploadGuid,
@@ -187,6 +193,7 @@ export const saveClientFileMetadata = async (
       glPeriodEnd: record.glPeriodEnd ?? null,
       rowCount: record.rowCount ?? null,
       lastStepCompletedDttm,
+      insertedDttm,
     }
   );
 
@@ -304,6 +311,26 @@ export interface ClientFileHistoryResult {
   page: number;
   pageSize: number;
 }
+
+export const findFileUploadGuidById = async (
+  fileUploadId: number
+): Promise<string | null> => {
+  if (!fileUploadId || !Number.isFinite(fileUploadId)) {
+    return null;
+  }
+
+  const result = await runQuery<{ file_upload_guid?: string }>(
+    `SELECT FILE_UPLOAD_GUID as file_upload_guid
+    FROM ml.CLIENT_FILES
+    WHERE FILE_UPLOAD_ID = @fileUploadId AND IS_DELETED = 0`,
+    { fileUploadId }
+  );
+
+  const fileUploadGuid = result.recordset?.[0]?.file_upload_guid;
+  return typeof fileUploadGuid === 'string' && fileUploadGuid.length === 36
+    ? fileUploadGuid
+    : null;
+};
 
 export const findFileUploadIdByGuid = async (
   fileUploadGuid: string
