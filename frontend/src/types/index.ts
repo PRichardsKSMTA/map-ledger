@@ -28,6 +28,7 @@ export interface ClientProfile {
 
 export interface UserClientOperation {
   id: string;
+  code: string;
   name: string;
 }
 
@@ -481,6 +482,7 @@ export type DistributionType = 'direct' | 'percentage' | 'dynamic';
 export interface DistributionOperationShare {
   id: string;
   name: string;
+  code?: string;
   allocation?: number;
   notes?: string;
 }
