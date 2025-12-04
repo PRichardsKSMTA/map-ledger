@@ -6,6 +6,7 @@ import {
   ImportStatus,
   NewClientFileRecord,
   coerceImportStatus,
+  softDeleteClientFile,
 } from '../../repositories/clientFileRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import { buildErrorResponse } from '../datapointConfigs/utils';
@@ -171,6 +172,35 @@ export const saveClientFileHandler = async (
   }
 };
 
+export const deleteClientFileHandler = async (
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> => {
+  try {
+    const params = request.params as Partial<{ fileUploadGuid?: string }> | undefined;
+    const fileUploadGuid = getFirstStringValue(params?.fileUploadGuid);
+
+    if (!fileUploadGuid) {
+      return json({ message: 'fileUploadGuid is required' }, 400);
+    }
+
+    if (fileUploadGuid.length !== 36) {
+      return json({ message: 'fileUploadGuid must be a 36-character string' }, 400);
+    }
+
+    const deleted = await softDeleteClientFile(fileUploadGuid);
+
+    if (!deleted) {
+      return json({ message: 'Client file not found' }, 404);
+    }
+
+    return json({ message: 'Client file deleted' }, 200);
+  } catch (error) {
+    context.error('Failed to delete client file', error);
+    return json(buildErrorResponse('Failed to delete client file', error), 500);
+  }
+};
+
 app.http('listClientFiles', {
   methods: ['GET'],
   authLevel: 'anonymous',
@@ -183,4 +213,11 @@ app.http('saveClientFile', {
   authLevel: 'anonymous',
   route: 'client-files',
   handler: saveClientFileHandler,
+});
+
+app.http('deleteClientFile', {
+  methods: ['DELETE'],
+  authLevel: 'anonymous',
+  route: 'client-files/{fileUploadGuid}',
+  handler: deleteClientFileHandler,
 });

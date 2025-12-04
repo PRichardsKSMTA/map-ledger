@@ -272,18 +272,23 @@ export interface ClientFileHistoryResult {
   pageSize: number;
 }
 
-export const softDeleteClientFile = async (fileUploadGuid: string): Promise<void> => {
+export const softDeleteClientFile = async (
+  fileUploadGuid: string
+): Promise<boolean> => {
   if (!fileUploadGuid || typeof fileUploadGuid !== 'string') {
-    return;
+    return false;
   }
 
-  await runQuery(
+  const result = await runQuery(
     `UPDATE ml.CLIENT_FILES
     SET IS_DELETED = 1,
-        DELETED_DTTM = CURRENT_TIMESTAMP
+        DELETED_DTTM = CURRENT_TIMESTAMP,
+        FILE_STATUS = 'deleted'
     WHERE FILE_UPLOAD_GUID = @fileUploadGuid`,
     { fileUploadGuid }
   );
+
+  return (result.rowsAffected?.[0] ?? 0) > 0;
 };
 
 export const listClientFiles = async (
