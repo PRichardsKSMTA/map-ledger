@@ -65,34 +65,6 @@ const parsePeriodForSort = (value: string) => {
   return parsePeriodString(firstPart ?? value);
 };
 
-const formatFileDetails = (bytes?: number, type?: string): string => {
-  const readableType = type && type.length > 0 ? type : 'Unknown type';
-  return `${formatFileSize(bytes)} • ${readableType}`;
-};
-
-const formatDateTime = (value?: string): string => {
-  if (!value) {
-    return '—';
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return '—';
-  }
-
-  return parsed.toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    hour12: true,
-  });
-};
-
-const parsePeriodForSort = (value: string) => {
-  const [firstPart] = value.split(/\s+-\s+/);
-  return parsePeriodString(firstPart ?? value);
-};
-
 export default function ImportHistory({
   imports,
   isLoading = false,
