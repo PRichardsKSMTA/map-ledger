@@ -20,9 +20,9 @@ export const coerceImportStatus = (value: unknown): ImportStatus =>
 export interface ClientFileSheet {
   sheetName: string;
   glMonth?: string;
-  rowCount: number;
   isSelected?: boolean;
   firstDataRowIndex?: number;
+  rowCount?: number;
   insertedDttm?: string;
   updatedAt?: string;
   updatedBy?: string;
@@ -284,12 +284,12 @@ export const listClientFiles = async (
     sheetName: string;
     isSelected?: boolean | number;
     firstDataRowIndex?: number;
-    rowCount: number;
+    rowCount?: number;
     insertedDttm?: string | Date;
     updatedAt?: string | Date;
     updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, [ROW_COUNT] as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_SHEETS
     WHERE FILE_UPLOAD_GUID IN (${sheetPlaceholders})`,
     sheetParameters
@@ -308,7 +308,12 @@ export const listClientFiles = async (
           : Number.isFinite(Number(sheet.firstDataRowIndex))
             ? Number(sheet.firstDataRowIndex)
             : undefined,
-      rowCount: sheet.rowCount,
+      rowCount:
+        typeof sheet.rowCount === 'number'
+          ? sheet.rowCount
+          : Number.isFinite(Number(sheet.rowCount))
+            ? Number(sheet.rowCount)
+            : undefined,
       insertedDttm: parseDate(sheet.insertedDttm),
       updatedAt: parseDate(sheet.updatedAt),
       updatedBy: sheet.updatedBy ?? undefined,
