@@ -75,7 +75,6 @@ export const insertClientFileSheet = async (
     sheetName: string;
     isSelected?: number | null;
     firstDataRowIndex?: number | null;
-    rowCount?: number | null;
     insertedDttm?: string | Date | null;
   }>(
     `INSERT INTO ml.CLIENT_FILE_SHEETS (
@@ -145,7 +144,6 @@ export const updateClientFileSheet = async (
     sheetName: string;
     isSelected?: number | null;
     firstDataRowIndex?: number | null;
-    rowCount?: number | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
     updatedBy?: string | null;
@@ -222,7 +220,6 @@ export const listClientFileSheets = async (
     sheetName: string;
     isSelected?: number | boolean | null;
     firstDataRowIndex?: number | string | null;
-    rowCount?: number | string | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
     updatedBy?: string | null;

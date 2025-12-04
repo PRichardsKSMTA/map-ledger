@@ -406,7 +406,7 @@ const buildSheetInserts = (
       typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
         ? sheet.firstDataRowIndex
         : undefined,
-    rowCount: sheet.rows.length,
+    rowCount: Array.isArray(sheet.rows) ? sheet.rows.length : undefined,
   }));
 
 const toEntityId = (value?: string | null): number | null => {
