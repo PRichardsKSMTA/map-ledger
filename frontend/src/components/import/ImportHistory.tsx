@@ -42,7 +42,11 @@ const sortableFields: SortField[] = [
   'timestamp',
 ];
 
-function formatFileSize(bytes: number): string {
+function formatFileSize(bytes?: number): string {
+  if (typeof bytes !== 'number' || Number.isNaN(bytes) || bytes < 0) {
+    return 'Unknown size';
+  }
+
   if (bytes === 0) {
     return '0 B';
   }
@@ -52,6 +56,34 @@ function formatFileSize(bytes: number): string {
   const size = bytes / 1024 ** idx;
   return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[idx]}`;
 }
+
+const formatFileDetails = (bytes?: number, type?: string): string => {
+  const readableType = type && type.length > 0 ? type : 'Unknown type';
+  return `${formatFileSize(bytes)} • ${readableType}`;
+};
+
+const formatDateTime = (value?: string): string => {
+  if (!value) {
+    return '—';
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
+  }
+
+  return parsed.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    hour12: true,
+  });
+};
+
+const parsePeriodForSort = (value: string) => {
+  const [firstPart] = value.split(/\s+-\s+/);
+  return parsePeriodString(firstPart ?? value);
+};
 
 export default function ImportHistory({
   imports,
@@ -74,11 +106,11 @@ export default function ImportHistory({
       ? imports.filter((entry) => {
           const haystack = [
             entry.fileName,
-            entry.clientId,
-            entry.importedBy,
+            entry.clientName ?? entry.clientId,
+            entry.importedBy ?? entry.insertedDttm ?? '',
             entry.period,
             formatPeriodLabel(entry.period),
-            new Date(entry.timestamp).toLocaleString(),
+            formatDateTime(entry.timestamp),
           ]
             .join(' ')
             .toLowerCase();
@@ -94,13 +126,13 @@ export default function ImportHistory({
           case 'fileName':
             return entry.fileName.toLowerCase();
           case 'clientId':
-            return entry.clientId.toLowerCase();
+            return (entry.clientName ?? entry.clientId).toLowerCase();
           case 'status':
             return entry.status;
           case 'importedBy':
-            return entry.importedBy.toLowerCase();
+            return (entry.importedBy ?? '').toLowerCase();
           case 'period': {
-            const parsedPeriod = parsePeriodString(entry.period);
+            const parsedPeriod = parsePeriodForSort(entry.period);
             return parsedPeriod ?? new Date(NaN);
           }
           case 'timestamp':
@@ -269,13 +301,15 @@ export default function ImportHistory({
                           {importItem.fileName}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {formatFileSize(importItem.fileSize)} • {importItem.fileType}
+                          {formatFileDetails(importItem.fileSize, importItem.fileType)}
                         </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{importItem.clientId}</div>
+                    <div className="text-sm text-gray-900">
+                      {importItem.clientName ?? importItem.clientId}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
@@ -300,11 +334,11 @@ export default function ImportHistory({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">{importItem.importedBy}</div>
+                    <div className="text-sm text-gray-900">{importItem.importedBy || '—'}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">
-                      {new Date(importItem.timestamp).toLocaleString()}
+                      {formatDateTime(importItem.timestamp)}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
@@ -339,8 +373,8 @@ export default function ImportHistory({
                   {previewImport.fileName}
                 </h3>
                 <p className="text-sm text-gray-500">
-                  Imported {new Date(previewImport.timestamp).toLocaleString()} •{' '}
-                  {formatFileSize(previewImport.fileSize)}
+                  Imported {formatDateTime(previewImport.timestamp)} •{' '}
+                  {formatFileDetails(previewImport.fileSize, previewImport.fileType)}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -357,11 +391,13 @@ export default function ImportHistory({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Client</p>
-                  <p className="text-sm text-gray-900">{previewImport.clientId}</p>
+                  <p className="text-sm text-gray-900">
+                    {previewImport.clientName ?? previewImport.clientId}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Imported By</p>
-                  <p className="text-sm text-gray-900">{previewImport.importedBy}</p>
+                  <p className="text-sm text-gray-900">{previewImport.importedBy || '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase text-gray-500">Period</p>
