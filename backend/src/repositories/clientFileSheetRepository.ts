@@ -12,14 +12,23 @@ export interface ClientFileSheetRow {
 }
 
 const parseDate = (value: unknown): string | undefined => {
-  if (typeof value === 'string') {
-    return value;
-  }
-
   if (value instanceof Date) {
     return value.toISOString();
   }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return undefined;
+};
 
+const toBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
   return undefined;
 };
 
@@ -27,31 +36,25 @@ const toNumber = (value: unknown): number | undefined => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
   }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : undefined;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
+    return Number(value);
   }
-
   return undefined;
 };
 
-const mapSheetRow = (row: Partial<{
+const mapSheetRow = (row: {
   fileUploadGuid: string;
   sheetName: string;
-  isSelected?: number | boolean | null;
+  isSelected?: boolean | number | null;
   firstDataRowIndex?: number | string | null;
   rowCount?: number | string | null;
   insertedDttm?: string | Date | null;
   updatedDttm?: string | Date | null;
   updatedBy?: string | null;
-}>): ClientFileSheetRow => ({
-  fileUploadGuid: row.fileUploadGuid as string,
-  sheetName: row.sheetName as string,
-  isSelected:
-    row.isSelected === undefined || row.isSelected === null
-      ? undefined
-      : Boolean(row.isSelected),
+}): ClientFileSheetRow => ({
+  fileUploadGuid: row.fileUploadGuid,
+  sheetName: row.sheetName,
+  isSelected: toBoolean(row.isSelected),
   firstDataRowIndex: toNumber(row.firstDataRowIndex),
   rowCount: toNumber(row.rowCount),
   insertedDttm: parseDate(row.insertedDttm),
@@ -75,6 +78,7 @@ export const insertClientFileSheet = async (
     sheetName: string;
     isSelected?: number | null;
     firstDataRowIndex?: number | null;
+    rowCount?: number | null;
     insertedDttm?: string | Date | null;
   }>(
     `INSERT INTO ml.CLIENT_FILE_SHEETS (
@@ -89,14 +93,14 @@ export const insertClientFileSheet = async (
       INSERTED.SHEET_NAME as sheetName,
       INSERTED.IS_SELECTED as isSelected,
       INSERTED.FIRST_DATA_ROW_INDEX as firstDataRowIndex,
-      INSERTED.ROW_COUNT as rowCount,
+      INSERTED.ROW_COUNT as [rowCount],
       INSERTED.INSERTED_DTTM as insertedDttm
     VALUES (
       @fileUploadGuid,
       @sheetName,
       @isSelected,
       @firstDataRowIndex,
-      @rowCount
+      @sheetRowCountParam
     )`,
     {
       fileUploadGuid: input.fileUploadGuid,
@@ -106,7 +110,7 @@ export const insertClientFileSheet = async (
         typeof input.firstDataRowIndex === 'number' && Number.isFinite(input.firstDataRowIndex)
           ? input.firstDataRowIndex
           : null,
-      rowCount:
+      sheetRowCountParam:
         typeof input.rowCount === 'number' && Number.isFinite(input.rowCount)
           ? input.rowCount
           : null,
@@ -123,6 +127,8 @@ export const insertClientFileSheet = async (
       firstDataRowIndex: input.firstDataRowIndex ?? null,
       rowCount: input.rowCount ?? null,
       insertedDttm: null,
+      updatedDttm: null,
+      updatedBy: null,
     }
   );
 };
@@ -144,6 +150,7 @@ export const updateClientFileSheet = async (
     sheetName: string;
     isSelected?: number | null;
     firstDataRowIndex?: number | null;
+    rowCount?: number | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
     updatedBy?: string | null;
@@ -152,7 +159,7 @@ export const updateClientFileSheet = async (
     SET
       IS_SELECTED = @isSelected,
       FIRST_DATA_ROW_INDEX = @firstDataRowIndex,
-      ROW_COUNT = @rowCount,
+      ROW_COUNT = @sheetRowCountParam,
       UPDATED_DTTM = CURRENT_TIMESTAMP,
       UPDATED_BY = @updatedBy
     OUTPUT
@@ -160,7 +167,7 @@ export const updateClientFileSheet = async (
       INSERTED.SHEET_NAME as sheetName,
       INSERTED.IS_SELECTED as isSelected,
       INSERTED.FIRST_DATA_ROW_INDEX as firstDataRowIndex,
-      INSERTED.ROW_COUNT as rowCount,
+      INSERTED.ROW_COUNT as [rowCount],
       INSERTED.INSERTED_DTTM as insertedDttm,
       INSERTED.UPDATED_DTTM as updatedDttm,
       INSERTED.UPDATED_BY as updatedBy
@@ -170,12 +177,15 @@ export const updateClientFileSheet = async (
     {
       fileUploadGuid: input.fileUploadGuid,
       sheetName: input.sheetName,
-      isSelected: input.isSelected ?? null,
+      isSelected:
+        typeof input.isSelected === 'boolean'
+          ? input.isSelected
+          : null,
       firstDataRowIndex:
         typeof input.firstDataRowIndex === 'number' && Number.isFinite(input.firstDataRowIndex)
           ? input.firstDataRowIndex
           : null,
-      rowCount:
+      sheetRowCountParam:
         typeof input.rowCount === 'number' && Number.isFinite(input.rowCount)
           ? input.rowCount
           : null,
@@ -220,6 +230,7 @@ export const listClientFileSheets = async (
     sheetName: string;
     isSelected?: number | boolean | null;
     firstDataRowIndex?: number | string | null;
+    rowCount?: number | string | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
     updatedBy?: string | null;
@@ -229,7 +240,7 @@ export const listClientFileSheets = async (
       SHEET_NAME as sheetName,
       IS_SELECTED as isSelected,
       FIRST_DATA_ROW_INDEX as firstDataRowIndex,
-      ROW_COUNT as rowCount,
+      ROW_COUNT as [rowCount],
       INSERTED_DTTM as insertedDttm,
       UPDATED_DTTM as updatedDttm,
       UPDATED_BY as updatedBy

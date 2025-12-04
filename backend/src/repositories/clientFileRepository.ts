@@ -289,11 +289,19 @@ export const listClientFiles = async (
     updatedAt?: string | Date;
     updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
-    FROM ml.CLIENT_FILE_SHEETS
-    WHERE FILE_UPLOAD_GUID IN (${sheetPlaceholders})`,
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid,
+            SHEET_NAME as sheetName,
+            IS_SELECTED as isSelected,
+            FIRST_DATA_ROW_INDEX as firstDataRowIndex,
+            ROW_COUNT as [rowCount],
+            INSERTED_DTTM as insertedDttm,
+            UPDATED_DTTM as updatedAt,
+            UPDATED_BY as updatedBy
+      FROM ml.CLIENT_FILE_SHEETS
+      WHERE FILE_UPLOAD_GUID IN (${sheetPlaceholders})`,
     sheetParameters
   );
+    
 
   const sheetsByFile = new Map<string, ClientFileSheet[]>();
   (sheetsResult.recordset ?? []).forEach((sheet) => {
