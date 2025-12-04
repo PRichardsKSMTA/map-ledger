@@ -211,9 +211,7 @@ export const useImportStore = create<ImportState>((set, get) => ({
       }
 
       set((state) => {
-        const remainingImports = state.imports.filter(
-          (item) => item.id !== importId && item.fileUploadGuid !== importId
-        );
+        const remainingImports = state.imports.filter((item) => item.id !== importId);
 
         return {
           imports: remainingImports,
