@@ -18,6 +18,7 @@ interface ImportHistoryProps {
   pageSize: number;
   total: number;
   onPageChange: (page: number) => void;
+  onDelete?: (importId: string) => Promise<void>;
 }
 
 type SortField = 'fileName' | 'clientId' | 'period' | 'status' | 'importedBy' | 'timestamp';
@@ -72,12 +73,15 @@ export default function ImportHistory({
   pageSize,
   total,
   onPageChange,
+  onDelete,
 }: ImportHistoryProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [previewImport, setPreviewImport] = useState<Import | null>(null);
-  const columnCount = sortableFields.length + 1;
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const columnCount = sortableFields.length + 2;
 
   const filteredImports = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -173,6 +177,32 @@ export default function ImportHistory({
 
   const closePreview = () => setPreviewImport(null);
 
+  const handleDelete = async (importId: string) => {
+    if (!onDelete) {
+      return;
+    }
+
+    setDeleteError(null);
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this import? This action cannot be undone.'
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(importId);
+    try {
+      await onDelete(importId);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete import. Please try again.';
+      setDeleteError(message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const totalPages = Math.max(Math.ceil(total / pageSize), 1);
   const currentPage = Math.min(Math.max(page, 1), totalPages);
   const startRecord = total === 0 ? 0 : (currentPage - 1) * pageSize + 1;
@@ -222,6 +252,11 @@ export default function ImportHistory({
             aria-label="Search import history"
           />
         </div>
+        {deleteError && (
+          <p className="text-sm text-red-600" role="alert">
+            {deleteError}
+          </p>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -245,7 +280,7 @@ export default function ImportHistory({
                 </th>
               ))}
               <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                Details
+                Actions
               </th>
             </tr>
           </thead>
@@ -319,13 +354,25 @@ export default function ImportHistory({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewImport(importItem)}
-                      className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-700"
-                    >
-                      View
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImport(importItem)}
+                        className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-700"
+                      >
+                        View
+                      </button>
+                      {onDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(importItem.id)}
+                          disabled={deletingId === importItem.id}
+                          className="text-sm font-medium text-red-600 transition-colors hover:text-red-700 disabled:opacity-60"
+                        >
+                          {deletingId === importItem.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))
