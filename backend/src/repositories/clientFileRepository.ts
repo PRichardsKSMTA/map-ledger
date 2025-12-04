@@ -87,14 +87,21 @@ const parseDate = (value: unknown): string | undefined => {
     return undefined;
   }
 
-  const stringValue = value instanceof Date ? null : String(value).trim();
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return undefined;
+  }
+
+  const stringValue = String(value).trim();
   const normalizedValue =
-    stringValue &&
     /\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(stringValue)
       ? `${stringValue.replace(' ', 'T')}Z`
       : stringValue;
 
-  const parsed = value instanceof Date ? value : new Date(normalizedValue ?? value);
+  const parsed = new Date(normalizedValue);
 
   if (Number.isNaN(parsed.getTime())) {
     return undefined;
@@ -103,12 +110,20 @@ const parseDate = (value: unknown): string | undefined => {
   return parsed.toISOString();
 };
 
-const normalizeMonth = (value?: string): string | undefined => {
+const normalizeMonth = (value?: unknown): string | undefined => {
   if (!value) {
     return undefined;
   }
 
-  const parsed = new Date(value);
+  const stringValue = value instanceof Date ? value.toISOString() : String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(stringValue.trim());
+
+  if (match) {
+    const [, year, month] = match;
+    return `${year}-${month}`;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(stringValue);
 
   if (Number.isNaN(parsed.getTime())) {
     return undefined;
@@ -141,8 +156,8 @@ const buildPeriodLabel = (
 
 const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
   const insertedDttm = parseDate(row.insertedDttm);
-  const normalizedStart = normalizeMonth(parseDate(row.glPeriodStart));
-  const normalizedEnd = normalizeMonth(parseDate(row.glPeriodEnd));
+  const normalizedStart = normalizeMonth(row.glPeriodStart);
+  const normalizedEnd = normalizeMonth(row.glPeriodEnd);
 
   return {
     id: row.fileUploadGuid,

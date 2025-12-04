@@ -42,20 +42,28 @@ const sortableFields: SortField[] = [
   'timestamp',
 ];
 
-function formatFileSize(bytes?: number): string {
-  if (typeof bytes !== 'number' || Number.isNaN(bytes) || bytes < 0) {
-    return 'Unknown size';
+const formatDateTime = (value?: string): string => {
+  if (!value) {
+    return '—';
   }
 
-  if (bytes === 0) {
-    return '0 B';
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return '—';
   }
 
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const idx = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  const size = bytes / 1024 ** idx;
-  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[idx]}`;
-}
+  return parsed.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    hour12: true,
+  });
+};
+
+const parsePeriodForSort = (value: string) => {
+  const [firstPart] = value.split(/\s+-\s+/);
+  return parsePeriodString(firstPart ?? value);
+};
 
 const formatFileDetails = (bytes?: number, type?: string): string => {
   const readableType = type && type.length > 0 ? type : 'Unknown type';
@@ -300,9 +308,6 @@ export default function ImportHistory({
                         <div className="text-sm font-medium text-gray-900">
                           {importItem.fileName}
                         </div>
-                        <div className="text-xs text-gray-400">
-                          {formatFileDetails(importItem.fileSize, importItem.fileType)}
-                        </div>
                       </div>
                     </div>
                   </td>
@@ -372,10 +377,7 @@ export default function ImportHistory({
                 <h3 id="import-preview-title" className="text-lg font-semibold text-gray-900">
                   {previewImport.fileName}
                 </h3>
-                <p className="text-sm text-gray-500">
-                  Imported {formatDateTime(previewImport.timestamp)} •{' '}
-                  {formatFileDetails(previewImport.fileSize, previewImport.fileType)}
-                </p>
+                <p className="text-sm text-gray-500">Imported {formatDateTime(previewImport.timestamp)}</p>
               </div>
               <div className="flex gap-2">
                 <button
