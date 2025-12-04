@@ -27,7 +27,7 @@ const logError = (...args: unknown[]) => {
 };
 
 export interface ImportHistoryResponse {
-  items: Import[];
+  items: RawImport[];
   total: number;
   page: number;
   pageSize: number;
@@ -75,6 +75,48 @@ const buildQueryString = (params: Record<string, string | number | undefined>) =
   return search.toString();
 };
 
+type RawImport = Import & {
+  insertedBy?: string;
+  insertedDttm?: string;
+  lastStepCompletedDttm?: string;
+  fileUploadGuid?: string;
+  sourceFileName?: string;
+  fileStatus?: string;
+  clientName?: string;
+  glPeriodStart?: string;
+  glPeriodEnd?: string;
+};
+
+const normalizeImport = (item: RawImport): Import => {
+  const parsedTimestamp = item.timestamp ?? item.insertedDttm ?? item.lastStepCompletedDttm;
+  const timestamp = parsedTimestamp && !Number.isNaN(new Date(parsedTimestamp).getTime())
+    ? new Date(parsedTimestamp).toISOString()
+    : new Date().toISOString();
+
+  const period = item.period
+    || [item.glPeriodStart, item.glPeriodEnd].filter(Boolean).join(' - ')
+    || '';
+
+  const fileSize = Number(item.fileSize);
+  const status: Import['status'] = item.status === 'failed' ? 'failed' : 'completed';
+
+  return {
+    ...item,
+    id: item.id ?? item.fileUploadGuid ?? crypto.randomUUID(),
+    clientId: item.clientId,
+    clientName: item.clientName,
+    fileName: item.fileName ?? item.sourceFileName ?? 'Unknown file',
+    fileSize: Number.isFinite(fileSize) && fileSize >= 0 ? fileSize : 0,
+    fileType: item.fileType ?? 'Unknown type',
+    period,
+    timestamp,
+    insertedDttm: item.insertedDttm ?? timestamp,
+    status,
+    importedBy: item.importedBy ?? item.insertedBy ?? '',
+    userId: item.userId ?? '',
+  };
+};
+
 export const useImportStore = create<ImportState>((set, get) => ({
   ...initialState,
   setPage: (page) => set({ page }),
@@ -99,8 +141,10 @@ export const useImportStore = create<ImportState>((set, get) => ({
       const payload = (await response.json()) as ImportHistoryResponse;
       logDebug('Fetched import history', payload);
 
+      const normalizedItems = (payload.items ?? []).map((item) => normalizeImport(item as RawImport));
+
       set({
-        imports: payload.items ?? [],
+        imports: normalizedItems,
         total: payload.total ?? 0,
         page: payload.page ?? currentPage,
         pageSize: payload.pageSize ?? currentPageSize,
@@ -130,10 +174,12 @@ export const useImportStore = create<ImportState>((set, get) => ({
       }
 
       const body = (await response.json()) as { item?: Import };
-      const saved = body.item ?? {
-        ...payload,
-        timestamp: payload.timestamp ?? new Date().toISOString(),
-      };
+      const saved = normalizeImport(
+        (body.item ?? {
+          ...payload,
+          timestamp: payload.timestamp ?? new Date().toISOString(),
+        }) as RawImport
+      );
 
       const { page, pageSize, imports } = get();
       const nextImports = page === 1 ? [saved, ...imports].slice(0, pageSize) : imports;

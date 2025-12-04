@@ -61,6 +61,14 @@ export default function Import() {
     return Array.from(map.values());
   }, [companies]);
 
+  const importsWithClientNames = useMemo(() => {
+    const clientLookup = new Map(clientSummaries.map((client) => [client.id, client.name]));
+    return imports.map((importItem) => ({
+      ...importItem,
+      clientName: importItem.clientName ?? clientLookup.get(importItem.clientId),
+    }));
+  }, [clientSummaries, imports]);
+
   const singleClient = clientSummaries.length === 1 ? clientSummaries[0] : null;
 
   useEffect(() => {
@@ -376,12 +384,12 @@ export default function Import() {
         {historyError && (
           <div className="px-6 text-sm text-red-600">{historyError}</div>
         )}
-        <ImportHistory
-          imports={imports}
-          isLoading={historyLoading}
-          page={page}
-          pageSize={pageSize}
-          total={total}
+      <ImportHistory
+        imports={importsWithClientNames}
+        isLoading={historyLoading}
+        page={page}
+        pageSize={pageSize}
+        total={total}
           onPageChange={(nextPage) => {
             setPage(nextPage);
             if (userId) {

@@ -40,10 +40,14 @@ export interface ClientFileRecord {
   id: string;
   fileUploadGuid: string;
   clientId: string;
+  clientName?: string;
   insertedBy?: string;
+  importedBy?: string;
   fileName: string;
   fileStorageUri: string;
   status: ImportStatus;
+  insertedDttm?: string;
+  timestamp?: string;
   period: string;
   glPeriodStart?: string;
   glPeriodEnd?: string;
@@ -67,7 +71,9 @@ export interface NewClientFileRecord {
 interface RawClientFileRow {
   fileUploadGuid: string;
   clientId: string;
+  clientName?: string;
   insertedBy?: string;
+  insertedDttm?: string | Date;
   sourceFileName: string;
   fileStorageUri: string;
   fileStatus: string;
@@ -77,15 +83,56 @@ interface RawClientFileRow {
 }
 
 const parseDate = (value: unknown): string | undefined => {
-  if (typeof value === 'string') {
-    return value;
+  if (!value) {
+    return undefined;
   }
 
   if (value instanceof Date) {
-    return value.toISOString();
+    return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
   }
 
-  return undefined;
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return undefined;
+  }
+
+  const stringValue = String(value).trim();
+  const normalizedValue =
+    /\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(stringValue)
+      ? `${stringValue.replace(' ', 'T')}Z`
+      : stringValue;
+
+  const parsed = new Date(normalizedValue);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed.toISOString();
+};
+
+const normalizeMonth = (value?: unknown): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const stringValue = value instanceof Date ? value.toISOString() : String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(stringValue.trim());
+
+  if (match) {
+    const [, year, month] = match;
+    return `${year}-${month}`;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(stringValue);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  const year = parsed.getUTCFullYear();
+  const month = parsed.getUTCMonth() + 1;
+
+  return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
 const buildPeriodLabel = (
@@ -108,17 +155,25 @@ const buildPeriodLabel = (
 };
 
 const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
+  const insertedDttm = parseDate(row.insertedDttm);
+  const normalizedStart = normalizeMonth(row.glPeriodStart);
+  const normalizedEnd = normalizeMonth(row.glPeriodEnd);
+
   return {
     id: row.fileUploadGuid,
     fileUploadGuid: row.fileUploadGuid,
     clientId: row.clientId,
+    clientName: row.clientName,
     insertedBy: row.insertedBy,
+    importedBy: row.insertedBy,
     fileName: row.sourceFileName,
     fileStorageUri: row.fileStorageUri,
     status: coerceImportStatus(row.fileStatus),
-    glPeriodStart: row.glPeriodStart,
-    glPeriodEnd: row.glPeriodEnd,
-    period: buildPeriodLabel(row.glPeriodStart, row.glPeriodEnd),
+    insertedDttm,
+    timestamp: insertedDttm ?? parseDate(row.lastStepCompletedDttm),
+    glPeriodStart: normalizedStart,
+    glPeriodEnd: normalizedEnd,
+    period: buildPeriodLabel(normalizedStart, normalizedEnd),
     lastStepCompletedDttm: parseDate(row.lastStepCompletedDttm),
   };
 };
@@ -135,6 +190,7 @@ export const saveClientFileMetadata = async (
 
   const insertResult = await runQuery<{
     file_upload_guid: string;
+    inserted_dttm?: string | Date;
   }>(
     `INSERT INTO ml.CLIENT_FILES (
       CLIENT_ID,
@@ -147,7 +203,8 @@ export const saveClientFileMetadata = async (
       FILE_STATUS,
       LAST_STEP_COMPLETED_DTTM
     )
-    OUTPUT INSERTED.FILE_UPLOAD_GUID as file_upload_guid
+    OUTPUT INSERTED.FILE_UPLOAD_GUID as file_upload_guid,
+           INSERTED.INSERTED_DTTM as inserted_dttm
     VALUES (
       @clientId,
       @fileUploadGuid,
@@ -173,15 +230,19 @@ export const saveClientFileMetadata = async (
   );
 
   const persistedFileUploadGuid = insertResult.recordset?.[0]?.file_upload_guid ?? fileUploadGuid;
+  const insertedDttm = parseDate(insertResult.recordset?.[0]?.inserted_dttm);
 
   return {
     id: persistedFileUploadGuid,
     fileUploadGuid: persistedFileUploadGuid,
     clientId: record.clientId,
     insertedBy: record.insertedBy,
+    importedBy: record.insertedBy,
     fileName: record.sourceFileName,
     fileStorageUri: record.fileStorageUri,
     status,
+    insertedDttm,
+    timestamp: insertedDttm,
     glPeriodStart: record.glPeriodStart,
     glPeriodEnd: record.glPeriodEnd,
     period: buildPeriodLabel(record.glPeriodStart, record.glPeriodEnd),
@@ -248,7 +309,9 @@ export const listClientFiles = async (
     `SELECT
       cf.FILE_UPLOAD_GUID as fileUploadGuid,
       cf.CLIENT_ID as clientId,
+      client.CLIENT_NAME as clientName,
       cf.INSERTED_BY as insertedBy,
+      cf.INSERTED_DTTM as insertedDttm,
       cf.SOURCE_FILE_NAME as sourceFileName,
       cf.FILE_STORAGE_URI as fileStorageUri,
       cf.FILE_STATUS as fileStatus,
@@ -256,6 +319,7 @@ export const listClientFiles = async (
       cf.GL_PERIOD_END as glPeriodEnd,
       cf.LAST_STEP_COMPLETED_DTTM as lastStepCompletedDttm
     FROM ml.CLIENT_FILES cf
+    LEFT JOIN ML.V_CLIENT_OPERATIONS client ON client.CLIENT_ID = cf.CLIENT_ID
     ${clause}
     ORDER BY cf.LAST_STEP_COMPLETED_DTTM DESC
     OFFSET @offset ROWS
