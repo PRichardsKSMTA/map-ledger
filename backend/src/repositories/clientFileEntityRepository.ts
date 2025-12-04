@@ -3,8 +3,6 @@ import { runQuery } from '../utils/sqlClient';
 export interface ClientFileEntityRow {
   fileUploadGuid: string;
   entityId: number;
-  entityName?: string;
-  rowCount?: number;
   isSelected?: boolean;
   insertedDttm?: string;
   updatedDttm?: string;
@@ -27,8 +25,6 @@ const mapEntityRow = (
   row: Partial<{
     fileUploadGuid: string;
     entityId: number;
-    entityName: string | null;
-    rowCount: number | null;
     isSelected?: number | boolean | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
@@ -37,13 +33,6 @@ const mapEntityRow = (
 ): ClientFileEntityRow => ({
   fileUploadGuid: row.fileUploadGuid as string,
   entityId: Number(row.entityId),
-  entityName: row.entityName ?? undefined,
-  rowCount:
-    typeof row.rowCount === 'number'
-      ? row.rowCount
-      : Number.isFinite(Number(row.rowCount))
-        ? Number(row.rowCount)
-        : undefined,
   isSelected:
     row.isSelected === undefined || row.isSelected === null
       ? undefined
@@ -56,8 +45,6 @@ const mapEntityRow = (
 export interface NewClientFileEntityInput {
   fileUploadGuid: string;
   entityId: number;
-  entityName?: string;
-  rowCount?: number;
   isSelected?: boolean;
 }
 
@@ -67,40 +54,27 @@ export const insertClientFileEntity = async (
   const result = await runQuery<{
     fileUploadGuid: string;
     entityId: number;
-    entityName: string | null;
-    rowCount: number | null;
     isSelected: number | null;
     insertedDttm: string | Date | null;
   }>(
     `INSERT INTO ml.CLIENT_FILE_ENTITIES (
       FILE_UPLOAD_GUID,
       ENTITY_ID,
-      ENTITY_NAME,
-      ROW_COUNT,
       IS_SELECTED
     )
     OUTPUT
       INSERTED.FILE_UPLOAD_GUID as fileUploadGuid,
       INSERTED.ENTITY_ID as entityId,
-      INSERTED.ENTITY_NAME as entityName,
-      INSERTED.ROW_COUNT as rowCount,
       INSERTED.IS_SELECTED as isSelected,
       INSERTED.INSERTED_DTTM as insertedDttm
     VALUES (
       @fileUploadGuid,
       @entityId,
-      @entityName,
-      @rowCount,
       @isSelected
     )`,
     {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      entityName: input.entityName ?? null,
-      rowCount:
-        typeof input.rowCount === 'number' && Number.isFinite(input.rowCount)
-          ? input.rowCount
-          : null,
       isSelected: input.isSelected ?? null,
     }
   );
@@ -111,8 +85,6 @@ export const insertClientFileEntity = async (
     inserted ?? {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      entityName: input.entityName ?? null,
-      rowCount: input.rowCount ?? null,
       isSelected: input.isSelected ?? null,
       insertedDttm: null,
     }
@@ -122,8 +94,6 @@ export const insertClientFileEntity = async (
 export interface ClientFileEntityUpdate {
   fileUploadGuid: string;
   entityId: number;
-  entityName?: string;
-  rowCount?: number;
   isSelected?: boolean;
   updatedBy?: string;
 }
@@ -134,8 +104,6 @@ export const updateClientFileEntity = async (
   const result = await runQuery<{
     fileUploadGuid: string;
     entityId: number;
-    entityName: string | null;
-    rowCount: number | null;
     isSelected: number | null;
     insertedDttm: string | Date | null;
     updatedDttm: string | Date | null;
@@ -143,16 +111,12 @@ export const updateClientFileEntity = async (
   }>(
     `UPDATE ml.CLIENT_FILE_ENTITIES
     SET
-      ENTITY_NAME = @entityName,
-      ROW_COUNT = @rowCount,
       IS_SELECTED = @isSelected,
       UPDATED_DTTM = CURRENT_TIMESTAMP,
       UPDATED_BY = @updatedBy
     OUTPUT
       INSERTED.FILE_UPLOAD_GUID as fileUploadGuid,
       INSERTED.ENTITY_ID as entityId,
-      INSERTED.ENTITY_NAME as entityName,
-      INSERTED.ROW_COUNT as rowCount,
       INSERTED.IS_SELECTED as isSelected,
       INSERTED.INSERTED_DTTM as insertedDttm,
       INSERTED.UPDATED_DTTM as updatedDttm,
@@ -163,11 +127,6 @@ export const updateClientFileEntity = async (
     {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      entityName: input.entityName ?? null,
-      rowCount:
-        typeof input.rowCount === 'number' && Number.isFinite(input.rowCount)
-          ? input.rowCount
-          : null,
       isSelected: input.isSelected ?? null,
       updatedBy: input.updatedBy ?? null,
     }
@@ -208,8 +167,6 @@ export const listClientFileEntities = async (
   const result = await runQuery<{
     fileUploadGuid: string;
     entityId: number;
-    entityName: string | null;
-    rowCount: number | null;
     isSelected?: number | boolean | null;
     insertedDttm?: string | Date | null;
     updatedDttm?: string | Date | null;
@@ -218,8 +175,6 @@ export const listClientFileEntities = async (
     `SELECT
       FILE_UPLOAD_GUID as fileUploadGuid,
       ENTITY_ID as entityId,
-      ENTITY_NAME as entityName,
-      ROW_COUNT as rowCount,
       IS_SELECTED as isSelected,
       INSERTED_DTTM as insertedDttm,
       UPDATED_DTTM as updatedDttm,

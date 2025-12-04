@@ -30,9 +30,6 @@ export interface ClientFileSheet {
 
 export interface ClientFileEntity {
   entityId?: number;
-  entityName: string;
-  displayName?: string;
-  rowCount: number;
   isSelected?: boolean;
   insertedDttm?: string;
   updatedAt?: string;
@@ -292,7 +289,7 @@ export const listClientFiles = async (
     updatedAt?: string | Date;
     updatedBy?: string;
   }>(
-    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, ROW_COUNT as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, SHEET_NAME as sheetName, IS_SELECTED as isSelected, FIRST_DATA_ROW_INDEX as firstDataRowIndex, [ROW_COUNT] as rowCount, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_SHEETS
     WHERE FILE_UPLOAD_GUID IN (${sheetPlaceholders})`,
     sheetParameters
@@ -331,14 +328,12 @@ export const listClientFiles = async (
   const entitiesResult = await runQuery<{
     fileUploadGuid: string;
     entityId?: number;
-    entityName: string;
-    rowCount: number;
     isSelected?: number | boolean;
     insertedDttm?: string | Date | null;
     updatedAt?: string | Date | null;
     updatedBy?: string | null;
   }>(
-    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, ENTITY_ID as entityId, ENTITY_NAME as entityName, ROW_COUNT as rowCount, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
+    `SELECT FILE_UPLOAD_GUID as fileUploadGuid, ENTITY_ID as entityId, IS_SELECTED as isSelected, INSERTED_DTTM as insertedDttm, UPDATED_DTTM as updatedAt, UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_ENTITIES
     WHERE FILE_UPLOAD_GUID IN (${entityPlaceholders})`,
     entityParameters
@@ -351,9 +346,6 @@ export const listClientFiles = async (
       entityId: Number.isFinite(entity.entityId)
         ? (entity.entityId as number)
         : undefined,
-      entityName: entity.entityName,
-      displayName: entity.entityName,
-      rowCount: entity.rowCount,
       isSelected:
         entity.isSelected === undefined || entity.isSelected === null
           ? undefined

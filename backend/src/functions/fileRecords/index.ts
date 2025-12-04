@@ -6,6 +6,14 @@ import {
   FileRecordInput,
   FileRecordRow,
 } from '../../repositories/fileRecordRepository';
+import {
+  insertClientFileSheet,
+  NewClientFileSheetInput,
+} from '../../repositories/clientFileSheetRepository';
+import {
+  insertClientFileEntity,
+  NewClientFileEntityInput,
+} from '../../repositories/clientFileEntityRepository';
 import { buildErrorResponse } from '../datapointConfigs/utils';
 import {
   detectGlMonthFromRow,
@@ -21,6 +29,7 @@ interface IngestEntity {
   id?: string;
   name: string;
   aliases?: string[];
+  isSelected?: boolean;
 }
 
 interface IngestSheet {
@@ -386,6 +395,66 @@ const buildRecords = (payload: ResolvedIngestPayload): FileRecordInput[] => {
     .flatMap((sheet) => deriveRecordsFromSheet(sheet, headerLookup, entities, payload.fileName));
 };
 
+const buildSheetInserts = (
+  payload: ResolvedIngestPayload,
+): NewClientFileSheetInput[] =>
+  payload.sheets.map((sheet) => ({
+    fileUploadGuid: payload.fileUploadGuid,
+    sheetName: sheet.sheetName,
+    isSelected: sheet.isSelected,
+    firstDataRowIndex:
+      typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
+        ? sheet.firstDataRowIndex
+        : undefined,
+    rowCount: sheet.rows.length,
+  }));
+
+const toEntityId = (value?: string | null): number | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildEntityInserts = (
+  payload: ResolvedIngestPayload,
+  records: FileRecordInput[],
+): NewClientFileEntityInput[] => {
+  const entityLookup = new Map<string, IngestEntity>();
+  (payload.entities ?? []).forEach((entity) => {
+    const key = entity.id ?? entity.name;
+    if (key) {
+      entityLookup.set(key, entity);
+    }
+  });
+
+  const aggregated = new Map<number, NewClientFileEntityInput>();
+  const recordEntityKeys = records
+    .map((record) => (record.entityId !== null && record.entityId !== undefined ? String(record.entityId) : null))
+    .filter((key): key is string => key !== null);
+  const candidateKeys = new Set<string>([...recordEntityKeys, ...entityLookup.keys()]);
+
+  candidateKeys.forEach((key) => {
+    const entityId = toEntityId(key);
+    if (entityId === null) {
+      return;
+    }
+
+    const details = entityLookup.get(key);
+    const updated: NewClientFileEntityInput = {
+      fileUploadGuid: payload.fileUploadGuid,
+      entityId,
+      isSelected: details?.isSelected,
+    };
+
+    aggregated.set(entityId, updated);
+  });
+
+  return Array.from(aggregated.values());
+};
+
 export const ingestFileRecordsHandler = async (
   request: HttpRequest,
   context: InvocationContext,
@@ -419,6 +488,17 @@ export const ingestFileRecordsHandler = async (
       recordCount: records.length,
       sheetCount: payload.sheets.length,
     });
+
+    const sheetInserts = buildSheetInserts(resolvedPayload);
+    const entityInserts = buildEntityInserts(resolvedPayload, records);
+
+    if (sheetInserts.length > 0) {
+      await Promise.all(sheetInserts.map((sheet) => insertClientFileSheet(sheet)));
+    }
+
+    if (entityInserts.length > 0) {
+      await Promise.all(entityInserts.map((entity) => insertClientFileEntity(entity)));
+    }
 
     const inserted = await insertFileRecords(resolvedPayload.fileUploadGuid, records);
 
