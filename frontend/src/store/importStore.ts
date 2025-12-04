@@ -49,6 +49,7 @@ interface ImportState {
     pageSize?: number;
   }) => Promise<void>;
   recordImport: (payload: ImportPayload) => Promise<Import | null>;
+  deleteImport: (importId: string) => Promise<void>;
   setPage: (page: number) => void;
   reset: () => void;
 }
@@ -193,6 +194,39 @@ export const useImportStore = create<ImportState>((set, get) => ({
       logError('Unable to persist import metadata', error);
       set({ error: error instanceof Error ? error.message : 'Failed to save import' });
       return null;
+    }
+  },
+  deleteImport: async (importId) => {
+    if (!importId) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/client-files/${importId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete import (${response.status})`);
+      }
+
+      set((state) => {
+        const remainingImports = state.imports.filter(
+          (item) => item.id !== importId && item.fileUploadGuid !== importId
+        );
+
+        return {
+          imports: remainingImports,
+          total: Math.max(0, state.total - 1),
+          page: state.page,
+        };
+      });
+    } catch (error) {
+      logError('Unable to delete import', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to delete import',
+      });
+      throw error;
     }
   },
   reset: () => set({ ...initialState }),
