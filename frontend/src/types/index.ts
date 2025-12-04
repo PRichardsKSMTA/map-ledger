@@ -205,6 +205,7 @@ export interface ImportEntity {
 export interface Import {
   id: string;
   clientId: string;
+  clientName?: string;
   fileName: string;
   fileSize: number;
   fileType: string;
@@ -217,6 +218,7 @@ export interface Import {
   status: 'completed' | 'failed';
   rowCount?: number;
   importedBy: string;
+  insertedDttm?: string;
   userId: string;
   uploadContext?: Record<string, unknown>;
   sheets?: ImportSheet[];
