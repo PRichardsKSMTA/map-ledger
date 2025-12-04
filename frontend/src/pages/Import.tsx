@@ -85,10 +85,13 @@ export default function Import() {
       return;
     }
 
+    const importToDelete = importsWithClientNames.find((item) => item.id === importId);
+    const fileName = importToDelete?.fileName ?? 'Import';
+
     try {
       await deleteImport(importId);
       setError(null);
-      setSuccess('Import deleted successfully');
+      setSuccess(`File '${fileName}' deleted successfully`);
     } catch (deleteError) {
       setSuccess(null);
       setError(

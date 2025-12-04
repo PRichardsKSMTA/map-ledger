@@ -282,7 +282,8 @@ export const softDeleteClientFile = async (
   const result = await runQuery(
     `UPDATE ml.CLIENT_FILES
     SET IS_DELETED = 1,
-        DELETED_DTTM = CURRENT_TIMESTAMP
+        DELETED_DTTM = CURRENT_TIMESTAMP,
+        FILE_STATUS = 'deleted'
     WHERE FILE_UPLOAD_GUID = @fileUploadGuid`,
     { fileUploadGuid }
   );
