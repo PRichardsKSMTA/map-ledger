@@ -12,8 +12,6 @@ import { getFirstStringValue } from '../../utils/requestParsers';
 interface ClientFileEntityPayload {
   fileUploadGuid?: string;
   entityId?: number;
-  entityName?: string;
-  rowCount?: number;
   isSelected?: boolean;
   updatedBy?: string;
 }
@@ -76,8 +74,6 @@ const buildPayload = (
     normalizeString(body.fileUploadGuid) ??
     normalizeString(params?.fileUploadGuid);
   const entityId = parseNumber(body.entityId ?? params?.entityId);
-  const entityName = normalizeString(body.entityName);
-  const rowCount = parseNumber(body.rowCount);
   const isSelected = parseBoolean(body.isSelected);
   const updatedBy = normalizeString(body.updatedBy);
 
@@ -101,14 +97,6 @@ const buildPayload = (
     fileUploadGuid: fileUploadGuid as string,
     entityId: entityId as number,
   };
-
-  if (entityName !== undefined) {
-    payload.entityName = entityName;
-  }
-
-  if (rowCount !== undefined) {
-    payload.rowCount = rowCount;
-  }
 
   if (isSelected !== undefined) {
     payload.isSelected = isSelected;
@@ -163,8 +151,6 @@ export const createClientFileEntityHandler = async (
     const created = await insertClientFileEntity({
       fileUploadGuid: payload.fileUploadGuid as string,
       entityId: payload.entityId as number,
-      entityName: payload.entityName,
-      rowCount: payload.rowCount,
       isSelected: payload.isSelected,
     });
 
@@ -191,8 +177,6 @@ export const updateClientFileEntityHandler = async (
     const updated = await updateClientFileEntity({
       fileUploadGuid: payload.fileUploadGuid as string,
       entityId: payload.entityId as number,
-      entityName: payload.entityName,
-      rowCount: payload.rowCount,
       isSelected: payload.isSelected,
       updatedBy: payload.updatedBy,
     });
