@@ -1,0 +1,232 @@
+"filename", "language", "Markdown", "JSON", "HTML", "JavaScript", "Python", "TypeScript", "JSON with Comments", "TypeScript JSX", "CSS", "YAML", "comment", "blank", "total"
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\.github\workflows\azure-static-web-apps-gray-tree-0c1f9910f.yml", "YAML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 3, 4, 65
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\AGENTS.md", "Markdown", 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 13
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\README.md", "Markdown", 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18, 52
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\ai-mapping-agent\app.py", "Python", 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 5, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\ai-mapping-agent\utils\__init__.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\ai-mapping-agent\utils\ui_utils.py", "Python", 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 7, 24
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\.eslintrc.json", "JSON", 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\.prettierrc", "JSON", 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 5
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\AGENTS.md", "Markdown", 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\README.md", "Markdown", 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 47
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\eslint.config.cjs", "JavaScript", 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 1, 13
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\host.json", "JSON", 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\jest.config.cjs", "JavaScript", 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 5
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\package.json", "JSON", 0, 26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 26
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\AGENTS.md", "Markdown", 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 28
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\GLAccountRaw.ts", "TypeScript", 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 8, 27
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\GLUpload.ts", "TypeScript", 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 3, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\Industry.ts", "TypeScript", 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 3, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\MappingSuggestion.ts", "TypeScript", 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 3, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\entities\MasterClient.ts", "TypeScript", 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 3, 11
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\AGENTS.md", "Markdown", 133, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 140
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\aiGenerate\index.ts", "TypeScript", 0, 0, 0, 0, 0, 62, 0, 0, 0, 0, 0, 11, 73
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\chartOfAccounts\index.ts", "TypeScript", 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 4, 27
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\clientEntities\index.ts", "TypeScript", 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 6, 34
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\clientFileEntities\index.ts", "TypeScript", 0, 0, 0, 0, 0, 210, 0, 0, 0, 0, 0, 47, 257
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\clientFileSheets\index.ts", "TypeScript", 0, 0, 0, 0, 0, 239, 0, 0, 0, 0, 0, 56, 295
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\clientFiles\index.ts", "TypeScript", 0, 0, 0, 0, 0, 189, 0, 0, 0, 0, 0, 34, 223
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\clientHeaderMappings\index.ts", "TypeScript", 0, 0, 0, 0, 0, 204, 0, 0, 0, 0, 0, 33, 237
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\datapointConfigs\create.ts", "TypeScript", 0, 0, 0, 0, 0, 37, 0, 0, 0, 0, 0, 9, 46
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\datapointConfigs\list.ts", "TypeScript", 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 9, 51
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\datapointConfigs\update.ts", "TypeScript", 0, 0, 0, 0, 0, 61, 0, 0, 0, 0, 0, 11, 72
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\datapointConfigs\utils.ts", "TypeScript", 0, 0, 0, 0, 0, 67, 0, 0, 0, 0, 0, 5, 72
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\dbPing\index.ts", "TypeScript", 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 12, 77
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\fileRecords\index.ts", "TypeScript", 0, 0, 0, 0, 0, 457, 0, 0, 0, 0, 0, 94, 551
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\glUpload\index.ts", "TypeScript", 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\health\index.ts", "TypeScript", 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\index.ts", "TypeScript", 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 3, 23
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\industries\index.ts", "TypeScript", 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\mappingSuggest\index.ts", "TypeScript", 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\masterclients\index.ts", "TypeScript", 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\functions\userClients\index.ts", "TypeScript", 0, 0, 0, 0, 0, 475, 0, 0, 0, 0, 0, 67, 542
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\http.ts", "TypeScript", 0, 0, 0, 0, 0, 80, 0, 0, 0, 0, 2, 19, 101
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\openapi.ts", "TypeScript", 0, 0, 0, 0, 0, 54, 0, 0, 0, 0, 0, 2, 56
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\AGENTS.md", "Markdown", 133, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 140
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\chartOfAccountsRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 38, 0, 0, 0, 0, 0, 6, 44
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\clientEntityRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 49, 0, 0, 0, 0, 0, 9, 58
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\clientFileEntityRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 171, 0, 0, 0, 0, 0, 19, 190
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\clientFileRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 409, 0, 0, 0, 0, 0, 59, 468
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\clientFileSheetRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 236, 0, 0, 0, 0, 0, 19, 255
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\clientHeaderMappingRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 226, 0, 0, 0, 0, 1, 31, 258
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\datapointConfigurationRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 340, 0, 0, 0, 0, 0, 41, 381
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\fileRecordRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 175, 0, 0, 0, 0, 1, 22, 198
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\userClientRepository.ts", "TypeScript", 0, 0, 0, 0, 0, 450, 0, 0, 0, 0, 4, 82, 536
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\repositories\userClientRepositoryFallback.ts", "TypeScript", 0, 0, 0, 0, 0, 80, 0, 0, 0, 0, 0, 4, 84
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\types\mssql.d.ts", "TypeScript", 0, 0, 0, 0, 0, 41, 0, 0, 0, 0, 0, 8, 49
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\utils\auth.ts", "TypeScript", 0, 0, 0, 0, 0, 61, 0, 0, 0, 0, 0, 9, 70
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\utils\glMonth.ts", "TypeScript", 0, 0, 0, 0, 0, 207, 0, 0, 0, 0, 11, 32, 250
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\utils\openai.ts", "TypeScript", 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1, 5
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\utils\requestParsers.ts", "TypeScript", 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 4, 31
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\src\utils\sqlClient.ts", "TypeScript", 0, 0, 0, 0, 0, 396, 0, 0, 0, 0, 3, 55, 454
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\chartOfAccountsRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 66, 0, 0, 0, 0, 0, 10, 76
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\clientFileRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 107, 0, 0, 0, 0, 0, 24, 131
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\clientFilesFunction.test.ts", "TypeScript", 0, 0, 0, 0, 0, 46, 0, 0, 0, 0, 0, 14, 60
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\clientHeaderMappingRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 253, 0, 0, 0, 0, 0, 33, 286
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\datapointConfigurationRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 241, 0, 0, 0, 0, 0, 27, 268
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\fileRecordRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 13, 113
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\fileRecordsFunction.test.ts", "TypeScript", 0, 0, 0, 0, 0, 78, 0, 0, 0, 0, 0, 12, 90
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tests\userClientRepository.test.ts", "TypeScript", 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 21, 127
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\backend\tsconfig.json", "JSON with Comments", 0, 0, 0, 0, 0, 0, 22, 0, 0, 0, 0, 0, 22
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\docs\azure-sql-integration-guide.md", "Markdown", 96, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 110
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\docs\map-ledger-mapping-ui-prototype.html", "HTML", 0, 0, 536, 0, 0, 0, 0, 0, 0, 0, 1, 26, 563
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\docs\runbook.html", "HTML", 0, 0, 833, 0, 0, 0, 0, 0, 0, 0, 0, 12, 845
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\docs\runbook2.html", "HTML", 0, 0, 621, 0, 0, 0, 0, 0, 0, 0, 2, 36, 659
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\docs\runbook_detailed.html", "HTML", 0, 0, 1410, 0, 0, 0, 0, 0, 0, 0, 24, 44, 1478
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\.eslintrc.json", "JSON", 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 13
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\.prettierrc", "JSON", 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 5
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\.stylelintrc.cjs", "JavaScript", 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 1, 8
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\AGENTS.md", "Markdown", 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 14
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\eslint.config.js", "JavaScript", 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 0, 2, 31
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\index.html", "HTML", 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 1, 13
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\jest.config.cjs", "JavaScript", 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 17
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\package.json", "JSON", 0, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 55
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\postcss.config.js", "JavaScript", 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 1, 7
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\App.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 193, 0, 0, 0, 12, 205
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\AGENTS.md", "Markdown", 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\AuthErrorAlert.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 2, 12
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\Layout.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 1, 19
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\Navbar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 91, 0, 0, 0, 15, 106
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\Sidebar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 70, 0, 0, 0, 11, 81
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ThemeProvider.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 11, 48
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\ColumnMatcher.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 175, 0, 0, 0, 22, 197
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\ExcludeAccounts.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 3, 9, 93
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\ImportForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 689, 0, 0, 6, 81, 776
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\ImportHistory.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 435, 0, 0, 0, 40, 475
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\PreviewTable.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 125, 0, 0, 0, 16, 141
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\import\TemplateGuide.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 5, 68
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\integrations\ConnectionStatus.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 2, 39
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\integrations\IntegrationCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 3, 57
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\integrations\SetupWizard.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 4, 72
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\integrations\StatusBadge.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 3, 23
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\BatchExclude.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 3, 55
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\BatchMapModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 210, 0, 0, 0, 16, 226
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionBatchModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 182, 0, 0, 0, 15, 197
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionDynamicAllocationRow.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 515, 0, 0, 0, 37, 552
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionPresetModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 9, 116
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionSplitRow.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 342, 0, 0, 0, 30, 372
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionTable.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 658, 0, 0, 0, 49, 707
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DistributionToolbar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 10, 171
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\DynamicAllocationRow.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 518, 0, 0, 0, 36, 554
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\EntityTabs.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 46, 0, 0, 0, 6, 52
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingEntityCell.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 0, 16, 136
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingExclusionCell.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 11, 69
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingHeader.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 98, 0, 0, 0, 7, 105
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingMonthHelper.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 55, 0, 0, 0, 4, 59
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingSplitRow.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 351, 0, 0, 0, 32, 383
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingTable.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 830, 0, 0, 0, 52, 882
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MappingToolbar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 267, 0, 0, 0, 10, 277
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MonthScopeIndicator.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 2, 11, 65
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\MonthScopeSelector.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 162, 0, 0, 0, 13, 175
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\PresetModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 9, 90
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\RatioAllocationBuilder.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 997, 0, 0, 0, 53, 1050
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\RatioAllocationManager.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 7, 67
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\ReconcilePane.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 127, 0, 0, 0, 13, 140
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\ReviewPane.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 376, 0, 0, 0, 22, 398
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\StepTabs.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 6, 60
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\SummaryCards.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 103, 0, 0, 0, 8, 111
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\mapping\presets.ts", "TypeScript", 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 1, 7
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\DatapointForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 193, 0, 0, 0, 19, 212
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\DatapointList.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 168, 0, 0, 0, 11, 179
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\FormulaBuilder.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 117, 0, 0, 2, 14, 133
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\TemplateForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 239, 0, 0, 0, 19, 258
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\TemplateImportForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 90, 0, 0, 0, 5, 95
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\templates\TemplateList.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 80, 0, 0, 0, 2, 82
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ui\Button.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 50, 0, 0, 0, 5, 55
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ui\Card.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 47, 0, 0, 0, 8, 55
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ui\Input.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 2, 28
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ui\MultiSelect.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 5, 46
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\ui\Select.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 2, 28
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\users\UserForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 99, 0, 0, 0, 12, 111
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\components\users\UserList.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 5, 111
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\data\coaSeeds.ts", "TypeScript", 0, 0, 0, 0, 0, 76, 0, 0, 0, 0, 0, 4, 80
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\data\standardChartOfAccounts.ts", "TypeScript", 0, 0, 0, 0, 0, 195, 0, 0, 0, 0, 0, 13, 208
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\index.css", "CSS", 0, 0, 0, 0, 0, 0, 0, 0, 71, 0, 4, 16, 91
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\main.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 1, 5, 36
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\AGENTS.md", "Markdown", 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 22
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Clients.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 1, 16
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Dashboard.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 3, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Import.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 386, 0, 0, 1, 45, 432
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Integrations.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 72, 0, 0, 0, 3, 75
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Login.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 1, 6, 64
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Mapping.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 0, 11, 131
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Settings.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 1, 16
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Templates.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 193, 0, 0, 0, 13, 206
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\Users.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 85, 0, 0, 0, 6, 91
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\integrations\QuickBooks.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 340, 0, 0, 4, 18, 362
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\pages\integrations\SageIntacct.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 505, 0, 0, 3, 27, 535
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\services\chartOfAccountsService.ts", "TypeScript", 0, 0, 0, 0, 0, 117, 0, 0, 0, 0, 0, 16, 133
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\setupTests.ts", "TypeScript", 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\AGENTS.md", "Markdown", 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\authStore.ts", "TypeScript", 0, 0, 0, 0, 0, 73, 0, 0, 0, 0, 0, 9, 82
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\chartOfAccountsStore.ts", "TypeScript", 0, 0, 0, 0, 0, 142, 0, 0, 0, 0, 0, 19, 161
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\clientEntityStore.ts", "TypeScript", 0, 0, 0, 0, 0, 109, 0, 0, 0, 0, 2, 20, 131
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\clientStore.ts", "TypeScript", 0, 0, 0, 0, 0, 45, 0, 0, 0, 0, 1, 3, 49
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\distributionSelectionStore.ts", "TypeScript", 0, 0, 0, 0, 0, 22, 0, 0, 0, 0, 0, 2, 24
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\distributionStore.ts", "TypeScript", 0, 0, 0, 0, 0, 231, 0, 0, 0, 0, 0, 12, 243
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\importStore.ts", "TypeScript", 0, 0, 0, 0, 0, 200, 0, 0, 0, 0, 2, 30, 232
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\mappingSelectionStore.ts", "TypeScript", 0, 0, 0, 0, 0, 22, 0, 0, 0, 0, 0, 3, 25
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\mappingStore.ts", "TypeScript", 0, 0, 0, 0, 0, 1700, 0, 0, 0, 0, 4, 240, 1944
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\organizationStore.ts", "TypeScript", 0, 0, 0, 0, 0, 343, 0, 0, 0, 0, 4, 39, 386
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\ratioAllocationStore.ts", "TypeScript", 0, 0, 0, 0, 0, 1207, 0, 0, 0, 0, 19, 108, 1334
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\templateStore.ts", "TypeScript", 0, 0, 0, 0, 0, 97, 0, 0, 0, 0, 0, 3, 100
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\themeStore.ts", "TypeScript", 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 12, 70
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\store\userStore.ts", "TypeScript", 0, 0, 0, 0, 0, 46, 0, 0, 0, 0, 1, 3, 50
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\AGENTS.md", "Markdown", 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 17
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\BatchMapModal.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 4, 32
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\DistributionTable.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 109, 0, 0, 0, 20, 129
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\ExcludeAccounts.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 3, 21
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\ImportForm.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 43, 0, 0, 0, 4, 47
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\ImportNavigation.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 162, 0, 0, 0, 19, 181
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\Layout.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 3, 24
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\MappingLayout.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 11, 139
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\MappingSplitRow.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 16, 113
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\MappingTable.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 285, 0, 0, 0, 49, 334
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\MappingTableStatus.test.ts", "TypeScript", 0, 0, 0, 0, 0, 32, 0, 0, 0, 0, 3, 11, 46
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\ReviewPane.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 127, 0, 0, 0, 13, 140
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\__mocks__\fileMock.ts", "TypeScript", 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 2
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\dynamicAllocation.test.ts", "TypeScript", 0, 0, 0, 0, 0, 47, 0, 0, 0, 0, 0, 10, 57
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\extractDateFromText.test.ts", "TypeScript", 0, 0, 0, 0, 0, 140, 0, 0, 0, 0, 1, 23, 164
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\importStore.test.ts", "TypeScript", 0, 0, 0, 0, 0, 77, 0, 0, 0, 0, 0, 10, 87
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\loginFlows.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 122, 0, 0, 0, 18, 140
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\mappingStore.test.ts", "TypeScript", 0, 0, 0, 0, 0, 439, 0, 0, 0, 0, 3, 40, 482
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\organizationStore.test.ts", "TypeScript", 0, 0, 0, 0, 0, 107, 0, 0, 0, 0, 0, 10, 117
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\parseCurrencyValue.test.ts", "TypeScript", 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 4, 31
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\parseTrialBalanceWorkbook.test.ts", "TypeScript", 0, 0, 0, 0, 0, 67, 0, 0, 0, 0, 0, 12, 79
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\ratioAllocationStore.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 710, 0, 0, 0, 68, 778
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\setupTests.ts", "TypeScript", 0, 0, 0, 0, 0, 52, 0, 0, 0, 0, 0, 7, 59
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\testUtils.ts", "TypeScript", 0, 0, 0, 0, 0, 378, 0, 0, 0, 0, 2, 46, 426
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\tests\userEvent.ts", "TypeScript", 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 6, 21
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\types\AGENTS.md", "Markdown", 47, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 54
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\types\index.ts", "TypeScript", 0, 0, 0, 0, 0, 494, 0, 0, 0, 0, 16, 61, 571
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\AGENTS.md", "Markdown", 38, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 50
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\allocationCalculationService.ts", "TypeScript", 0, 0, 0, 0, 0, 43, 0, 0, 0, 0, 5, 8, 56
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\buildMappingRowsFromImport.ts", "TypeScript", 0, 0, 0, 0, 0, 134, 0, 0, 0, 0, 0, 17, 151
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\buildTemplateFromRows.ts", "TypeScript", 0, 0, 0, 0, 0, 71, 0, 0, 0, 0, 0, 10, 81
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\clientHeaderMappings.ts", "TypeScript", 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 14, 79
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\currency.ts", "TypeScript", 0, 0, 0, 0, 0, 29, 0, 0, 0, 0, 0, 7, 36
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\detectClientEntities.ts", "TypeScript", 0, 0, 0, 0, 0, 130, 0, 0, 0, 0, 0, 22, 152
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\dynamicAllocation.ts", "TypeScript", 0, 0, 0, 0, 0, 304, 0, 0, 0, 0, 12, 42, 358
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\dynamicExclusions.ts", "TypeScript", 0, 0, 0, 0, 0, 196, 0, 0, 0, 0, 0, 22, 218
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\env.ts", "TypeScript", 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 2, 26
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\extractDateFromText.ts", "TypeScript", 0, 0, 0, 0, 0, 173, 0, 0, 0, 0, 47, 23, 243
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\file.ts", "TypeScript", 0, 0, 0, 0, 0, 42, 0, 0, 0, 0, 0, 11, 53
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\getClientTemplateMapping.ts", "TypeScript", 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 7, 47
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\msal.ts", "TypeScript", 0, 0, 0, 0, 0, 51, 0, 0, 0, 0, 3, 9, 63
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\parseCOATemplateFile.ts", "TypeScript", 0, 0, 0, 0, 0, 67, 0, 0, 0, 0, 0, 6, 73
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\parseCurrencyValue.ts", "TypeScript", 0, 0, 0, 0, 0, 34, 0, 0, 0, 0, 0, 14, 48
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\parseTrialBalanceWorkbook.ts", "TypeScript", 0, 0, 0, 0, 0, 160, 0, 0, 0, 0, 1, 37, 198
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\period.ts", "TypeScript", 0, 0, 0, 0, 0, 54, 0, 0, 0, 0, 0, 16, 70
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\scroll.ts", "TypeScript", 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 7, 27
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\slugify.ts", "TypeScript", 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 4, 19
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\suggestColumnMatch.ts", "TypeScript", 0, 0, 0, 0, 0, 33, 0, 0, 0, 0, 0, 6, 39
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\utils\targetScoaOptions.ts", "TypeScript", 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 7, 30
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\src\vite-env.d.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\staticwebapp.config.json", "JSON", 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\tailwind.config.js", "JavaScript", 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 1, 0, 30
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\tsconfig.app.json", "JSON", 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 25
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\tsconfig.json", "JSON with Comments", 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 1, 8
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\tsconfig.node.json", "JSON", 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 23
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\frontend\vite.config.ts", "TypeScript", 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 3, 20
+"c:\Users\pete.richards\OneDrive - KSM Business Services Inc\Desktop\projects\map-ledger\package.json", "JSON", 0, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 22
+"Total", "-", 621, 181, 3412, 104, 23, 14642, 29, 13715, 71, 58, 211, 3578, 36645
