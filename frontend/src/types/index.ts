@@ -226,7 +226,8 @@ export interface Import {
 }
 
 export interface FileRecord {
-  fileUploadId: string;
+  fileUploadGuid: string;
+  fileUploadId?: string;
   recordId: string;
   accountId: string;
   accountName: string;
@@ -530,21 +531,13 @@ export interface GLAccountMappingRow {
 }
 
 export interface GLUpload {
-  id: string;
-  masterClientId: string;
-  uploadedBy: string;
+  id: number;
   fileName: string;
-  fileUrl: string;
-  operationIds?: string[];
-  allocationRules?: string;
-  uploadDate: string;
-  status: 'Uploaded' | 'Processing' | 'Processed' | 'Error';
-  errorMessage?: string;
 }
 
 export interface GLAccountRaw {
-  id: string;
-  glUploadId: string;
+  id: number;
+  glUpload: GLUpload;
   accountCode: string;
   description: string;
   debit?: number;
@@ -553,13 +546,8 @@ export interface GLAccountRaw {
 }
 
 export interface MappingSuggestion {
-  id: string;
-  glAccountRawId: string;
-  suggestedCOACode?: string;
-  suggestedCOADesc?: string;
-  confidenceScore?: number;
-  aiResponseJson?: string;
-  createdDate: string;
+  id: number;
+  description: string;
 }
 
 export interface FinalMapping {

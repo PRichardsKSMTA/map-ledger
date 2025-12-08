@@ -18,5 +18,12 @@ import './clientFileEntities';
 import './clientEntities';
 import './clientHeaderMappings';
 import './fileRecords';
+import './entityDistributionPresetDetails';
+import './entityAccountMappings';
+import './entityMappingPresetDetails';
+import './entityMappingPresets';
+import './entityScoaActivity';
+import './entityScoaDistribution';
+import './operationScoaActivity';
 
 export default app;

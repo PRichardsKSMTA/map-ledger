@@ -3,6 +3,7 @@
 Use these schemas when handling client-file, client-file-entities, client-file-sheets, client-header-mapping, file-records, and entity-mapping/distribution related payloads and database writes. The tables automatically stamp `INSERTED_DTTM` and default `IS_DELETED` to `0`; do not populate `UPDATED_DTTM`, `UPDATED_BY`, `IS_DELETED`, or `DELETED_DTTM` when inserting new rows. For the tables below, omit `INSERTED_DTTM` from insert statements so the timestamp is generated automatically.
 
 ## ml.CLIENT_FILES
+
 ```sql
 INSERT INTO ml.CLIENT_FILES (
     CLIENT_ID,
@@ -35,6 +36,7 @@ VALUES (
 ```
 
 ## ml.CLIENT_FILE_ENTITIES
+
 ```sql
 INSERT INTO ml.CLIENT_FILE_ENTITIES (
     FILE_UPLOAD_GUID,
@@ -55,6 +57,7 @@ VALUES (
 ```
 
 ## ml.CLIENT_FILE_SHEETS
+
 ```sql
 INSERT INTO ml.CLIENT_FILE_SHEETS (
     FILE_UPLOAD_GUID,
@@ -79,6 +82,7 @@ VALUES (
 ```
 
 ## ml.FILE_RECORDS
+
 ```sql
 INSERT INTO ml.FILE_RECORDS (
     FILE_UPLOAD_GUID,
@@ -117,6 +121,7 @@ VALUES (
 ```
 
 ## ml.CLIENT_HEADER_MAPPING
+
 ```sql
 INSERT INTO ml.CLIENT_HEADER_MAPPING (
     CLIENT_ID,
@@ -139,6 +144,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_ACCOUNT_MAPPING
+
 ```sql
 INSERT INTO ml.ENTITY_ACCOUNT_MAPPING (
     ENTITY_ID,
@@ -165,6 +171,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_ACCOUNTS
+
 ```sql
 INSERT INTO ml.ENTITY_ACCOUNTS (
     ENTITY_ID,
@@ -183,6 +190,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_DISTRIBUTION_PRESETS
+
 ```sql
 INSERT INTO ml.ENTITY_DISTRIBUTION_PRESETS (
     ENTITY_ID,
@@ -205,9 +213,10 @@ VALUES (
 ```
 
 ## ml.ENTITY_DISTRIBUTION_PRESET_DETAIL
+
 ```sql
 INSERT INTO ml.ENTITY_DISTRIBUTION_PRESET_DETAIL (
-    PRESET_ID,
+    PRESET_GUID,
     OPERATION_CD,
     IS_CALCULATED,
     SPECIFIED_PCT,
@@ -225,6 +234,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_MAPPING_PRESETS
+
 ```sql
 INSERT INTO ml.ENTITY_MAPPING_PRESETS (
     ENTITY_ID,
@@ -239,9 +249,10 @@ VALUES (
 ```
 
 ## ml.ENTITY_MAPPING_PRESET_DETAIL
+
 ```sql
 INSERT INTO ml.ENTITY_MAPPING_PRESET_DETAIL (
-    PRESET_ID,
+    PRESET_GUID,
     BASIS_DATAPOINT,
     TARGET_DATAPOINT,
     IS_CALCULATED,
@@ -261,6 +272,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_SCOA_ACTIVITY
+
 ```sql
 INSERT INTO ml.ENTITY_SCOA_ACTIVITY (
     ENTITY_ID,
@@ -281,6 +293,7 @@ VALUES (
 ```
 
 ## ml.ENTITY_SCOA_DISTRIBUTION
+
 ```sql
 INSERT INTO ml.ENTITY_SCOA_DISTRIBUTION (
     ENTITY_ID,
@@ -303,6 +316,7 @@ VALUES (
 ```
 
 ## ml.OPERATION_SCOA_ACTIVITY
+
 ```sql
 INSERT INTO ml.OPERATION_SCOA_ACTIVITY (
     OPERATION_CD,
@@ -323,6 +337,7 @@ VALUES (
 ```
 
 ## Notes for Entity / Mapping / Distribution Tables
+
 For all of the new ml.ENTITY_* and ml.OPERATION_SCOA_ACTIVITY tables, leave UPDATED_DTTM and UPDATED_BY as NULL on insert. These fields are only to be populated when records are updated.
 
 Do not include INSERTED_DTTM in insert statements for these tables. Each table automatically generates an INSERTED_DTTM timestamp when a record is inserted.
