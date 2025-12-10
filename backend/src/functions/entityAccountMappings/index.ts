@@ -399,7 +399,7 @@ const syncPresetDetails = async (
           {
             isCalculated: detail.isCalculated ?? undefined,
             specifiedPct: detail.specifiedPct ?? undefined,
-            updatedBy,
+            updatedBy: detail.updatedBy ?? null,
           },
         ),
       );

@@ -309,7 +309,7 @@ export const listEntityAccountMappingsByFileUpload = async (
   const rows = (result.recordset ?? []).map((row) => ({
     ...mapRow(row),
     fileUploadGuid: row.file_upload_guid,
-    recordId: row.record_id,
+    record_id: row.record_id,
     accountName: row.account_name,
     activityAmount: row.activity_amount,
     glMonth: row.gl_month,
