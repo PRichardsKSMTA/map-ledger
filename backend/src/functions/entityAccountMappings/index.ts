@@ -8,6 +8,7 @@ import {
   listEntityAccountMappings,
   listEntityAccountMappingsByFileUpload,
   listEntityAccountMappingsForAccounts,
+  listEntityAccountMappingsWithPresets,
   upsertEntityAccountMappings,
 } from '../../repositories/entityAccountMappingRepository';
 import {
@@ -555,6 +556,8 @@ const listHandler = async (
   try {
     const entityId = getFirstStringValue(request.query.get('entityId'));
     const fileUploadGuid = getFirstStringValue(request.query.get('fileUploadGuid'));
+    const includePresetDetails =
+      getFirstStringValue(request.query.get('includePresetDetails'))?.toLowerCase() === 'true';
 
     if (!entityId && !fileUploadGuid) {
       return json({ message: 'entityId or fileUploadGuid is required' }, 400);
@@ -562,7 +565,9 @@ const listHandler = async (
 
     const items = fileUploadGuid
       ? await listEntityAccountMappingsByFileUpload(fileUploadGuid)
-      : await listEntityAccountMappings(entityId);
+      : includePresetDetails
+        ? await listEntityAccountMappingsWithPresets(entityId as string)
+        : await listEntityAccountMappings(entityId);
 
     return json({ items });
   } catch (error) {
