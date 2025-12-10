@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { runQuery } from '../utils/sqlClient';
 
 export interface EntityAccountMappingUpsertInput {
@@ -50,15 +49,6 @@ const normalizePresetId = (value?: string | null): string | null => {
     return normalized;
   }
   return null;
-};
-
-const requiresPreset = (mappingType?: string | null): boolean => {
-  if (!mappingType) {
-    return false;
-  }
-
-  const normalized = mappingType.trim().toLowerCase();
-  return normalized === 'percentage' || normalized === 'dynamic';
 };
 
 const toEntityId = (value: string | number | null | undefined): string => {
@@ -206,9 +196,7 @@ export const upsertEntityAccountMappings = async (
   const params: Record<string, unknown> = {};
   const valuesClause = inputs
     .map((input, index) => {
-      const presetId =
-        normalizePresetId(input.presetId) ??
-        (requiresPreset(input.mappingType) ? crypto.randomUUID() : null);
+      const presetId = normalizePresetId(input.presetId);
 
       params[`entityId${index}`] = input.entityId;
       params[`entityAccountId${index}`] = input.entityAccountId;
@@ -290,6 +278,53 @@ export const upsertEntityAccountMappings = async (
       inserted.UPDATED_DTTM as updated_dttm,
       inserted.UPDATED_BY as updated_by;`,
     params
+  );
+
+  return (result.recordset ?? []).map(mapRow);
+};
+
+export const listEntityAccountMappingsForAccounts = async (
+  mappings: { entityId: string; entityAccountId: string }[],
+): Promise<EntityAccountMappingRow[]> => {
+  if (!mappings.length) {
+    return [];
+  }
+
+  const params: Record<string, unknown> = {};
+  const clauses = mappings.map((mapping, index) => {
+    params[`entityId${index}`] = mapping.entityId;
+    params[`entityAccountId${index}`] = mapping.entityAccountId;
+    return `(ENTITY_ID = @entityId${index} AND ENTITY_ACCOUNT_ID = @entityAccountId${index})`;
+  });
+
+  const whereClause = clauses.join(' OR ');
+
+  const result = await runQuery<{
+    entity_id: string | number;
+    entity_account_id: string;
+    polarity?: string | null;
+    mapping_type?: string | null;
+    preset_id?: string | null;
+    mapping_status?: string | null;
+    exclusion_pct?: number | null;
+    inserted_dttm?: Date | string | null;
+    updated_dttm?: Date | string | null;
+    updated_by?: string | null;
+  }>(
+    `SELECT
+      ENTITY_ID as entity_id,
+      ENTITY_ACCOUNT_ID as entity_account_id,
+      POLARITY as polarity,
+      MAPPING_TYPE as mapping_type,
+      PRESET_GUID as preset_id,
+      MAPPING_STATUS as mapping_status,
+      EXCLUSION_PCT as exclusion_pct,
+      INSERTED_DTTM as inserted_dttm,
+      UPDATED_DTTM as updated_dttm,
+      UPDATED_BY as updated_by
+    FROM ${TABLE_NAME}
+    WHERE ${whereClause}`,
+    params,
   );
 
   return (result.recordset ?? []).map(mapRow);
