@@ -7,6 +7,7 @@ import {
   EntityAccountMappingUpsertInput,
   listEntityAccountMappings,
   listEntityAccountMappingsByFileUpload,
+  listEntityAccountMappingsForAccounts,
   upsertEntityAccountMappings,
 } from '../../repositories/entityAccountMappingRepository';
 import {
@@ -75,13 +76,6 @@ const normalizeMappingType = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.toLowerCase() : null;
-};
-
-const requiresPreset = (mappingType?: string | null): boolean => {
-  if (!mappingType) {
-    return false;
-  }
-  return ['percentage', 'dynamic'].includes(mappingType.trim().toLowerCase());
 };
 
 const mapSplitDefinitionsToPresetDetails = (
@@ -204,6 +198,48 @@ const buildScoaActivities = (
   }, []);
 };
 
+const toPresetCacheKey = (entityId: string, entityAccountId: string): string =>
+  `${entityId}|${entityAccountId}`;
+
+const buildExistingPresetLookup = async (
+  inputs: MappingSaveInput[],
+): Promise<Map<string, string>> => {
+  const uniqueMappings: { entityId: string; entityAccountId: string }[] = [];
+  const seen = new Set<string>();
+
+  inputs.forEach((input) => {
+    if (!input.entityId || !input.entityAccountId) {
+      return;
+    }
+
+    const key = toPresetCacheKey(input.entityId, input.entityAccountId);
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    uniqueMappings.push({
+      entityId: input.entityId,
+      entityAccountId: input.entityAccountId,
+    });
+  });
+
+  if (!uniqueMappings.length) {
+    return new Map();
+  }
+
+  const existingMappings = await listEntityAccountMappingsForAccounts(uniqueMappings);
+  const lookup = new Map<string, string>();
+
+  existingMappings.forEach((mapping) => {
+    if (mapping.presetId) {
+      lookup.set(toPresetCacheKey(mapping.entityId, mapping.entityAccountId), mapping.presetId);
+    }
+  });
+
+  return lookup;
+};
+
 const syncPresetDetails = async (
   presetGuid: string,
   mappingType: string | null,
@@ -262,16 +298,21 @@ const syncPresetDetails = async (
 
 const ensurePreset = async (
   entityId: string,
+  entityAccountId: string,
   mappingType: string | null,
   presetId: string | null,
-): Promise<string | null> => {
-  if (!requiresPreset(mappingType)) {
-    return presetId;
-  }
-
+  presetLookup: Map<string, string>,
+): Promise<string> => {
+  const cacheKey = toPresetCacheKey(entityId, entityAccountId);
   const normalizedPreset = presetId?.trim();
   if (normalizedPreset) {
+    presetLookup.set(cacheKey, normalizedPreset);
     return normalizedPreset;
+  }
+
+  const existing = presetLookup.get(cacheKey);
+  if (existing) {
+    return existing;
   }
 
   const presetInput: EntityMappingPresetInput = {
@@ -282,7 +323,9 @@ const ensurePreset = async (
   };
 
   const created = await createEntityMappingPreset(presetInput);
-  return created?.presetGuid ?? presetInput.presetGuid ?? null;
+  const resolved = created?.presetGuid ?? presetInput.presetGuid ?? crypto.randomUUID();
+  presetLookup.set(cacheKey, resolved);
+  return resolved;
 };
 
 const saveHandler = async (
@@ -297,6 +340,7 @@ const saveHandler = async (
       return json({ message: 'No mapping records provided' }, 400);
     }
 
+    const presetLookup = await buildExistingPresetLookup(inputs);
     const upserts: EntityAccountMappingUpsertInput[] = [];
     const entityAccounts: EntityAccountInput[] = [];
     const scoaActivityLookup = new Map<string, EntityScoaActivityInput>();
@@ -304,11 +348,13 @@ const saveHandler = async (
     for (const input of inputs) {
       const presetGuid = await ensurePreset(
         input.entityId as string,
+        input.entityAccountId as string,
         input.mappingType ?? null,
         input.presetId ?? null,
+        presetLookup,
       );
 
-      if (presetGuid && input.splitDefinitions) {
+      if (input.splitDefinitions?.length) {
         await syncPresetDetails(
           presetGuid,
           input.mappingType ?? null,

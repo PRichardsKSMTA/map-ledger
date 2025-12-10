@@ -33,6 +33,22 @@ const normalizeText = (value?: string | null): string | null => {
 
 const normalizeGuid = (value?: string | null): string | null => normalizeText(value);
 
+const normalizeSpecifiedPct = (value?: number | null): number | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  const scaled = parsed > 9.999 ? parsed / 100 : parsed;
+  const clamped = Math.max(0, Math.min(scaled, 9.999));
+
+  return Number.isFinite(clamped) ? clamped : null;
+};
+
 const mapRow = (row: {
   preset_id: string;
   operation_cd: string;
@@ -115,7 +131,7 @@ export const createEntityDistributionPresetDetails = async (
       params[`presetId${index}`] = normalizeGuid(input.presetId);
       params[`operationCd${index}`] = normalizeText(input.operationCd);
       params[`isCalculated${index}`] = toBit(input.isCalculated);
-      params[`specifiedPct${index}`] = input.specifiedPct ?? null;
+      params[`specifiedPct${index}`] = normalizeSpecifiedPct(input.specifiedPct);
       params[`updatedBy${index}`] = normalizeText(input.updatedBy);
 
       return `(@presetId${index}, @operationCd${index}, @isCalculated${index}, @specifiedPct${index}, NULL, @updatedBy${index})`;
@@ -178,7 +194,7 @@ export const updateEntityDistributionPresetDetail = async (
       presetId: normalizedPreset,
       operationCd,
       isCalculated: toBit(updates.isCalculated ?? null),
-      specifiedPct: updates.specifiedPct ?? null,
+      specifiedPct: normalizeSpecifiedPct(updates.specifiedPct),
       updatedBy: normalizeText(updates.updatedBy),
     }
   );
