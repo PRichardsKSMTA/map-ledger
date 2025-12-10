@@ -19,6 +19,7 @@ import { useMappingStore } from '../store/mappingStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import scrollPageToTop from '../utils/scroll';
 import { slugify } from '../utils/slugify';
+import { useClientStore } from '../store/clientStore';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -44,6 +45,7 @@ export default function Import() {
   const orgLoading = useOrganizationStore((state) => state.isLoading);
   const orgError = useOrganizationStore((state) => state.error);
   const fetchFileRecords = useMappingStore((state) => state.fetchFileRecords);
+  const activeClientId = useClientStore((state) => state.activeClientId);
 
   useEffect(() => {
     if (user?.email) {
@@ -72,14 +74,15 @@ export default function Import() {
   }, [clientSummaries, imports]);
 
   const singleClient = clientSummaries.length === 1 ? clientSummaries[0] : null;
+  const resolvedClientId = activeClientId ?? singleClient?.id;
 
   useEffect(() => {
     if (!userId) {
       return;
     }
 
-    fetchImports({ userId, clientId: singleClient?.id, page, pageSize });
-  }, [fetchImports, userId, singleClient?.id, page, pageSize]);
+    fetchImports({ userId, clientId: resolvedClientId, page, pageSize });
+  }, [fetchImports, userId, resolvedClientId, page, pageSize]);
 
   const handleDeleteImport = async (importId: string) => {
     if (!importId) {
@@ -107,6 +110,13 @@ export default function Import() {
     importItem: Import,
     mode: 'resume' | 'restart',
   ) => {
+    const uploadGuid = importItem.fileUploadGuid ?? importItem.id;
+
+    if (!uploadGuid) {
+      setError('Unable to open mapping. Missing file identifier.');
+      return;
+    }
+
     const entitiesFromImport: EntitySummary[] = (importItem.entities ?? [])
       .map((entity) => {
         const normalizedId = entity.entityId ?? slugify(entity.entityName);
@@ -123,7 +133,7 @@ export default function Import() {
       search.set('mode', 'restart');
     }
 
-    fetchFileRecords(importItem.id, {
+    fetchFileRecords(uploadGuid, {
       clientId: importItem.clientId,
       entities: entitiesFromImport,
       entityIds: entitiesFromImport.map((entity) => entity.id),
@@ -131,7 +141,7 @@ export default function Import() {
       hydrateMode: mode,
     });
 
-    navigate(`/gl/mapping/${importItem.id}?${search.toString()}`);
+    navigate(`/gl/mapping/${uploadGuid}?${search.toString()}`);
   };
 
   const handleFileImport = async (
@@ -275,6 +285,7 @@ export default function Import() {
 
       await recordImport({
         id: importId,
+        fileUploadGuid: importId,
         clientId,
         userId: user.id,
         fileName,
@@ -451,7 +462,7 @@ export default function Import() {
             if (userId) {
               fetchImports({
                 userId,
-                clientId: singleClient?.id,
+                clientId: resolvedClientId,
                 page: nextPage,
                 pageSize,
               });

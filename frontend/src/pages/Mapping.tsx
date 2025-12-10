@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import MappingHeader from '../components/mapping/MappingHeader';
 import StepTabs, { MappingStep } from '../components/mapping/StepTabs';
@@ -15,6 +15,9 @@ import {
   type HydrationMode,
   useMappingStore,
 } from '../store/mappingStore';
+import { useOrganizationStore } from '../store/organizationStore';
+import { useClientStore } from '../store/clientStore';
+import { useAuthStore } from '../store/authStore';
 import scrollPageToTop from '../utils/scroll';
 
 const normalizeEntityId = (value: string | null): string | null => {
@@ -42,21 +45,64 @@ const resolveHydrationMode = (value: string | null): HydrationMode => {
 export default function Mapping() {
   const { uploadId = 'demo' } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeClientId = useMappingStore(state => state.activeClientId);
+  const userEmail = useAuthStore(state => state.user?.email ?? null);
+  const hydrateClients = useClientStore(state => state.hydrateFromAccessList);
+  const clientAccess = useOrganizationStore(state => state.clientAccess);
+  const fetchOrganizations = useOrganizationStore(state => state.fetchForUser);
+  const activeClientId = useClientStore(state => state.activeClientId);
   const activeUploadId = useMappingStore(state => state.activeUploadId);
-  const activeEntityId = useMappingStore(selectActiveEntityId);
-  const activeStep = useMemo(() => stepParam(searchParams.get('stage')), [searchParams]);
-  const setActiveEntityId = useMappingStore(state => state.setActiveEntityId);
   const availableEntities = useMappingStore(selectAvailableEntities);
+  const activeEntityId = useMappingStore(selectActiveEntityId);
+  const [entityStages, setEntityStages] = useState<Record<string, MappingStep>>({});
+  const activeStep = useMemo(() => {
+    if (activeEntityId && entityStages[activeEntityId]) {
+      return entityStages[activeEntityId];
+    }
+    return stepParam(searchParams.get('stage'));
+  }, [activeEntityId, entityStages, searchParams]);
+  const setActiveEntityId = useMappingStore(state => state.setActiveEntityId);
   const fetchFileRecords = useMappingStore(state => state.fetchFileRecords);
+  const setMappingActiveClientId = useMappingStore(state => state.setActiveClientId);
   const hydrationMode = useMemo(
     () => resolveHydrationMode(searchParams.get('mode')),
     [searchParams],
   );
+  const availableEntityIds = useMemo(
+    () => new Set(availableEntities.map(entity => entity.id)),
+    [availableEntities],
+  );
+
+  useEffect(() => {
+    if (!userEmail) {
+      return;
+    }
+
+    if (clientAccess.length > 0) {
+      return;
+    }
+
+    fetchOrganizations(userEmail);
+  }, [clientAccess.length, fetchOrganizations, userEmail]);
+
+  useEffect(() => {
+    if (clientAccess.length === 0) {
+      return;
+    }
+
+    hydrateClients(clientAccess, activeClientId);
+  }, [activeClientId, clientAccess, hydrateClients]);
+
+  useEffect(() => {
+    setMappingActiveClientId(activeClientId ?? null);
+  }, [activeClientId, setMappingActiveClientId]);
   const normalizedEntityParam = useMemo(() => {
     const param = searchParams.get('entityId');
-    return normalizeEntityId(param);
-  }, [searchParams]);
+    const normalized = normalizeEntityId(param);
+    if (!normalized) {
+      return null;
+    }
+    return availableEntityIds.has(normalized) ? normalized : null;
+  }, [availableEntityIds, searchParams]);
 
   useEffect(() => {
     if (activeStep === 'mapping') {
@@ -71,7 +117,7 @@ export default function Mapping() {
 
     const shouldReload = uploadId !== activeUploadId || hydrationMode === 'restart';
     if (shouldReload) {
-      fetchFileRecords(uploadId, { hydrateMode: hydrationMode });
+      fetchFileRecords(uploadId, { hydrateMode: hydrationMode, clientId: activeClientId });
 
       if (hydrationMode === 'restart') {
         const next = new URLSearchParams(searchParams);
@@ -79,28 +125,79 @@ export default function Mapping() {
         setSearchParams(next, { replace: true });
       }
     }
-  }, [activeUploadId, fetchFileRecords, hydrationMode, searchParams, setSearchParams, uploadId]);
+  }, [
+    activeClientId,
+    activeUploadId,
+    fetchFileRecords,
+    hydrationMode,
+    searchParams,
+    setSearchParams,
+    uploadId,
+  ]);
 
   useEffect(() => {
-    if (normalizedEntityParam !== activeEntityId) {
-      setActiveEntityId(normalizedEntityParam);
-    }
-  }, [activeEntityId, normalizedEntityParam, setActiveEntityId]);
-
-  useEffect(() => {
-    const normalizedCurrent = normalizeEntityId(searchParams.get('entityId'));
-    if (normalizedCurrent === activeEntityId) {
+    if (availableEntities.length === 0) {
       return;
     }
 
-    const next = new URLSearchParams(searchParams);
-    if (activeEntityId) {
-      next.set('entityId', activeEntityId);
-    } else {
-      next.delete('entityId');
+    const fallbackEntityId =
+      normalizedEntityParam ??
+      (activeEntityId && availableEntityIds.has(activeEntityId)
+        ? activeEntityId
+        : null) ??
+      availableEntities[0]?.id ??
+      null;
+
+    if (fallbackEntityId !== activeEntityId) {
+      setActiveEntityId(fallbackEntityId);
     }
-    setSearchParams(next, { replace: true });
-  }, [activeEntityId, searchParams, setSearchParams]);
+  }, [
+    activeEntityId,
+    availableEntities,
+    availableEntityIds,
+    normalizedEntityParam,
+    setActiveEntityId,
+  ]);
+
+  useEffect(() => {
+    if (!activeEntityId) {
+      return;
+    }
+
+    const stageFromParams = stepParam(searchParams.get('stage'));
+    setEntityStages(prev => {
+      if (prev[activeEntityId] === stageFromParams) {
+        return prev;
+      }
+      return { ...prev, [activeEntityId]: stageFromParams };
+    });
+  }, [activeEntityId, searchParams]);
+
+  useEffect(() => {
+    if (!activeEntityId) {
+      return;
+    }
+
+    const entityStage = entityStages[activeEntityId] ?? stepParam(searchParams.get('stage'));
+    const currentEntityParam = normalizeEntityId(searchParams.get('entityId'));
+
+    const next = new URLSearchParams(searchParams);
+    let shouldUpdate = false;
+
+    if (currentEntityParam !== activeEntityId) {
+      next.set('entityId', activeEntityId);
+      shouldUpdate = true;
+    }
+
+    if (searchParams.get('stage') !== entityStage) {
+      next.set('stage', entityStage);
+      shouldUpdate = true;
+    }
+
+    if (shouldUpdate) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [activeEntityId, entityStages, searchParams, setSearchParams]);
 
   const updateStage = useCallback(
     (step: MappingStep) => {
@@ -115,21 +212,42 @@ export default function Mapping() {
   );
 
   const handleStepChange = (step: MappingStep) => {
+    if (!activeEntityId) {
+      return;
+    }
+
+    setEntityStages(prev => {
+      if (prev[activeEntityId] === step) {
+        return prev;
+      }
+      return { ...prev, [activeEntityId]: step };
+    });
+
     updateStage(step);
   };
 
+  const resolveEntityStage = useCallback(
+    (entityId: string): MappingStep => entityStages[entityId] ?? 'mapping',
+    [entityStages],
+  );
+
   const handleEntityChange = useCallback(
-    (entityId: string | null) => {
+    (entityId: string) => {
+      const nextStage = resolveEntityStage(entityId);
+      setEntityStages(prev => {
+        if (prev[entityId] === nextStage) {
+          return prev;
+        }
+        return { ...prev, [entityId]: nextStage };
+      });
+
       const next = new URLSearchParams(searchParams);
-      if (entityId) {
-        next.set('entityId', entityId);
-      } else {
-        next.delete('entityId');
-      }
+      next.set('entityId', entityId);
+      next.set('stage', nextStage);
       setSearchParams(next, { replace: true });
       setActiveEntityId(entityId);
     },
-    [searchParams, setActiveEntityId, setSearchParams],
+    [resolveEntityStage, searchParams, setActiveEntityId, setSearchParams],
   );
 
   return (
@@ -141,17 +259,19 @@ export default function Mapping() {
         onSelect={handleEntityChange}
       />
       <SummaryCards />
-      {activeStep === 'mapping' && <MappingMonthHelper />}
-      <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
-      <section
-        aria-label="Mapping workspace content"
-        className="w-full rounded-t-none rounded-b-lg border border-gray-200 border-t-0 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900"
-      >
-        {activeStep === 'mapping' && <MappingTable />}
-        {activeStep === 'reconcile' && <ReconcilePane />}
-        {activeStep === 'distribution' && <DistributionTable />}
-        {activeStep === 'review' && <ReviewPane />}
-      </section>
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        {activeStep === 'mapping' && <MappingMonthHelper />}
+        <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
+        <section
+          aria-label="Mapping workspace content"
+          className="w-full border-t border-gray-200 p-6 dark:border-slate-700"
+        >
+          {activeStep === 'mapping' && <MappingTable />}
+          {activeStep === 'reconcile' && <ReconcilePane />}
+          {activeStep === 'distribution' && <DistributionTable />}
+          {activeStep === 'review' && <ReviewPane />}
+        </section>
+      </div>
     </div>
   );
 }

@@ -1,12 +1,26 @@
 import { create } from 'zustand';
 import { Import } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const resolveMetaEnv = () => {
+  const globalMetaEnv = (globalThis as { importMetaEnv?: Record<string, unknown> }).importMetaEnv;
+  if (globalMetaEnv && typeof globalMetaEnv === 'object') {
+    return globalMetaEnv as Record<string, unknown>;
+  }
+
+  if (typeof import.meta !== 'undefined' && (import.meta as { env?: Record<string, unknown> }).env) {
+    return (import.meta as { env: Record<string, unknown> }).env;
+  }
+
+  return undefined;
+};
+
+const metaEnv = resolveMetaEnv();
+const API_BASE_URL = (metaEnv?.VITE_API_BASE_URL as string | undefined) ?? '/api';
 
 const shouldLog =
-  import.meta.env.DEV ||
-  (typeof import.meta.env.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
-    import.meta.env.VITE_ENABLE_DEBUG_LOGGING.toLowerCase() === 'true');
+  Boolean(metaEnv?.DEV) ||
+  (typeof metaEnv?.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
+    (metaEnv.VITE_ENABLE_DEBUG_LOGGING as string).toLowerCase() === 'true');
 
 const logPrefix = '[ImportStore]';
 
@@ -101,9 +115,12 @@ const normalizeImport = (item: RawImport): Import => {
   const fileSize = Number(item.fileSize);
   const status: Import['status'] = item.status === 'failed' ? 'failed' : 'completed';
 
+  const resolvedId = item.fileUploadGuid ?? item.id ?? crypto.randomUUID();
+
   return {
     ...item,
-    id: item.id ?? item.fileUploadGuid ?? crypto.randomUUID(),
+    id: resolvedId,
+    fileUploadGuid: item.fileUploadGuid ?? item.id ?? resolvedId,
     clientId: item.clientId,
     clientName: item.clientName,
     fileName: item.fileName ?? item.sourceFileName ?? 'Unknown file',

@@ -25,11 +25,16 @@ import {
   isKnownChartOfAccount,
 } from './chartOfAccountsStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const env = ((globalThis as unknown as { importMetaEnv?: Partial<ImportMetaEnv> }).importMetaEnv ??
+  (typeof process !== 'undefined' ? process.env : undefined) ?? {}) as
+  | Partial<ImportMetaEnv>
+  | NodeJS.ProcessEnv;
+
+const API_BASE_URL = env.VITE_API_BASE_URL ?? '/api';
 const shouldLog =
-  import.meta.env.DEV ||
-  (typeof import.meta.env.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
-    import.meta.env.VITE_ENABLE_DEBUG_LOGGING.toLowerCase() === 'true');
+  env.DEV === true ||
+  (typeof env.VITE_ENABLE_DEBUG_LOGGING === 'string' &&
+    env.VITE_ENABLE_DEBUG_LOGGING.toLowerCase() === 'true');
 
 const logPrefix = '[MappingStore]';
 
@@ -664,11 +669,14 @@ const getAllocatableNetChange = (account: GLAccountMappingRow): number => {
 interface MappingSaveInput {
   entityId: string;
   entityAccountId: string;
+  accountName?: string | null;
   polarity?: MappingPolarity | null;
   mappingType?: MappingType | null;
   mappingStatus?: MappingStatus | null;
   presetId?: string | null;
   exclusionPct?: number | null;
+  netChange?: number | null;
+  glMonth?: string | null;
   splitDefinitions?: {
     targetId?: string | null;
     allocationType?: 'percentage' | 'amount';
@@ -698,8 +706,17 @@ const calculateExclusionPctFromAccount = (
 
 const buildSaveInputFromAccount = (
   account: GLAccountMappingRow,
+  defaultEntity?: EntitySummary | null,
+  selectedEntityId?: string | null,
 ): MappingSaveInput | null => {
-  if (!account.entityId) {
+  const resolvedEntityId =
+    account.entityId ||
+    selectedEntityId ||
+    defaultEntity?.id ||
+    slugify(account.entityName ?? '') ||
+    null;
+
+  if (!resolvedEntityId) {
     return null;
   }
 
@@ -713,8 +730,9 @@ const buildSaveInputFromAccount = (
       : account.mappingType;
 
   const payload: MappingSaveInput = {
-    entityId: account.entityId,
+    entityId: resolvedEntityId,
     entityAccountId: account.accountId,
+    accountName: account.accountName,
     polarity: account.polarity,
     mappingType: normalizedType,
     mappingStatus: normalizedType === 'exclude' ? 'Excluded' : account.status,
@@ -723,6 +741,8 @@ const buildSaveInputFromAccount = (
       normalizedType === 'exclude'
         ? 100
         : calculateExclusionPctFromAccount(account),
+    netChange: account.netChange,
+    glMonth: account.glMonth ?? null,
   };
 
   if (normalizedType === 'direct' && account.manualCOAId) {
@@ -974,11 +994,30 @@ type SummarySelector = {
   netTotal: number;
 };
 
+type UploadMetadata = {
+  uploadId: string;
+  fileName?: string | null;
+  uploadedAt?: string | null;
+};
+
+type FileRecordsResponse = {
+  items?: FileRecord[];
+  fileUploadGuid?: string;
+  entities?: EntitySummary[];
+  upload?: {
+    fileName?: string | null;
+    uploadedAt?: string | null;
+  };
+  fileName?: string;
+  uploadedAt?: string;
+};
+
 interface MappingState {
   accounts: GLAccountMappingRow[];
   searchTerm: string;
   activeStatuses: MappingStatus[];
   activeUploadId: string | null;
+  activeUploadMetadata: UploadMetadata | null;
   activeClientId: string | null;
   activeEntityId: string | null;
   activeEntityIds: string[];
@@ -989,6 +1028,7 @@ interface MappingState {
   isSavingMappings: boolean;
   saveError: string | null;
   lastSavedCount: number;
+  setActiveClientId: (clientId: string | null) => void;
   setSearchTerm: (term: string) => void;
   setActiveEntityId: (entityId: string | null) => void;
   setActivePeriod: (period: string | null) => void;
@@ -1043,16 +1083,17 @@ interface MappingState {
   saveMappings: (accountIds?: string[]) => Promise<number>;
   loadImportedAccounts: (payload: {
     uploadId: string;
-    clientId?: string | null;
+    clientId?: string | number | null;
     entityIds?: string[];
     entities?: EntitySummary[];
     period?: string | null;
     rows: TrialBalanceRow[];
+    uploadMetadata?: UploadMetadata | null;
   }) => void;
   fetchFileRecords: (
     uploadGuid: string,
     options?: {
-      clientId?: string | null;
+      clientId?: string | number | null;
       entities?: EntitySummary[];
       entityIds?: string[];
       period?: string | null;
@@ -1063,14 +1104,50 @@ interface MappingState {
 
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
+const normalizeClientId = (
+  clientId?: string | number | null,
+): string | null => {
+  if (clientId === undefined || clientId === null) {
+    return null;
+  }
+
+  const clientIdString = typeof clientId === 'string' ? clientId : String(clientId);
+  const trimmed = clientIdString.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 const initialAccounts: GLAccountMappingRow[] = [];
 const initialEntities: EntitySummary[] = [];
+
+const dedupeEntities = (entities: EntitySummary[]): EntitySummary[] =>
+  Array.from(new Map(entities.map(entity => [entity.id, entity])).values());
+
+const mergeEntitiesWithIds = (
+  baseEntities: EntitySummary[],
+  derivedEntities: EntitySummary[] = [],
+  entityIds: string[] = [],
+): EntitySummary[] => {
+  const merged = new Map<string, EntitySummary>();
+
+  [...derivedEntities, ...baseEntities].forEach(entity => {
+    merged.set(entity.id, entity);
+  });
+
+  entityIds.forEach(id => {
+    if (!merged.has(id)) {
+      merged.set(id, { id, name: id });
+    }
+  });
+
+  return Array.from(merged.values());
+};
 
 export const useMappingStore = create<MappingState>((set, get) => ({
   accounts: initialAccounts,
   searchTerm: '',
   activeStatuses: [],
   activeUploadId: null,
+  activeUploadMetadata: null,
   activeClientId: null,
   activeEntityId: null,
   activeEntityIds: initialEntities.map(entity => entity.id),
@@ -1081,6 +1158,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   isSavingMappings: false,
   saveError: null,
   lastSavedCount: 0,
+  setActiveClientId: clientId =>
+    set({ activeClientId: normalizeClientId(clientId) }),
   setSearchTerm: term => set({ searchTerm: term }),
   setActiveEntityId: entityId =>
     set(state => {
@@ -1727,16 +1806,37 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     }
   },
   saveMappings: async (accountIds) => {
-    const { accounts } = get();
+    const state = get();
+    const { accounts, activeEntityId } = state;
     const scope = Array.isArray(accountIds) && accountIds.length > 0 ? accountIds : null;
 
-    const payload = accounts
-      .filter(account => (scope ? scope.includes(account.id) : true))
-      .map(buildSaveInputFromAccount)
+    const scopedAccounts = accounts.filter(account => (scope ? scope.includes(account.id) : true));
+
+    const availableEntities = selectAvailableEntities(state);
+    const activeEntity = activeEntityId
+      ? availableEntities.find(entity => entity.id === activeEntityId) ?? null
+      : null;
+    const defaultEntity = activeEntity ?? (availableEntities.length === 1 ? availableEntities[0] : null);
+
+    const payload = scopedAccounts
+      .map(account => buildSaveInputFromAccount(account, defaultEntity, activeEntityId))
       .filter((entry): entry is MappingSaveInput => Boolean(entry));
 
     if (!payload.length) {
-      set({ saveError: 'No mapped or excluded rows are ready to save.', lastSavedCount: 0 });
+      const missingEntities = scopedAccounts.filter(
+        account =>
+          (account.status === 'Mapped' || account.status === 'Excluded') &&
+          !account.entityId &&
+          !account.entityName &&
+          !defaultEntity,
+      );
+
+      set({
+        saveError: missingEntities.length
+          ? 'Assign an entity to mapped rows before saving.'
+          : 'No mapped or excluded rows are ready to save.',
+        lastSavedCount: 0,
+      });
       return 0;
     }
 
@@ -1775,17 +1875,22 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     entities,
     period,
     rows,
+    uploadMetadata,
   }) => {
-    const normalizedClientId = clientId && clientId.trim().length > 0 ? clientId : null;
+    const normalizedClientId = normalizeClientId(clientId);
     const normalizedPeriod = period && period.trim().length > 0 ? period : null;
 
-    const selectedEntities = entities
-      ? Array.from(
-          new Map(
-            entities.map(entity => [entity.id, { id: entity.id, name: entity.name }]),
-          ).values(),
-        )
-      : [];
+    const resolvedUploadMetadata: UploadMetadata = {
+      uploadId,
+      fileName: uploadMetadata?.fileName ?? null,
+      uploadedAt: uploadMetadata?.uploadedAt ?? null,
+    };
+
+    const entityIdSummaries = (entityIds ?? []).map(id => {
+      const knownEntity = entities?.find(entity => entity.id === id);
+      return knownEntity ?? { id, name: id };
+    });
+    const selectedEntities = dedupeEntities([...entityIdSummaries, ...(entities ?? [])]);
 
     const accountsFromImport = buildMappingRowsFromImport(rows, {
       uploadId,
@@ -1795,15 +1900,16 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
     const resolvedAccounts = resolveEntityConflicts(accountsFromImport, selectedEntities);
 
-    const resolvedEntities =
-      selectedEntities.length > 0
-        ? selectedEntities
-        : deriveEntitySummaries(resolvedAccounts);
+    const derivedEntities = deriveEntitySummaries(resolvedAccounts);
+    const mergedEntities = mergeEntitiesWithIds(selectedEntities, derivedEntities, entityIds ?? []);
     const resolvedEntityIds =
       entityIds?.length && entityIds.length > 0
-        ? entityIds
-        : resolvedEntities.map(entity => entity.id);
-    const resolvedActiveEntityId = resolvedEntityIds[0] ?? resolvedEntities[0]?.id ?? null;
+        ? Array.from(new Set(entityIds))
+        : mergedEntities.map(entity => entity.id);
+    const resolvedActiveEntityId =
+      resolvedEntityIds.find(id => mergedEntities.some(entity => entity.id === id)) ??
+      mergedEntities[0]?.id ??
+      null;
 
     const scopedAccounts = getAccountsForEntity(
       resolvedAccounts,
@@ -1824,10 +1930,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       searchTerm: '',
       activeStatuses: [],
       activeUploadId: uploadId,
+      activeUploadMetadata: resolvedUploadMetadata,
       activeClientId: normalizedClientId,
       activeEntityId: resolvedActiveEntityId,
       activeEntityIds: resolvedEntityIds,
-      activeEntities: resolvedEntities,
+      activeEntities: mergedEntities,
       activePeriod: resolvedPeriod,
     });
 
@@ -1847,28 +1954,52 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         throw new Error(`Failed to load file records (${response.status})`);
       }
 
-      const payload = (await response.json()) as { items?: FileRecord[] };
+      const payload = (await response.json()) as FileRecordsResponse;
       const records = payload.items ?? [];
+      const entities = payload.entities ?? options?.entities ?? [];
+      const uploadMetadata =
+        payload.upload ??
+        (payload.fileName || payload.uploadedAt
+          ? { fileName: payload.fileName, uploadedAt: payload.uploadedAt }
+          : null);
       logDebug('Fetched file records', { count: records.length, uploadGuid });
 
-      const rows: TrialBalanceRow[] = records.map((record) => ({
-        entity: record.entityName ?? '',
-        accountId: record.accountId,
-        description: record.accountName,
-        netChange: record.activityAmount ?? 0,
-        glMonth: record.glMonth ?? undefined,
-      }));
+      const entityNameLookup = new Map(entities.map((entity) => [entity.id, entity.name]));
+
+      const rows: TrialBalanceRow[] = records.map((record) => {
+        const entityId = record.entityId ?? null;
+        const entityName =
+          record.entityName ?? (entityId ? entityNameLookup.get(entityId) ?? null : null);
+        return {
+          entity: entityName ?? entityId ?? '',
+          entityId,
+          entityName,
+          accountId: record.accountId,
+          description: record.accountName,
+          netChange: record.activityAmount ?? 0,
+          glMonth: record.glMonth ?? undefined,
+        };
+      });
 
       const preferredPeriod =
         options?.period ?? rows.find((row) => row.glMonth)?.glMonth ?? null;
 
+      const normalizedClientId = normalizeClientId(options?.clientId ?? null);
+
       get().loadImportedAccounts({
         uploadId: uploadGuid,
-        clientId: options?.clientId ?? null,
-        entityIds: options?.entityIds,
-        entities: options?.entities,
+        clientId: normalizedClientId,
+        entityIds: options?.entityIds ?? (entities.length > 0 ? entities.map((entity) => entity.id) : undefined),
+        entities,
         period: preferredPeriod,
         rows,
+        uploadMetadata: uploadMetadata
+          ? {
+              uploadId: uploadGuid,
+              fileName: uploadMetadata.fileName ?? null,
+              uploadedAt: uploadMetadata.uploadedAt ?? null,
+            }
+          : undefined,
       });
 
       const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';

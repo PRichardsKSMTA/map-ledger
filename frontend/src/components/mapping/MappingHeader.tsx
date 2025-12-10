@@ -5,7 +5,6 @@ import {
   useMappingStore,
   selectAvailablePeriods,
   selectActivePeriod,
-  selectAccounts,
 } from '../../store/mappingStore';
 
 interface MappingHeaderProps {
@@ -13,14 +12,67 @@ interface MappingHeaderProps {
   glUploadId?: string;
 }
 
+export const formatUploadLabel = ({
+  uploadId,
+  fileName,
+  uploadedAt,
+  timeZone,
+}: {
+  uploadId?: string | null;
+  fileName?: string | null;
+  uploadedAt?: string | null;
+  timeZone?: string;
+}): string => {
+  const resolvedName = fileName?.trim();
+  const resolvedTimeZone =
+    timeZone ?? (import.meta.env.VITE_TZ as string | undefined) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  if (resolvedName && uploadedAt) {
+    const parsed = new Date(uploadedAt);
+    if (!Number.isNaN(parsed.getTime())) {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: resolvedTimeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short',
+      })
+        .formatToParts(parsed)
+        .reduce<Record<string, string>>((acc, part) => {
+          acc[part.type] = part.value;
+          return acc;
+        }, {});
+
+      const { year, month, day, hour, minute, dayPeriod, timeZoneName } = parts;
+      const formattedTimestamp =
+        year && month && day && hour && minute && dayPeriod && timeZoneName
+          ? `${year}-${month}-${day} ${hour}:${minute} ${dayPeriod.toUpperCase()} ${timeZoneName}`
+          : null;
+
+      if (formattedTimestamp) {
+        return `Upload '${resolvedName}' - ${formattedTimestamp}`;
+      }
+    }
+  }
+
+  if (resolvedName) {
+    return `Upload '${resolvedName}'`;
+  }
+
+  return uploadId ? `Upload ${uploadId}` : 'Latest general ledger import';
+};
+
 const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
   const clients = useClientStore(state => state.clients);
-  const operations = useMappingStore(state =>
-    selectAccounts(state).map(account => account.operation)
-  );
   const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore(selectActivePeriod);
   const setActivePeriod = useMappingStore(state => state.setActivePeriod);
+  const activeUploadMetadata = useMappingStore(state => state.activeUploadMetadata);
+  const userTimeZone =
+    (import.meta.env.VITE_TZ as string | undefined) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const activeClient = useMemo(() => {
     if (clients.length === 0) {
@@ -30,8 +82,32 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
   }, [clients, clientId]);
 
   const uniqueOperations = useMemo(() => {
-    return Array.from(new Set(operations)).filter(Boolean);
-  }, [operations]);
+    if (!activeClient?.operations || activeClient.operations.length === 0) {
+      return [];
+    }
+
+    const seen = new Set<string>();
+    return activeClient.operations.filter(operation => {
+      const key = operation.code || operation.id || operation.name;
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [activeClient?.operations]);
+
+  const resolvedUploadMetadata = useMemo(() => {
+    if (!activeUploadMetadata) {
+      return null;
+    }
+
+    if (!glUploadId || activeUploadMetadata.uploadId === glUploadId) {
+      return activeUploadMetadata;
+    }
+
+    return null;
+  }, [activeUploadMetadata, glUploadId]);
 
   const hasAvailablePeriods = availablePeriods.length > 0;
 
@@ -43,7 +119,7 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
             {activeClient && (
               <span className="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-900/60 dark:text-blue-100">
                 <Building2 className="mr-2 h-4 w-4" />
-                {activeClient.clientId}
+                {activeClient.scac ?? 'SCAC unavailable'}
               </span>
             )}
             <div>
@@ -51,7 +127,12 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
                 {activeClient?.name ?? 'Mapping Workspace'}
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {glUploadId ? `Upload ${glUploadId}` : 'Latest general ledger import'}
+                {formatUploadLabel({
+                  uploadId: glUploadId ?? resolvedUploadMetadata?.uploadId,
+                  fileName: resolvedUploadMetadata?.fileName,
+                  uploadedAt: resolvedUploadMetadata?.uploadedAt,
+                  timeZone: userTimeZone,
+                })}
               </p>
             </div>
           </div>
@@ -60,10 +141,10 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
               <span className="font-medium">Operations:</span>
               {uniqueOperations.map(operation => (
                 <span
-                  key={operation}
+                  key={operation.code || operation.id}
                   className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 dark:bg-slate-800"
                 >
-                  {operation}
+                  {operation.code || operation.name}
                 </span>
               ))}
             </div>

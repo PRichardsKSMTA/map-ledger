@@ -135,6 +135,15 @@ const normalizeMonth = (value?: unknown): string | undefined => {
   return `${year}-${month.toString().padStart(2, '0')}`;
 };
 
+const normalizeYearMonthString = (value?: string): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = normalizeMonth(value);
+  return normalized ?? value.trim();
+};
+
 const buildPeriodLabel = (
   start?: string,
   end?: string
@@ -178,6 +187,37 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
   };
 };
 
+export const getClientFileByGuid = async (
+  fileUploadGuid: string,
+): Promise<ClientFileRecord | null> => {
+  if (!fileUploadGuid) {
+    return null;
+  }
+
+  const result = await runQuery<RawClientFileRow>(
+    `SELECT
+      cf.FILE_UPLOAD_GUID as fileUploadGuid,
+      cf.CLIENT_ID as clientId,
+      client.CLIENT_NAME as clientName,
+      cf.INSERTED_BY as insertedBy,
+      cf.INSERTED_DTTM as insertedDttm,
+      cf.SOURCE_FILE_NAME as sourceFileName,
+      cf.FILE_STORAGE_URI as fileStorageUri,
+      cf.FILE_STATUS as fileStatus,
+      cf.GL_PERIOD_START as glPeriodStart,
+      cf.GL_PERIOD_END as glPeriodEnd,
+      cf.LAST_STEP_COMPLETED_DTTM as lastStepCompletedDttm
+    FROM ml.CLIENT_FILES cf
+    LEFT JOIN ML.V_CLIENT_OPERATIONS client ON client.CLIENT_ID = cf.CLIENT_ID
+    WHERE cf.FILE_UPLOAD_GUID = @fileUploadGuid
+      AND cf.IS_DELETED = 0`,
+    { fileUploadGuid }
+  );
+
+  const row = result.recordset?.[0];
+  return row ? mapClientFileRow(row) : null;
+};
+
 export const saveClientFileMetadata = async (
   record: NewClientFileRecord
 ): Promise<ClientFileRecord> => {
@@ -187,6 +227,8 @@ export const saveClientFileMetadata = async (
       ? record.fileUploadGuid
       : crypto.randomUUID();
   const status = coerceImportStatus(record.status ?? 'uploaded');
+  const glPeriodStart = normalizeYearMonthString(record.glPeriodStart) ?? null;
+  const glPeriodEnd = normalizeYearMonthString(record.glPeriodEnd) ?? null;
 
   const insertResult = await runQuery<{
     file_upload_guid: string;
@@ -223,8 +265,8 @@ export const saveClientFileMetadata = async (
       sourceFileName: record.sourceFileName,
       fileStorageUri: record.fileStorageUri,
       fileStatus: status,
-      glPeriodStart: record.glPeriodStart ?? null,
-      glPeriodEnd: record.glPeriodEnd ?? null,
+      glPeriodStart,
+      glPeriodEnd,
       lastStepCompletedDttm,
     }
   );

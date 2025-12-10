@@ -6,6 +6,7 @@ import {
   FileRecordInput,
   FileRecordRow,
 } from '../../repositories/fileRecordRepository';
+import { getClientFileByGuid } from '../../repositories/clientFileRepository';
 import {
   insertClientFileSheet,
   NewClientFileSheetInput,
@@ -14,6 +15,8 @@ import {
   insertClientFileEntity,
   NewClientFileEntityInput,
 } from '../../repositories/clientFileEntityRepository';
+import { listClientFileEntities } from '../../repositories/clientFileEntityRepository';
+import { listClientEntities } from '../../repositories/clientEntityRepository';
 import { buildErrorResponse } from '../datapointConfigs/utils';
 import {
   detectGlMonthFromRow,
@@ -50,6 +53,8 @@ interface IngestPayload {
 }
 
 type ResolvedIngestPayload = IngestPayload & { fileUploadGuid: string };
+
+type FileRecordResponseRow = FileRecordRow & { entityName?: string | null };
 
 const normalizeText = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -421,6 +426,7 @@ const toEntityId = (value?: string | null): number | null => {
 const buildEntityInserts = (
   payload: ResolvedIngestPayload,
   records: FileRecordInput[],
+  existingRecords: FileRecordRow[],
 ): NewClientFileEntityInput[] => {
   const entityLookup = new Map<string, IngestEntity>();
   (payload.entities ?? []).forEach((entity) => {
@@ -431,10 +437,18 @@ const buildEntityInserts = (
   });
 
   const aggregated = new Map<number, NewClientFileEntityInput>();
-  const recordEntityKeys = records
-    .map((record) => (record.entityId !== null && record.entityId !== undefined ? String(record.entityId) : null))
+  const recordEntityKeys = [...records, ...existingRecords]
+    .map((record) =>
+      record.entityId !== null && record.entityId !== undefined
+        ? String(record.entityId)
+        : null
+    )
     .filter((key): key is string => key !== null);
-  const candidateKeys = new Set<string>([...recordEntityKeys, ...entityLookup.keys()]);
+
+  const candidateKeys = new Set<string>([
+    ...recordEntityKeys,
+    ...Array.from(entityLookup.keys()),
+  ]);
 
   candidateKeys.forEach((key) => {
     const entityId = toEntityId(key);
@@ -443,13 +457,14 @@ const buildEntityInserts = (
     }
 
     const details = entityLookup.get(key);
-    const updated: NewClientFileEntityInput = {
+    const existing = aggregated.get(entityId);
+    const isSelected = details?.isSelected === true || existing?.isSelected === true;
+
+    aggregated.set(entityId, {
       fileUploadGuid: payload.fileUploadGuid,
       entityId,
-      isSelected: details?.isSelected,
-    };
-
-    aggregated.set(entityId, updated);
+      isSelected,
+    });
   });
 
   return Array.from(aggregated.values());
@@ -490,7 +505,12 @@ export const ingestFileRecordsHandler = async (
     });
 
     const sheetInserts = buildSheetInserts(resolvedPayload);
-    const entityInserts = buildEntityInserts(resolvedPayload, records);
+    const existingFileRecords = await listFileRecords(resolvedPayload.fileUploadGuid);
+    const entityInserts = buildEntityInserts(
+      resolvedPayload,
+      records,
+      existingFileRecords,
+    );
 
     if (sheetInserts.length > 0) {
       await Promise.all(sheetInserts.map((sheet) => insertClientFileSheet(sheet)));
@@ -515,17 +535,93 @@ export const listFileRecordsHandler = async (
 ): Promise<HttpResponseInit> => {
   try {
     const fileUploadGuid = getFirstStringValue(request.query.get('fileUploadGuid'));
-    const normalizedFileUploadGuid = fileUploadGuid?.trim();
+    const normalizedFileUploadGuid = fileUploadGuid?.replace(/[{}]/g, '').trim();
 
-    if (!normalizedFileUploadGuid || normalizedFileUploadGuid.length !== 36) {
+    const isValidGuid =
+      !!normalizedFileUploadGuid &&
+      /^[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}$/.test(
+        normalizedFileUploadGuid,
+      );
+
+    if (!normalizedFileUploadGuid || !isValidGuid) {
+      context.warn('Invalid fileUploadGuid provided', {
+        fileUploadGuid: normalizedFileUploadGuid ?? fileUploadGuid ?? null,
+      });
       return json({ message: 'fileUploadGuid is required' }, 400);
     }
 
-    const items: FileRecordRow[] = await listFileRecords(normalizedFileUploadGuid);
+    const formattedFileUploadGuid =
+      normalizedFileUploadGuid.includes('-')
+        ? normalizedFileUploadGuid
+        : `${normalizedFileUploadGuid.slice(0, 8)}-${normalizedFileUploadGuid.slice(8, 12)}-${normalizedFileUploadGuid.slice(
+            12,
+            16,
+          )}-${normalizedFileUploadGuid.slice(16, 20)}-${normalizedFileUploadGuid.slice(20)}`;
+
+    const [itemsResult, metadataResult, fileEntitiesResult] = await Promise.allSettled([
+      listFileRecords(formattedFileUploadGuid),
+      getClientFileByGuid(formattedFileUploadGuid),
+      listClientFileEntities(formattedFileUploadGuid),
+    ]);
+
+    if (itemsResult.status === 'rejected') {
+      context.error('Failed to fetch file records', itemsResult.reason);
+      throw itemsResult.reason;
+    }
+
+    const items = itemsResult.value;
+
+    if (metadataResult.status === 'rejected') {
+      context.warn('Failed to fetch file metadata; continuing without it', metadataResult.reason);
+    }
+    const metadata = metadataResult.status === 'fulfilled' ? metadataResult.value : null;
+
+    if (fileEntitiesResult.status === 'rejected') {
+      context.warn('Failed to fetch file entities; continuing without selections', fileEntitiesResult.reason);
+    }
+    const fileEntities = fileEntitiesResult.status === 'fulfilled' ? fileEntitiesResult.value : [];
+
+    const clientEntities = metadata?.clientId
+      ? await listClientEntities(metadata.clientId).catch((error) => {
+          context.warn('Failed to fetch client entities; continuing without names', error);
+          return [];
+        })
+      : [];
+
+    const entityNameLookup = new Map(
+      clientEntities.map((entity) => [entity.entityId, entity.entityDisplayName ?? entity.entityName]),
+    );
+
+    const itemsWithEntities: FileRecordResponseRow[] = items.map((item) => ({
+      ...item,
+      entityName: item.entityId ? entityNameLookup.get(item.entityId) : undefined,
+    }));
+
+    const entitySelections = fileEntities.map((entity) => ({
+      id: `${entity.entityId}`,
+      name: entityNameLookup.get(`${entity.entityId}`) ?? `${entity.entityId}`,
+      isSelected: entity.isSelected,
+    }));
+
+    const resolvedEntities =
+      entitySelections.length > 0
+        ? entitySelections
+        : clientEntities.map((entity) => ({
+            id: entity.entityId,
+            name: entity.entityDisplayName ?? entity.entityName,
+            isSelected: undefined,
+          }));
 
     return json({
-      items,
-      fileUploadGuid: normalizedFileUploadGuid,
+      items: itemsWithEntities,
+      fileUploadGuid: formattedFileUploadGuid,
+      upload:
+        metadata && metadata.timestamp
+          ? { fileName: metadata.fileName, uploadedAt: metadata.timestamp }
+          : metadata
+            ? { fileName: metadata.fileName, uploadedAt: metadata.insertedDttm }
+            : undefined,
+      entities: resolvedEntities,
     });
   } catch (error) {
     context.error('Failed to list file records', error);

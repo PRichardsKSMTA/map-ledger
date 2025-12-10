@@ -48,6 +48,9 @@ describe('mappingStore selectors', () => {
       accounts: createInitialMappingAccounts(),
       searchTerm: '',
       activeStatuses: [],
+      activeUploadId: null,
+      activeUploadMetadata: null,
+      activeClientId: null,
       activeEntityId: null,
       activeEntities: [],
       activeEntityIds: [],
@@ -297,6 +300,38 @@ describe('mappingStore selectors', () => {
     expect(summary.netTotal).toBeCloseTo(700000 - (15000 + 39000), 5);
   });
 
+  it('safely normalizes client identifiers during import hydration', () => {
+    const rows: TrialBalanceRow[] = [
+      {
+        entity: 'Client Entity',
+        accountId: '1000',
+        description: 'Test Account',
+        netChange: 100,
+        glMonth: '2024-01',
+      },
+    ];
+
+    act(() => {
+      useMappingStore.getState().loadImportedAccounts({
+        uploadId: 'upload-numeric-client',
+        clientId: 98765,
+        rows,
+      });
+    });
+
+    expect(useMappingStore.getState().activeClientId).toBe('98765');
+
+    act(() => {
+      useMappingStore.getState().loadImportedAccounts({
+        uploadId: 'upload-nullish-client',
+        clientId: undefined,
+        rows,
+      });
+    });
+
+    expect(useMappingStore.getState().activeClientId).toBeNull();
+  });
+
   it('tracks status counts across all mapping rows', () => {
     const counts = selectStatusCounts(useMappingStore.getState());
     expect(counts).toEqual({
@@ -328,14 +363,14 @@ describe('mappingStore selectors', () => {
       {
         accountId: '1000',
         description: 'Cash',
-        entity: 'HQ',
+        entity: 'Entity One',
         netChange: 1250,
         glMonth: '2024-01',
       },
       {
         accountId: '2000',
         description: 'Revenue',
-        entity: 'HQ',
+        entity: 'Entity One',
         netChange: -1250,
         glMonth: '2024-01',
       },

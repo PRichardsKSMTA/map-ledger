@@ -56,26 +56,53 @@ export const insertClientFileEntity = async (
     entityId: number;
     isSelected: number | null;
     insertedDttm: string | Date | null;
+    updatedDttm?: string | Date | null;
+    updatedBy?: string | null;
   }>(
-    `INSERT INTO ml.CLIENT_FILE_ENTITIES (
-      FILE_UPLOAD_GUID,
-      ENTITY_ID,
-      IS_SELECTED
-    )
-    OUTPUT
-      INSERTED.FILE_UPLOAD_GUID as fileUploadGuid,
-      INSERTED.ENTITY_ID as entityId,
-      INSERTED.IS_SELECTED as isSelected,
-      INSERTED.INSERTED_DTTM as insertedDttm
-    VALUES (
-      @fileUploadGuid,
-      @entityId,
-      @isSelected
-    )`,
+    `DECLARE @isAlreadyPresent BIT = (
+      SELECT CASE WHEN EXISTS (
+        SELECT 1
+        FROM ml.CLIENT_FILE_ENTITIES
+        WHERE FILE_UPLOAD_GUID = @fileUploadGuid
+          AND ENTITY_ID = @entityId
+      ) THEN 1 ELSE 0 END
+    );
+
+    IF @isAlreadyPresent = 1
+    BEGIN
+      SELECT
+        FILE_UPLOAD_GUID as fileUploadGuid,
+        ENTITY_ID as entityId,
+        IS_SELECTED as isSelected,
+        INSERTED_DTTM as insertedDttm,
+        UPDATED_DTTM as updatedDttm,
+        UPDATED_BY as updatedBy
+      FROM ml.CLIENT_FILE_ENTITIES
+      WHERE FILE_UPLOAD_GUID = @fileUploadGuid
+        AND ENTITY_ID = @entityId;
+    END
+    ELSE
+    BEGIN
+      INSERT INTO ml.CLIENT_FILE_ENTITIES (
+        FILE_UPLOAD_GUID,
+        ENTITY_ID,
+        IS_SELECTED
+      )
+      OUTPUT
+        INSERTED.FILE_UPLOAD_GUID as fileUploadGuid,
+        INSERTED.ENTITY_ID as entityId,
+        INSERTED.IS_SELECTED as isSelected,
+        INSERTED.INSERTED_DTTM as insertedDttm
+      VALUES (
+        @fileUploadGuid,
+        @entityId,
+        @isSelected
+      );
+    END`,
     {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      isSelected: input.isSelected ?? null,
+      isSelected: input.isSelected === true ? 1 : 0,
     }
   );
 
@@ -85,7 +112,7 @@ export const insertClientFileEntity = async (
     inserted ?? {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      isSelected: input.isSelected ?? null,
+      isSelected: input.isSelected === true ? 1 : 0,
       insertedDttm: null,
     }
   );
@@ -122,12 +149,11 @@ export const updateClientFileEntity = async (
       INSERTED.UPDATED_DTTM as updatedDttm,
       INSERTED.UPDATED_BY as updatedBy
     WHERE FILE_UPLOAD_GUID = @fileUploadGuid
-      AND ENTITY_ID = @entityId
-      AND IS_DELETED = 0`,
+      AND ENTITY_ID = @entityId`,
     {
       fileUploadGuid: input.fileUploadGuid,
       entityId: input.entityId,
-      isSelected: input.isSelected ?? null,
+      isSelected: input.isSelected === true ? 1 : 0,
       updatedBy: input.updatedBy ?? null,
     }
   );
@@ -143,14 +169,9 @@ export const softDeleteClientFileEntity = async (
   updatedBy?: string
 ): Promise<boolean> => {
   const result = await runQuery(
-    `UPDATE ml.CLIENT_FILE_ENTITIES
-    SET IS_DELETED = 1,
-        DELETED_DTTM = CURRENT_TIMESTAMP,
-        UPDATED_DTTM = CURRENT_TIMESTAMP,
-        UPDATED_BY = @updatedBy
+    `DELETE FROM ml.CLIENT_FILE_ENTITIES
     WHERE FILE_UPLOAD_GUID = @fileUploadGuid
-      AND ENTITY_ID = @entityId
-      AND IS_DELETED = 0`,
+      AND ENTITY_ID = @entityId`,
     { fileUploadGuid, entityId, updatedBy: updatedBy ?? null }
   );
 
@@ -180,8 +201,7 @@ export const listClientFileEntities = async (
       UPDATED_DTTM as updatedDttm,
       UPDATED_BY as updatedBy
     FROM ml.CLIENT_FILE_ENTITIES
-    WHERE FILE_UPLOAD_GUID = @fileUploadGuid
-      AND IS_DELETED = 0`,
+    WHERE FILE_UPLOAD_GUID = @fileUploadGuid`,
     { fileUploadGuid }
   );
 

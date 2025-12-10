@@ -1,9 +1,28 @@
-import { render, screen } from './testUtils';
+jest.mock('exceljs', () => ({
+  Workbook: jest.fn(() => ({
+    addWorksheet: jest.fn(),
+    getWorksheet: jest.fn(),
+    xlsx: { read: jest.fn() },
+  })),
+}));
+jest.mock('react', () => {
+  const actual = jest.requireActual('react');
+  return { __esModule: true, ...actual, default: actual };
+});
+jest.mock('../store/organizationStore', () => ({
+  useOrganizationStore: (selector: any) =>
+    selector({ clientAccess: [], fetchForUser: jest.fn(), hydrateFromAccessList: jest.fn() }),
+}));
+
+(globalThis as any).scrollTo = jest.fn();
+
+import { render, screen, waitFor } from './testUtils';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Mapping from '../pages/Mapping';
 import { useClientStore } from '../store/clientStore';
 import { useMappingStore, createInitialMappingAccounts } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
+import userEvent from './userEvent';
 
 const clientSnapshot = (() => {
   const { clients } = useClientStore.getState();
@@ -65,6 +84,9 @@ const resetMappingStore = () => {
     accounts: createInitialMappingAccounts(),
     searchTerm: '',
     activeStatuses: [],
+    activeEntityId: null,
+    activeEntities: [],
+    activeUploadId: null,
   });
 };
 
@@ -135,5 +157,118 @@ describe('Mapping page layout', () => {
     expect(workspace).toHaveClass('w-full');
 
     expect(container.querySelector('.max-w-7xl')).toBeNull();
+  });
+
+  it('switches entity tabs and scopes mapping content to the active entity', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/gl/mapping/demo']}>
+        <Routes>
+          <Route path="/gl/mapping/:uploadId" element={<Mapping />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const globalTab = screen.getByRole('tab', { name: 'Global Logistics' });
+    const heritageTab = screen.getByRole('tab', { name: 'Heritage Transport' });
+
+    expect(globalTab).toHaveAttribute('aria-selected', 'true');
+    expect(heritageTab).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText('Fuel Expense')).toBeInTheDocument();
+
+    await user.click(heritageTab);
+
+    expect(globalTab).toHaveAttribute('aria-selected', 'false');
+    expect(heritageTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Legacy Clearing')).toBeInTheDocument();
+    expect(screen.queryByText('Fuel Expense')).not.toBeInTheDocument();
+  });
+
+  it('keeps workflow stage selection scoped to each entity tab', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/gl/mapping/demo']}>
+        <Routes>
+          <Route path="/gl/mapping/:uploadId" element={<Mapping />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const reviewStep = screen.getByRole('button', { name: /^Review/ });
+    await user.click(reviewStep);
+    expect(reviewStep).toHaveAttribute('aria-current', 'page');
+
+    const acmeTab = screen.getByRole('tab', { name: 'Acme Freight' });
+    await user.click(acmeTab);
+
+    const mappingStep = screen.getByRole('button', { name: /^Mapping/ });
+    expect(mappingStep).toHaveAttribute('aria-current', 'page');
+    expect(reviewStep).not.toHaveAttribute('aria-current', 'page');
+
+    const globalTab = screen.getByRole('tab', { name: 'Global Logistics' });
+    await user.click(globalTab);
+
+    expect(screen.getByRole('button', { name: /^Review/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+  });
+
+  it('hydrates entity tabs from fetched upload metadata', async () => {
+    const uploadGuid = '12345678-1234-1234-1234-1234567890ab';
+    const fetchMock = jest
+      .spyOn(globalThis as { fetch: typeof fetch }, 'fetch')
+      .mockImplementation((url: RequestInfo | URL) => {
+      const target = typeof url === 'string' ? url : url.toString();
+
+      if (target.includes('/file-records')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            fileUploadGuid: uploadGuid,
+            upload: { fileName: 'import.xlsx', uploadedAt: '2024-01-01T00:00:00Z' },
+            entities: [
+              { id: 'north', name: 'North Division', isSelected: true },
+              { id: 'south', name: 'South Division', isSelected: false },
+            ],
+            items: [
+              {
+                fileUploadGuid: uploadGuid,
+                recordId: '1',
+                accountId: '1000',
+                accountName: 'Revenue',
+                activityAmount: 1500,
+                entityId: 'north',
+              },
+            ],
+          }),
+        } as any);
+      }
+
+      if (target.includes('/mapping/suggest')) {
+        return Promise.resolve({ ok: true, json: async () => ({ items: [] }) } as any);
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${target}`));
+    });
+
+    try {
+      render(
+        <MemoryRouter initialEntries={[`/gl/mapping/${uploadGuid}`]}>
+          <Routes>
+            <Route path="/gl/mapping/:uploadId" element={<Mapping />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'North Division' })).toBeInTheDocument());
+      expect(screen.getByRole('tab', { name: 'South Division' })).toBeInTheDocument();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });
