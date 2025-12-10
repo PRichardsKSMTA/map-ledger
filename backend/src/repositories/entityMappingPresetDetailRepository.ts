@@ -32,6 +32,22 @@ const normalizeText = (value?: string | null): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizeSpecifiedPct = (value?: number | null): number | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  const scaled = parsed > 9.999 ? parsed / 100 : parsed;
+  const clamped = Math.max(0, Math.min(scaled, 9.999));
+
+  return Number.isFinite(clamped) ? clamped : null;
+};
+
 const mapRow = (row: {
   preset_guid: string;
   basis_datapoint: string | null;
@@ -119,7 +135,7 @@ export const createEntityMappingPresetDetails = async (
       params[`basisDatapoint${index}`] = normalizeText(input.basisDatapoint);
       params[`targetDatapoint${index}`] = normalizeText(input.targetDatapoint);
       params[`isCalculated${index}`] = toBit(input.isCalculated);
-      params[`specifiedPct${index}`] = input.specifiedPct ?? null;
+      params[`specifiedPct${index}`] = normalizeSpecifiedPct(input.specifiedPct);
       params[`updatedBy${index}`] = normalizeText(input.updatedBy);
 
       return `(@presetGuid${index}, @basisDatapoint${index}, @targetDatapoint${index}, @isCalculated${index}, @specifiedPct${index}, @updatedBy${index})`;
@@ -184,7 +200,7 @@ export const updateEntityMappingPresetDetail = async (
       basisDatapoint: normalizeText(basisDatapoint),
       targetDatapoint,
       isCalculated: toBit(updates.isCalculated ?? null),
-      specifiedPct: updates.specifiedPct ?? null,
+      specifiedPct: normalizeSpecifiedPct(updates.specifiedPct),
       updatedBy: normalizeText(updates.updatedBy),
     }
   );
