@@ -3,6 +3,7 @@ import { json } from '../../http';
 import {
   listEntityAccountMappingsByFileUpload,
   EntityAccountMappingWithRecord,
+  EntityMappingPresetDetailRow,
   listEntityAccountMappingsWithPresets,
 } from '../../repositories/entityAccountMappingRepository';
 
@@ -86,6 +87,10 @@ const mapToSuggestion = (
   const status = normalizeStatus(row.mappingStatus, mappingType);
   const entityId = row.entityId?.trim() || 'unknown-entity';
   const activity = row.activityAmount ?? 0;
+  const hydratedDetails = details.filter(
+    (detail): detail is EntityMappingPresetDetailRow & { targetDatapoint: string } =>
+      Boolean(detail.targetDatapoint),
+  );
 
   return {
     id: `${fileUploadGuid}-${row.recordId ?? row.entityAccountId}`,
@@ -100,7 +105,7 @@ const mapToSuggestion = (
     polarity,
     presetId,
     exclusionPct: row.exclusionPct ?? null,
-    splitDefinitions: details.map((detail, index) => ({
+    splitDefinitions: hydratedDetails.map((detail, index) => ({
       id: `${presetId ?? 'preset'}-${index}`,
       targetId: detail.targetDatapoint,
       targetName: detail.targetDatapoint,

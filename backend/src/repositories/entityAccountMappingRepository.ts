@@ -29,7 +29,7 @@ const TABLE_NAME = 'ml.ENTITY_ACCOUNT_MAPPING';
 
 export interface EntityMappingPresetDetailRow {
   basisDatapoint?: string | null;
-  targetDatapoint: string;
+  targetDatapoint?: string | null;
   isCalculated?: boolean | null;
   specifiedPct?: number | null;
 }
@@ -139,7 +139,7 @@ export const listEntityAccountMappings = async (
 const hydratePresetDetails = <T extends EntityAccountMappingRow>(
   rows: (T &
     EntityMappingPresetDetailRow & {
-      record_id?: number | null;
+      recordId?: number | null;
     })[],
 ): (T & {
   presetDetails?: EntityMappingPresetDetailRow[];
@@ -151,7 +151,7 @@ const hydratePresetDetails = <T extends EntityAccountMappingRow>(
   }>();
 
   rows.forEach((row) => {
-    const key = `${row.entityId}|${row.entityAccountId}|${row.record_id ?? ''}`;
+    const key = `${row.entityId}|${row.entityAccountId}|${row.recordId ?? ''}`;
     const existing = grouped.get(key);
     const detail = row.targetDatapoint
       ? {
@@ -172,7 +172,7 @@ const hydratePresetDetails = <T extends EntityAccountMappingRow>(
     grouped.set(key, {
       base: {
         ...(row as T),
-        recordId: row.record_id ?? null,
+        recordId: row.recordId ?? null,
       },
       details: detail ? [detail] : [],
     });
@@ -203,6 +203,7 @@ export const listEntityAccountMappingsWithPresets = async (
       inserted_dttm?: Date | string | null;
       updated_dttm?: Date | string | null;
       updated_by?: string | null;
+      record_id?: number | null;
       basisDatapoint?: string | null;
       targetDatapoint?: string | null;
       isCalculated?: boolean | null;
@@ -234,7 +235,7 @@ export const listEntityAccountMappingsWithPresets = async (
 
   const rows = (result.recordset ?? []).map((row) => ({
     ...mapRow(row),
-    record_id: row.record_id,
+    recordId: row.record_id ?? null,
     basisDatapoint: row.basisDatapoint,
     targetDatapoint: row.targetDatapoint,
     isCalculated: row.isCalculated,

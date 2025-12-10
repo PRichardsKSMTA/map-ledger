@@ -372,6 +372,7 @@ const buildExistingPresetLookup = async (
 const syncPresetDetails = async (
   presetGuid: string,
   desiredDetails: EntityMappingPresetDetailInput[],
+  updatedBy?: string | null,
 ): Promise<void> => {
   if (!desiredDetails.length) {
     return;
@@ -495,7 +496,7 @@ const saveHandler = async (
       );
 
       if (presetDetails.length) {
-        await syncPresetDetails(presetGuid, presetDetails);
+        await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
       }
 
       upserts.push({
