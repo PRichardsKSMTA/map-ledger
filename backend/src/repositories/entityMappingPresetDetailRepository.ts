@@ -42,8 +42,7 @@ const normalizeSpecifiedPct = (value?: number | null): number | null => {
     return null;
   }
 
-  const scaled = parsed > 9.999 ? parsed / 100 : parsed;
-  const clamped = Math.max(0, Math.min(scaled, 9.999));
+  const clamped = Math.max(0, Math.min(parsed, 100));
 
   return Number.isFinite(clamped) ? clamped : null;
 };
