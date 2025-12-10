@@ -1,28 +1,19 @@
 import { runQuery } from '../utils/sqlClient';
 
-export interface EntityMappingPresetDetailInput {
+export interface EntityPresetMappingInput {
   presetGuid: string;
   basisDatapoint?: string | null;
   targetDatapoint: string;
-  isCalculated?: boolean | null;
-  specifiedPct?: number | null;
+  appliedPct?: number | null;
   updatedBy?: string | null;
 }
 
-export interface EntityMappingPresetDetailRow
-  extends EntityMappingPresetDetailInput {
+export interface EntityPresetMappingRow extends EntityPresetMappingInput {
   insertedDttm?: string | null;
   updatedDttm?: string | null;
 }
 
-const TABLE_NAME = 'ml.ENTITY_MAPPING_PRESET_DETAIL';
-
-const toBit = (value?: boolean | null): number | null => {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  return value ? 1 : 0;
-};
+const TABLE_NAME = 'ml.ENTITY_PRESET_MAPPING';
 
 const normalizeText = (value?: string | null): string | null => {
   if (value === undefined || value === null) {
@@ -32,7 +23,7 @@ const normalizeText = (value?: string | null): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const normalizeSpecifiedPct = (value?: number | null): number | null => {
+const normalizeAppliedPct = (value?: number | null): number | null => {
   if (value === undefined || value === null) {
     return null;
   }
@@ -53,23 +44,17 @@ const mapRow = (row: {
   preset_guid: string;
   basis_datapoint: string | null;
   target_datapoint: string;
-  is_calculated?: number | boolean | null;
-  specified_pct?: number | null;
+  applied_pct?: number | null;
   inserted_dttm?: Date | string | null;
   updated_dttm?: Date | string | null;
   updated_by?: string | null;
-}): EntityMappingPresetDetailRow => ({
+}): EntityPresetMappingRow => ({
   presetGuid: row.preset_guid,
   basisDatapoint: row.basis_datapoint,
   targetDatapoint: row.target_datapoint,
-  isCalculated: typeof row.is_calculated === 'boolean'
-    ? row.is_calculated
-    : row.is_calculated === null || row.is_calculated === undefined
-      ? null
-      : Boolean(row.is_calculated),
   // Multiply by 100 to convert from database format (0.000-1.000) to application format (0-100)
-  specifiedPct: row.specified_pct !== null && row.specified_pct !== undefined
-    ? row.specified_pct * 100
+  appliedPct: row.applied_pct !== null && row.applied_pct !== undefined
+    ? row.applied_pct * 100
     : null,
   insertedDttm:
     row.inserted_dttm instanceof Date
@@ -82,9 +67,9 @@ const mapRow = (row: {
   updatedBy: row.updated_by ?? null,
 });
 
-export const listEntityMappingPresetDetails = async (
+export const listEntityPresetMappings = async (
   presetGuid?: string
-): Promise<EntityMappingPresetDetailRow[]> => {
+): Promise<EntityPresetMappingRow[]> => {
   const params: Record<string, unknown> = {};
   const filters: string[] = [];
 
@@ -101,8 +86,7 @@ export const listEntityMappingPresetDetails = async (
     preset_guid: string;
     basis_datapoint: string | null;
     target_datapoint: string;
-    is_calculated?: number | boolean | null;
-    specified_pct?: number | null;
+    applied_pct?: number | null;
     inserted_dttm?: Date | string | null;
     updated_dttm?: Date | string | null;
     updated_by?: string | null;
@@ -111,8 +95,7 @@ export const listEntityMappingPresetDetails = async (
       PRESET_GUID as preset_guid,
       BASIS_DATAPOINT as basis_datapoint,
       TARGET_DATAPOINT as target_datapoint,
-      IS_CALCULATED as is_calculated,
-      SPECIFIED_PCT as specified_pct,
+      APPLIED_PCT as applied_pct,
       INSERTED_DTTM as inserted_dttm,
       UPDATED_DTTM as updated_dttm,
       UPDATED_BY as updated_by
@@ -125,9 +108,9 @@ export const listEntityMappingPresetDetails = async (
   return (result.recordset ?? []).map(mapRow);
 };
 
-export const createEntityMappingPresetDetails = async (
-  inputs: EntityMappingPresetDetailInput[]
-): Promise<EntityMappingPresetDetailRow[]> => {
+export const createEntityPresetMappings = async (
+  inputs: EntityPresetMappingInput[]
+): Promise<EntityPresetMappingRow[]> => {
   if (!inputs.length) {
     return [];
   }
@@ -138,11 +121,10 @@ export const createEntityMappingPresetDetails = async (
       params[`presetGuid${index}`] = normalizeText(input.presetGuid);
       params[`basisDatapoint${index}`] = normalizeText(input.basisDatapoint);
       params[`targetDatapoint${index}`] = normalizeText(input.targetDatapoint);
-      params[`isCalculated${index}`] = toBit(input.isCalculated);
-      params[`specifiedPct${index}`] = normalizeSpecifiedPct(input.specifiedPct);
+      params[`appliedPct${index}`] = normalizeAppliedPct(input.appliedPct);
       params[`updatedBy${index}`] = normalizeText(input.updatedBy);
 
-      return `(@presetGuid${index}, @basisDatapoint${index}, @targetDatapoint${index}, @isCalculated${index}, @specifiedPct${index}, @updatedBy${index})`;
+      return `(@presetGuid${index}, @basisDatapoint${index}, @targetDatapoint${index}, @appliedPct${index}, @updatedBy${index})`;
     })
     .join(', ');
 
@@ -150,8 +132,7 @@ export const createEntityMappingPresetDetails = async (
     preset_guid: string;
     basis_datapoint: string | null;
     target_datapoint: string;
-    is_calculated?: number | boolean | null;
-    specified_pct?: number | null;
+    applied_pct?: number | null;
     inserted_dttm?: Date | string | null;
     updated_dttm?: Date | string | null;
     updated_by?: string | null;
@@ -160,16 +141,14 @@ export const createEntityMappingPresetDetails = async (
       PRESET_GUID,
       BASIS_DATAPOINT,
       TARGET_DATAPOINT,
-      IS_CALCULATED,
-      SPECIFIED_PCT,
+      APPLIED_PCT,
       UPDATED_BY
     )
     OUTPUT
       INSERTED.PRESET_GUID as preset_guid,
       INSERTED.BASIS_DATAPOINT as basis_datapoint,
       INSERTED.TARGET_DATAPOINT as target_datapoint,
-      INSERTED.IS_CALCULATED as is_calculated,
-      INSERTED.SPECIFIED_PCT as specified_pct,
+      INSERTED.APPLIED_PCT as applied_pct,
       INSERTED.INSERTED_DTTM as inserted_dttm,
       INSERTED.UPDATED_DTTM as updated_dttm,
       INSERTED.UPDATED_BY as updated_by
@@ -180,41 +159,18 @@ export const createEntityMappingPresetDetails = async (
   return (result.recordset ?? []).map(mapRow);
 };
 
-export const updateEntityMappingPresetDetail = async (
-  presetGuid: string,
-  basisDatapoint: string | null,
-  targetDatapoint: string,
-  updates: Partial<Omit<EntityMappingPresetDetailInput, 'presetGuid' | 'basisDatapoint' | 'targetDatapoint'>>
-): Promise<EntityMappingPresetDetailRow | null> => {
-  if (!presetGuid || !targetDatapoint || (!basisDatapoint && updates.isCalculated)) {
-    return null;
+export const deleteEntityPresetMappings = async (
+  presetGuid: string
+): Promise<number> => {
+  const normalizedGuid = normalizeText(presetGuid);
+  if (!normalizedGuid) {
+    return 0;
   }
 
-  await runQuery(
-    `UPDATE ${TABLE_NAME}
-    SET
-      IS_CALCULATED = ISNULL(@isCalculated, IS_CALCULATED),
-      SPECIFIED_PCT = ISNULL(@specifiedPct, SPECIFIED_PCT),
-      UPDATED_BY = @updatedBy
-    WHERE PRESET_GUID = @presetGuid
-      AND ((BASIS_DATAPOINT IS NULL AND @basisDatapoint IS NULL) OR BASIS_DATAPOINT = @basisDatapoint)
-      AND TARGET_DATAPOINT = @targetDatapoint`,
-    {
-      presetGuid,
-      basisDatapoint: normalizeText(basisDatapoint),
-      targetDatapoint,
-      isCalculated: toBit(updates.isCalculated ?? null),
-      specifiedPct: normalizeSpecifiedPct(updates.specifiedPct),
-      updatedBy: normalizeText(updates.updatedBy),
-    }
+  const result = await runQuery(
+    `DELETE FROM ${TABLE_NAME} WHERE PRESET_GUID = @presetGuid`,
+    { presetGuid: normalizedGuid }
   );
 
-  const updatedRows = await listEntityMappingPresetDetails(presetGuid);
-  return updatedRows.find(
-    (row) =>
-      row.basisDatapoint === normalizeText(basisDatapoint) &&
-      row.targetDatapoint === targetDatapoint
-  ) ?? null;
+  return result.rowsAffected?.[0] ?? 0;
 };
-
-export default listEntityMappingPresetDetails;
