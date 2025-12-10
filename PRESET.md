@@ -36,8 +36,8 @@ This document captures the required behaviors for handling presets and mapping l
   - `PRESET_TYPE` (VARCHAR(12)): `direct`, `percentage`, or `dynamic`.
   - `PRESET_DESCRIPTION` (VARCHAR(MAX)): Human-readable summary of the mapping (see description rules below).
 - **Description rules:**
-  - `direct`: "<Imported Account> -> <SCOA Account>".
-  - `percentage`: "<Imported Account> -> <SCOA Account 1>, <SCOA Account 2>, ..." ordered by splits.
+  - `direct`: "`<Imported Account> -> <SCOA Account>`".
+  - `percentage`: "`<Imported Account> -> <SCOA Account 1>, <SCOA Account 2>, ...`" ordered by splits.
   - `dynamic`: Name supplied by user via preset builder.
 
 ### ml.ENTITY_MAPPING_PRESET_DETAIL
