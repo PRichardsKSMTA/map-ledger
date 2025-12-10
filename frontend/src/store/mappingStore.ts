@@ -91,7 +91,7 @@ const buildTargetFromDescription = (description: string) => {
 
   const slug = slugify(description) || 'target';
   return {
-    id: `chart-of-account-${slug}`,
+    id: slug,
     value: description,
     label: description,
     accountNumber: description,
