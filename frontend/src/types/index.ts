@@ -487,10 +487,12 @@ export interface MappingSplitDefinition {
   id: string;
   targetId: string;
   targetName: string;
-  allocationType: 'percentage' | 'amount';
+  allocationType: 'percentage' | 'amount' | 'dynamic';
   allocationValue: number;
   notes?: string;
   isExclusion?: boolean;
+  basisDatapoint?: string | null;
+  isCalculated?: boolean;
 }
 
 export type DistributionType = 'direct' | 'percentage' | 'dynamic';

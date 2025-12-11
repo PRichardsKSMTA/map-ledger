@@ -4,7 +4,13 @@
 
 import { getChartOfAccountOptions, isKnownChartOfAccount } from '../store/chartOfAccountsStore';
 import { useMappingStore } from '../store/mappingStore';
+import { trackMappingSaveAttempt } from '../utils/telemetry';
 import type { GLAccountMappingRow } from '../types';
+
+jest.mock('../utils/telemetry', () => ({
+  trackMappingSaveAttempt: jest.fn(),
+  trackMappingSaveTriggered: jest.fn(),
+}));
 
 const defaultTarget = getChartOfAccountOptions()[0];
 const defaultTargetId = defaultTarget?.value ?? 'coa-default';
@@ -53,6 +59,9 @@ const resetStore = (accounts: GLAccountMappingRow[]) => {
 
 describe('dirty save behavior', () => {
   let fetchMock: jest.Mock;
+  const mockedTrackMappingSaveAttempt = trackMappingSaveAttempt as jest.MockedFunction<
+    typeof trackMappingSaveAttempt
+  >;
 
   beforeEach(() => {
     fetchMock = jest.fn().mockImplementation(async (_url, init) => {
@@ -143,5 +152,27 @@ describe('dirty save behavior', () => {
     expect(savedCount).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(useMappingStore.getState().saveError).toBe('No changes ready to save.');
+  });
+
+  it('emits telemetry only when saves are attempted', async () => {
+    const accounts = [buildAccount({ id: 'acct-1', accountId: '1000' })];
+    resetStore(accounts);
+
+    const savedCount = await useMappingStore.getState().saveMappings();
+    expect(savedCount).toBe(0);
+    expect(mockedTrackMappingSaveAttempt).not.toHaveBeenCalled();
+
+    useMappingStore.getState().updateNotes('acct-1', 'Updated note for telemetry');
+
+    const telemetrySavedCount = await useMappingStore.getState().saveMappings();
+    expect(telemetrySavedCount).toBe(1);
+    expect(mockedTrackMappingSaveAttempt).toHaveBeenCalledTimes(1);
+    expect(mockedTrackMappingSaveAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dirtyRows: 1,
+        payloadRows: 1,
+        success: true,
+      }),
+    );
   });
 });

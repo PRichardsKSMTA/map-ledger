@@ -1,6 +1,7 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import crypto from 'node:crypto';
 import { json, readJson } from '../../http';
+import { withQueryTracking } from '../../utils/sqlClient';
 import { buildErrorResponse } from '../datapointConfigs/utils';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import {
@@ -98,6 +99,8 @@ const normalizationTools: NormalizationTools = {
   normalizeNumber,
   resolvePresetType,
 };
+
+export const SAVE_ROW_LIMIT = 200;
 
 const normalizePercentageDetails = (
   details: EntityMappingPresetDetailInput[],
@@ -460,159 +463,198 @@ const saveHandler = async (
   request: HttpRequest,
   context: InvocationContext,
 ): Promise<HttpResponseInit> => {
+  const startedAt = Date.now();
+  let dirtyRows = 0;
+
   try {
     const body = await readJson(request);
     const inputs = buildUpsertInputs(body ?? {});
+    dirtyRows = inputs.length;
+
+    if (inputs.length > SAVE_ROW_LIMIT) {
+      const limitMessage = `Mapping save request contains ${inputs.length} rows, exceeding the per-request limit of ${SAVE_ROW_LIMIT}.`;
+      context.error('Mapping save request exceeds row limit', {
+        limit: SAVE_ROW_LIMIT,
+        requestedRows: inputs.length,
+      });
+      return json(
+        buildErrorResponse(
+          'Too many mapping rows in a single save request. Save in smaller batches or use batch edits.',
+          new Error(limitMessage),
+        ),
+        413,
+      );
+    }
 
     if (!inputs.length) {
       return json({ items: [], message: 'No mapping changes to apply' });
     }
 
-    const { presetLookup, knownPresetGuids } = await buildExistingPresetLookup(inputs);
-    const existingMappings = await listEntityAccountMappingsForAccounts(
-      inputs.map((input) => ({
-        entityId: input.entityId as string,
-        entityAccountId: input.entityAccountId as string,
-      })),
-    );
-    const existingLookup = new Map(
-      existingMappings.map((mapping) => [
-        toPresetCacheKey(mapping.entityId, mapping.entityAccountId),
-        mapping,
-      ]),
-    );
-    const upserts: EntityAccountMappingUpsertInput[] = [];
-    const entityAccounts: EntityAccountInput[] = [];
-    const scoaActivityLookup = new Map<string, EntityScoaActivityInput>();
-
-    for (const input of inputs) {
-      const cacheKey = toPresetCacheKey(
-        input.entityId as string,
-        input.entityAccountId as string,
+    const { result: saveResult, queryCount } = await withQueryTracking(async () => {
+      const { presetLookup, knownPresetGuids } = await buildExistingPresetLookup(inputs);
+      const existingMappings = await listEntityAccountMappingsForAccounts(
+        inputs.map((input) => ({
+          entityId: input.entityId as string,
+          entityAccountId: input.entityAccountId as string,
+        })),
       );
-      const presetGuid =
-        normalizeText(input.presetId) ??
-        presetLookup.get(cacheKey) ??
-        crypto.randomUUID();
-
-      const presetType = determinePresetType(
-        input.mappingType ?? null,
-        input.splitDefinitions,
-        normalizationTools,
+      const existingLookup = new Map(
+        existingMappings.map((mapping) => [
+          toPresetCacheKey(mapping.entityId, mapping.entityAccountId),
+          mapping,
+        ]),
       );
-      const mappingTypeForPersistence =
-        presetType === 'dynamic' ? 'dynamic' : input.mappingType;
-      const effectiveMappingType = mappingTypeForPersistence ?? input.mappingType;
-      const presetDetails = mapSplitDefinitionsToPresetDetails(
-        presetGuid,
-        presetType,
-        input.splitDefinitions,
-        input.updatedBy ?? null,
-        input.netChange ?? null,
-        input.exclusionPct ?? null,
-        normalizationTools,
-      );
-      const presetDescription = buildPresetDescription(
-        input.accountName ?? input.entityAccountId ?? null,
-        presetType,
-        presetDetails,
-      );
+      const upserts: EntityAccountMappingUpsertInput[] = [];
+      const entityAccounts: EntityAccountInput[] = [];
+      const scoaActivityLookup = new Map<string, EntityScoaActivityInput>();
 
-      await ensurePreset(
-        input.entityId as string,
-        input.entityAccountId as string,
-        presetType,
-        presetGuid,
-        presetLookup,
-        knownPresetGuids,
-        presetDescription,
-      );
+      for (const input of inputs) {
+        const cacheKey = toPresetCacheKey(
+          input.entityId as string,
+          input.entityAccountId as string,
+        );
+        const presetGuid =
+          normalizeText(input.presetId) ??
+          presetLookup.get(cacheKey) ??
+          crypto.randomUUID();
 
-      const upsertPayload: EntityAccountMappingUpsertInput = {
-        entityId: input.entityId as string,
-        entityAccountId: input.entityAccountId as string,
-        polarity: input.polarity,
-        mappingType: mappingTypeForPersistence,
-        presetId: presetGuid,
-        mappingStatus:
-          input.mappingStatus ??
-          (effectiveMappingType?.toLowerCase() === 'exclude' ? 'Excluded' : 'Mapped'),
-        exclusionPct: input.exclusionPct,
-        updatedBy: input.updatedBy,
-      };
-      const existing = existingLookup.get(cacheKey);
+        const presetType = determinePresetType(
+          input.mappingType ?? null,
+          input.splitDefinitions,
+          normalizationTools,
+        );
+        const mappingTypeForPersistence =
+          presetType === 'dynamic' ? 'dynamic' : input.mappingType;
+        const effectiveMappingType = mappingTypeForPersistence ?? input.mappingType;
+        const presetDetails = mapSplitDefinitionsToPresetDetails(
+          presetGuid,
+          presetType,
+          input.splitDefinitions,
+          input.updatedBy ?? null,
+          input.netChange ?? null,
+          input.exclusionPct ?? null,
+          normalizationTools,
+        );
+        const presetDescription = buildPresetDescription(
+          input.accountName ?? input.entityAccountId ?? null,
+          presetType,
+          presetDetails,
+        );
 
-      const hasChanges =
-        !existing ||
-        upsertPayload.polarity !== existing.polarity ||
-        upsertPayload.mappingType !== existing.mappingType ||
-        upsertPayload.presetId !== existing.presetId ||
-        upsertPayload.mappingStatus !== existing.mappingStatus ||
-        upsertPayload.exclusionPct !== existing.exclusionPct;
+        await ensurePreset(
+          input.entityId as string,
+          input.entityAccountId as string,
+          presetType,
+          presetGuid,
+          presetLookup,
+          knownPresetGuids,
+          presetDescription,
+        );
 
-      if (hasChanges) {
-        if (presetDetails.length) {
-          await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
-        }
+        const upsertPayload: EntityAccountMappingUpsertInput = {
+          entityId: input.entityId as string,
+          entityAccountId: input.entityAccountId as string,
+          polarity: input.polarity,
+          mappingType: mappingTypeForPersistence,
+          presetId: presetGuid,
+          mappingStatus:
+            input.mappingStatus ?? (
+              effectiveMappingType?.toLowerCase() === 'exclude' ? 'Excluded' : 'Mapped'
+            ),
+          exclusionPct: input.exclusionPct,
+          updatedBy: input.updatedBy,
+        };
+        const existing = existingLookup.get(cacheKey);
 
-        // For dynamic mappings, also insert into ENTITY_PRESET_MAPPING with calculated percentages
-        if (presetType === 'dynamic') {
-          const presetMappingInputs = buildDynamicPresetMappingInputs(
-            presetGuid,
-            presetType,
-            input.splitDefinitions,
-            input.updatedBy ?? null,
-            input.netChange ?? null,
-            input.exclusionPct ?? null,
-            normalizationTools,
-          );
+        const hasChanges =
+          !existing ||
+          upsertPayload.polarity !== existing.polarity ||
+          upsertPayload.mappingType !== existing.mappingType ||
+          upsertPayload.presetId !== existing.presetId ||
+          upsertPayload.mappingStatus !== existing.mappingStatus ||
+          upsertPayload.exclusionPct !== existing.exclusionPct;
 
-          if (presetMappingInputs.length) {
-            await deleteEntityPresetMappings(presetGuid);
-            await createEntityPresetMappings(presetMappingInputs);
+        if (hasChanges) {
+          if (presetDetails.length) {
+            await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
           }
+
+          if (presetType === 'dynamic') {
+            const presetMappingInputs = buildDynamicPresetMappingInputs(
+              presetGuid,
+              presetType,
+              input.splitDefinitions,
+              input.updatedBy ?? null,
+              input.netChange ?? null,
+              input.exclusionPct ?? null,
+              normalizationTools,
+            );
+
+            if (presetMappingInputs.length) {
+              await deleteEntityPresetMappings(presetGuid);
+              await createEntityPresetMappings(presetMappingInputs);
+            }
+          }
+
+          upserts.push(upsertPayload);
         }
 
-        upserts.push(upsertPayload);
+        entityAccounts.push({
+          entityId: input.entityId as string,
+          accountId: input.entityAccountId as string,
+          accountName: input.accountName ?? null,
+          updatedBy: input.updatedBy ?? null,
+        });
+
+        const activities = buildScoaActivities({
+          ...input,
+          mappingType: effectiveMappingType,
+        });
+        activities.forEach((activity) => {
+          const key = `${activity.entityId}|${activity.scoaAccountId}|${activity.activityMonth}`;
+          const existing = scoaActivityLookup.get(key);
+          if (existing) {
+            existing.activityValue += activity.activityValue;
+            return;
+          }
+          scoaActivityLookup.set(key, activity);
+        });
       }
 
-      entityAccounts.push({
-        entityId: input.entityId as string,
-        accountId: input.entityAccountId as string,
-        accountName: input.accountName ?? null,
-        updatedBy: input.updatedBy ?? null,
-      });
+      const [mappings] = await Promise.all([
+        upsertEntityAccountMappings(upserts),
+        upsertEntityAccounts(entityAccounts),
+        upsertEntityScoaActivity(Array.from(scoaActivityLookup.values())),
+      ]);
 
-      const activities = buildScoaActivities({
-        ...input,
-        mappingType: effectiveMappingType,
-      });
-      activities.forEach((activity) => {
-        const key = `${activity.entityId}|${activity.scoaAccountId}|${activity.activityMonth}`;
-        const existing = scoaActivityLookup.get(key);
-        if (existing) {
-          existing.activityValue += activity.activityValue;
-          return;
-        }
-        scoaActivityLookup.set(key, activity);
-      });
-    }
-
-    const [mappings] = await Promise.all([
-      upsertEntityAccountMappings(upserts),
-      upsertEntityAccounts(entityAccounts),
-      upsertEntityScoaActivity(Array.from(scoaActivityLookup.values())),
-    ]);
-
-    context.log('Saved entity account mappings', {
-      mappings: mappings.length,
-      accounts: entityAccounts.length,
-      scoaActivities: scoaActivityLookup.size,
+      return {
+        mappings,
+        accounts: entityAccounts.length,
+        scoaActivities: scoaActivityLookup.size,
+      };
     });
 
-    return json({ items: mappings });
+    const durationMs = Date.now() - startedAt;
+    context.log('Saved entity account mappings', {
+      mappings: saveResult.mappings.length,
+      accounts: saveResult.accounts,
+      scoaActivities: saveResult.scoaActivities,
+      dirtyRows,
+      queryCount,
+      durationMs,
+    });
+
+    return json({ items: saveResult.mappings });
   } catch (error) {
-    context.error('Failed to save entity account mappings', error);
+    const durationMs = Date.now() - startedAt;
+    const queryCount = (error as { queryCount?: number })?.queryCount ?? 0;
+
+    context.error('Failed to save entity account mappings', {
+      durationMs,
+      queryCount,
+      dirtyRows,
+      error,
+    });
     return json(buildErrorResponse('Failed to save entity account mappings', error), 500);
   }
 };

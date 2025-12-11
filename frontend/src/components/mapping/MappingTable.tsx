@@ -164,6 +164,7 @@ export default function MappingTable() {
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const dirtyMappingIds = useMappingStore((state) => state.dirtyMappingIds);
+  const rowSaveStatuses = useMappingStore((state) => state.rowSaveStatuses);
   const updateTarget = useMappingStore((state) => state.updateTarget);
   const updateMappingType = useMappingStore((state) => state.updateMappingType);
   const updatePolarity = useMappingStore((state) => state.updatePolarity);
@@ -514,6 +515,11 @@ export default function MappingTable() {
               const hasDynamicExclusionOverride =
                 account.mappingType === 'dynamic' && Boolean(dynamicExclusion);
 
+              const rowSaveStatus = rowSaveStatuses[account.id];
+              const isRowSaving = rowSaveStatus?.status === 'saving';
+              const rowSaveError =
+                rowSaveStatus?.status === 'error' ? rowSaveStatus.message : undefined;
+
               const rowKey = `${account.id}-${account.entityId}-${account.glMonth ?? 'no-period'}-${index}`;
 
               return (
@@ -724,14 +730,33 @@ export default function MappingTable() {
                     </td>
                     <td className="px-3 py-4">
                       <div className="flex flex-col gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[displayStatus]}`}
-                          role="status"
-                          aria-label={`Status ${statusLabel}`}
-                        >
-                          <StatusIcon className="h-3 w-3" aria-hidden="true" />
-                          {statusLabel}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[displayStatus]}`}
+                            role="status"
+                            aria-label={`Status ${statusLabel}`}
+                          >
+                            <StatusIcon className="h-3 w-3" aria-hidden="true" />
+                            {statusLabel}
+                          </span>
+                          {isRowSaving && (
+                            <span
+                              className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                              aria-live="polite"
+                            >
+                              <span
+                                className="h-2 w-2 animate-spin rounded-full border border-current border-t-transparent"
+                                aria-hidden="true"
+                              />
+                              Saving changes
+                            </span>
+                          )}
+                        </div>
+                        {rowSaveError && (
+                          <span className="text-xs text-rose-600 dark:text-rose-300">
+                            Save failed{rowSaveError ? `: ${rowSaveError}` : ''}
+                          </span>
+                        )}
                         {account.mappingType === 'dynamic' ? (
                           <>
                             {hasDynamicIssue && (

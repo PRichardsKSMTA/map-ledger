@@ -20,6 +20,7 @@ import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport'
 import { slugify } from '../utils/slugify';
 import { getSourceValue } from '../utils/dynamicAllocation';
 import { computeDynamicExclusionSummaries } from '../utils/dynamicExclusions';
+import { trackMappingSaveAttempt } from '../utils/telemetry';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 import {
   findChartOfAccountOption,
@@ -1055,6 +1056,13 @@ const appendDirtyIds = (dirty: Set<string>, ids: Iterable<string>): Set<string> 
   return next;
 };
 
+export type RowSaveStatus = 'saving' | 'error';
+
+export interface RowSaveMetadata {
+  status: RowSaveStatus;
+  message?: string | null;
+}
+
 type SummarySelector = {
   totalAccounts: number;
   mappedAccounts: number;
@@ -1104,6 +1112,7 @@ interface MappingState {
   isSavingMappings: boolean;
   saveError: string | null;
   lastSavedCount: number;
+  rowSaveStatuses: Record<string, RowSaveMetadata>;
   setActiveClientId: (clientId: string | null) => void;
   setSearchTerm: (term: string) => void;
   setActiveEntityId: (entityId: string | null) => void;
@@ -1179,6 +1188,94 @@ interface MappingState {
   ) => Promise<void>;
 }
 
+type RowSaveMetadataEntry = {
+  id: string;
+  status: RowSaveStatus;
+  message?: string | null;
+};
+
+const clearRowSaveStatusesForIds = (
+  statuses: Record<string, RowSaveMetadata>,
+  ids: string[],
+): Record<string, RowSaveMetadata> => {
+  if (ids.length === 0) {
+    return statuses;
+  }
+
+  const next = { ...statuses };
+  let mutated = false;
+
+  ids.forEach(id => {
+    if (id in next) {
+      delete next[id];
+      mutated = true;
+    }
+  });
+
+  return mutated ? next : statuses;
+};
+
+const applyDirtyStatusUpdates = (
+  state: MappingState,
+  dirtyIds: string[],
+): {
+  dirtyMappingIds: Set<string>;
+  rowSaveStatuses: Record<string, RowSaveMetadata>;
+} => ({
+  dirtyMappingIds: dirtyIds.length
+    ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+    : state.dirtyMappingIds,
+  rowSaveStatuses:
+    dirtyIds.length > 0
+      ? clearRowSaveStatusesForIds(state.rowSaveStatuses, dirtyIds)
+      : state.rowSaveStatuses,
+});
+
+const updateRowSaveStatuses = (
+  current: Record<string, RowSaveMetadata>,
+  entries: RowSaveMetadataEntry[],
+): Record<string, RowSaveMetadata> => {
+  if (entries.length === 0) {
+    return current;
+  }
+
+  const next = { ...current };
+  let mutated = false;
+
+  entries.forEach(({ id, status, message }) => {
+    const existing = next[id];
+    if (
+      !existing ||
+      existing.status !== status ||
+      existing.message !== message
+    ) {
+      next[id] = { status, message: message ?? null };
+      mutated = true;
+    }
+  });
+
+  return mutated ? next : current;
+};
+
+const markRowsSaving = (
+  current: Record<string, RowSaveMetadata>,
+  ids: string[],
+): Record<string, RowSaveMetadata> =>
+  updateRowSaveStatuses(
+    current,
+    ids.map(id => ({ id, status: 'saving' })),
+  );
+
+const markRowsErrored = (
+  current: Record<string, RowSaveMetadata>,
+  ids: string[],
+  message: string,
+): Record<string, RowSaveMetadata> =>
+  updateRowSaveStatuses(
+    current,
+    ids.map(id => ({ id, status: 'error', message })),
+  );
+
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
 const normalizeClientId = (
@@ -1236,6 +1333,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   isSavingMappings: false,
   saveError: null,
   lastSavedCount: 0,
+  rowSaveStatuses: {},
   setActiveClientId: clientId =>
     set({ activeClientId: normalizeClientId(clientId) }),
   setSearchTerm: term => set({ searchTerm: term }),
@@ -1323,10 +1421,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return next;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updatePreset: (id, presetId) =>
     set(state => {
@@ -1354,10 +1450,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return next;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updateStatus: (id, status) =>
     set(state => {
@@ -1401,10 +1495,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updateMappingType: (id, mappingType) =>
     set(state => {
@@ -1456,10 +1548,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updatePolarity: (id, polarity) =>
     set(state => {
@@ -1483,10 +1573,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         dirtyIds.push(account.id);
         return { ...account, polarity };
       });
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updateNotes: (id, notes) =>
     set(state => {
@@ -1510,10 +1598,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         dirtyIds.push(account.id);
         return { ...account, notes: notes || undefined };
       });
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   addSplitDefinition: id =>
     set(state => {
@@ -1551,10 +1637,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       });
 
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   updateSplitDefinition: (accountId, splitId, updates) =>
     set(state => {
@@ -1612,10 +1696,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       });
 
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   removeSplitDefinition: (accountId, splitId) =>
     set(state => {
@@ -1659,10 +1741,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       });
 
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   applyBatchMapping: (ids, updates) =>
     set(state => {
@@ -1735,10 +1815,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   applyMappingToMonths: (entityId, accountId, months, mapping) =>
     set(state => {
@@ -1822,10 +1900,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   applyPresetToAccounts: (ids, presetId) => {
     set(state => {
@@ -1895,10 +1971,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       });
 
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     });
   },
   bulkAccept: ids =>
@@ -1926,10 +2000,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      const dirtyMappingIds = dirtyIds.length
-        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
-        : state.dirtyMappingIds;
-      return { accounts, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
   finalizeMappings: ids => {
     const sourceIds = ids.length ? ids : get().accounts.map(account => account.id);
@@ -1979,8 +2051,8 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       const resolved = resolveEntityConflicts(accounts, state.activeEntities);
       updateDynamicBasisAccounts(resolved);
-      const dirtyMappingIds = appendDirtyIds(state.dirtyMappingIds, dirtyIds);
-      return { accounts: resolved, dirtyMappingIds };
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      return { accounts: resolved, dirtyMappingIds, rowSaveStatuses };
     }),
   hydrateFromHistory: async (uploadGuid, mode = 'resume', entityIds = []) => {
     if ((mode === 'none') || (!uploadGuid && entityIds.length === 0)) {
@@ -2043,7 +2115,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       set(state => {
         const merged = mergeSavedMappings(state.accounts, aggregated, mode);
         updateDynamicBasisAccounts(merged);
-        return { accounts: merged, dirtyMappingIds: new Set<string>() };
+        return {
+          accounts: merged,
+          dirtyMappingIds: new Set<string>(),
+          rowSaveStatuses: {},
+        };
       });
     } catch (error) {
       logError('Unable to hydrate saved mappings', error);
@@ -2092,7 +2168,12 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       return 0;
     }
 
-    set({ isSavingMappings: true, saveError: null });
+    set(state => ({
+      isSavingMappings: true,
+      saveError: null,
+      rowSaveStatuses: markRowsSaving(state.rowSaveStatuses, idsToSave),
+    }));
+    const metricStartTime = Date.now();
 
     try {
       const requestBody: MappingSaveRequest = { items: payload };
@@ -2108,25 +2189,57 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       const body = (await response.json()) as { items?: unknown[] };
       const savedCount = body.items?.length ?? payload.length;
+      const elapsedMs = Date.now() - metricStartTime;
+
+      trackMappingSaveAttempt({
+        dirtyRows: idsToSave.length,
+        payloadRows: payload.length,
+        elapsedMs,
+        savedRows: savedCount,
+        success: true,
+        source: 'mappingStore',
+      });
 
       set(current => {
         const nextDirty = new Set(current.dirtyMappingIds);
         idsToSave.forEach(id => nextDirty.delete(id));
+        const nextRowStatuses = clearRowSaveStatusesForIds(
+          current.rowSaveStatuses,
+          idsToSave,
+        );
         return {
           isSavingMappings: false,
           lastSavedCount: savedCount,
           saveError: null,
           dirtyMappingIds: nextDirty,
+          rowSaveStatuses: nextRowStatuses,
         };
       });
       return savedCount;
     } catch (error) {
+      const elapsedMs = Date.now() - metricStartTime;
       logError('Unable to save mappings', error);
-      set({
+      const message =
+        error instanceof Error ? error.message : 'Failed to save mappings';
+      trackMappingSaveAttempt({
+        dirtyRows: idsToSave.length,
+        payloadRows: payload.length,
+        elapsedMs,
+        savedRows: 0,
+        success: false,
+        errorMessage: message,
+        source: 'mappingStore',
+      });
+      set(current => ({
         isSavingMappings: false,
         lastSavedCount: 0,
-        saveError: error instanceof Error ? error.message : 'Failed to save mappings',
-      });
+        saveError: message,
+        rowSaveStatuses: markRowsErrored(
+          current.rowSaveStatuses,
+          idsToSave,
+          message,
+        ),
+      }));
       return 0;
     }
   },
@@ -2190,6 +2303,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     set({
       accounts: resolvedAccounts,
       dirtyMappingIds: new Set<string>(),
+      rowSaveStatuses: {},
       searchTerm: '',
       activeStatuses: [],
       activeUploadId: uploadId,

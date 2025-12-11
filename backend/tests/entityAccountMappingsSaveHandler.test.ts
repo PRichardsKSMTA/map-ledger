@@ -36,7 +36,7 @@ jest.mock('../src/repositories/entityPresetMappingRepository', () => ({
   createEntityPresetMappings: jest.fn(),
 }));
 
-import { saveHandler } from '../src/functions/entityAccountMappings';
+import { SAVE_ROW_LIMIT, saveHandler } from '../src/functions/entityAccountMappings';
 import { readJson, json } from '../src/http';
 import {
   listEntityAccountMappingsForAccounts,
@@ -145,5 +145,53 @@ describe('entityAccountMappings save handler change detection', () => {
     expect(mockedUpsertMappings).toHaveBeenCalledWith([]);
     expect(mockedCreatePresetDetails).not.toHaveBeenCalled();
     expect(mockedDeletePresetMappings).not.toHaveBeenCalled();
+  });
+
+  it('rejects save requests that exceed the configured row limit', async () => {
+    const overLimitRows = SAVE_ROW_LIMIT + 1;
+    const payload = {
+      items: Array.from({ length: overLimitRows }, (_value, index) => ({
+        entityId: `ent-${index}`,
+        entityAccountId: `acct-${index}`,
+        accountName: `Account ${index + 1}`,
+        mappingType: 'direct',
+        polarity: 'Debit',
+      })),
+    };
+    mockedReadJson.mockResolvedValue(payload);
+
+    const context = { log: jest.fn(), error: jest.fn() } as any;
+    const response = await saveHandler({} as any, context);
+
+    const expectedMessage =
+      'Too many mapping rows in a single save request. Save in smaller batches or use batch edits.';
+
+    expect(mockedUpsertMappings).not.toHaveBeenCalled();
+    expect(mockedUpsertAccounts).not.toHaveBeenCalled();
+    expect(mockedUpsertActivity).not.toHaveBeenCalled();
+    expect(mockedJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expectedMessage,
+        details: expect.stringContaining(
+          `exceeding the per-request limit of ${SAVE_ROW_LIMIT}`,
+        ),
+      }),
+      413,
+    );
+    expect(response).toEqual(
+      expect.objectContaining({
+        message: expectedMessage,
+        details: expect.stringContaining(
+          `exceeding the per-request limit of ${SAVE_ROW_LIMIT}`,
+        ),
+      }),
+    );
+    expect(context.error).toHaveBeenCalledWith(
+      'Mapping save request exceeds row limit',
+      expect.objectContaining({
+        limit: SAVE_ROW_LIMIT,
+        requestedRows: overLimitRows,
+      }),
+    );
   });
 });
