@@ -4,6 +4,8 @@ import type {
   DynamicBasisAccount,
   FileRecord,
   GLAccountMappingRow,
+  MappingSaveInput,
+  MappingSaveRequest,
   MappingPolarity,
   MappingSplitDefinition,
   MappingStatus,
@@ -666,26 +668,6 @@ const getAllocatableNetChange = (account: GLAccountMappingRow): number => {
   return remaining;
 };
 
-interface MappingSaveInput {
-  entityId: string;
-  entityAccountId: string;
-  accountName?: string | null;
-  polarity?: MappingPolarity | null;
-  mappingType?: MappingType | null;
-  mappingStatus?: MappingStatus | null;
-  presetId?: string | null;
-  exclusionPct?: number | null;
-  netChange?: number | null;
-  glMonth?: string | null;
-  splitDefinitions?: {
-    targetId?: string | null;
-    allocationType?: 'percentage' | 'amount' | 'dynamic';
-    allocationValue?: number | null;
-    basisDatapoint?: string | null;
-    isCalculated?: boolean | null;
-  }[];
-}
-
 const calculateExclusionPctFromAccount = (
   account: GLAccountMappingRow,
 ): number | null => {
@@ -1067,6 +1049,12 @@ const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
 const calculateExcludedTotal = (accounts: GLAccountMappingRow[]): number =>
   accounts.reduce((sum, account) => sum + getAccountExcludedAmount(account), 0);
 
+const appendDirtyIds = (dirty: Set<string>, ids: Iterable<string>): Set<string> => {
+  const next = new Set(dirty);
+  Array.from(ids).forEach(id => next.add(id));
+  return next;
+};
+
 type SummarySelector = {
   totalAccounts: number;
   mappedAccounts: number;
@@ -1101,6 +1089,7 @@ type FileRecordsResponse = {
 
 interface MappingState {
   accounts: GLAccountMappingRow[];
+  dirtyMappingIds: Set<string>;
   searchTerm: string;
   activeStatuses: MappingStatus[];
   activeUploadId: string | null;
@@ -1232,6 +1221,7 @@ const mergeEntitiesWithIds = (
 
 export const useMappingStore = create<MappingState>((set, get) => ({
   accounts: initialAccounts,
+  dirtyMappingIds: new Set<string>(),
   searchTerm: '',
   activeStatuses: [],
   activeUploadId: null,
@@ -1307,6 +1297,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   clearStatusFilters: () => set({ activeStatuses: [] }),
   updateTarget: (id, coaId) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1321,15 +1312,25 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
-        return shouldUpdate
-          ? applyDerivedStatus({ ...account, manualCOAId: coaId || undefined })
-          : account;
+        if (!shouldUpdate) {
+          return account;
+        }
+
+        const next = applyDerivedStatus({ ...account, manualCOAId: coaId || undefined });
+        if (next !== account) {
+          dirtyIds.push(account.id);
+        }
+        return next;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updatePreset: (id, presetId) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1342,15 +1343,25 @@ export const useMappingStore = create<MappingState>((set, get) => ({
                               account.accountId === targetAccount.accountId;
         const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
-        return shouldUpdate
-          ? applyDerivedStatus({ ...account, presetId: presetId || undefined })
-          : account;
+        if (!shouldUpdate) {
+          return account;
+        }
+
+        const next = applyDerivedStatus({ ...account, presetId: presetId || undefined });
+        if (next !== account) {
+          dirtyIds.push(account.id);
+        }
+        return next;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updateStatus: (id, status) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1374,7 +1385,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             ? 'direct'
             : account.mappingType;
 
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           status,
           mappingType: nextMappingType,
@@ -1383,12 +1394,21 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           splitDefinitions: isExcluded ? [] : account.splitDefinitions,
           dynamicExclusionAmount: isExcluded ? undefined : account.dynamicExclusionAmount,
         });
+
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updateMappingType: (id, mappingType) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1417,7 +1437,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
             : [];
         const nextDynamicExclusion = mappingType === 'dynamic' ? account.dynamicExclusionAmount : undefined;
 
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           mappingType,
           status:
@@ -1430,12 +1450,20 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           splitDefinitions: nextSplitDefinitions,
           dynamicExclusionAmount: nextDynamicExclusion,
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updatePolarity: (id, polarity) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1443,18 +1471,26 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       const shouldApplyToAll = state.activePeriod === null;
 
-      return {
-        accounts: state.accounts.map(account => {
-          const isSameAccount = account.entityId === targetAccount.entityId &&
-                                account.accountId === targetAccount.accountId;
-          const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
+      const accounts = state.accounts.map(account => {
+        const isSameAccount = account.entityId === targetAccount.entityId &&
+                              account.accountId === targetAccount.accountId;
+        const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
-          return shouldUpdate ? { ...account, polarity } : account;
-        }),
-      };
+        if (!shouldUpdate) {
+          return account;
+        }
+
+        dirtyIds.push(account.id);
+        return { ...account, polarity };
+      });
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updateNotes: (id, notes) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount) {
         return state;
@@ -1462,18 +1498,26 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       const shouldApplyToAll = state.activePeriod === null;
 
-      return {
-        accounts: state.accounts.map(account => {
-          const isSameAccount = account.entityId === targetAccount.entityId &&
-                                account.accountId === targetAccount.accountId;
-          const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
+      const accounts = state.accounts.map(account => {
+        const isSameAccount = account.entityId === targetAccount.entityId &&
+                              account.accountId === targetAccount.accountId;
+        const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
-          return shouldUpdate ? { ...account, notes: notes || undefined } : account;
-        }),
-      };
+        if (!shouldUpdate) {
+          return account;
+        }
+
+        dirtyIds.push(account.id);
+        return { ...account, notes: notes || undefined };
+      });
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   addSplitDefinition: id =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === id);
       if (!targetAccount || targetAccount.mappingType !== 'percentage') {
         return state;
@@ -1496,17 +1540,25 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           ? updatedTargetSplits.map(split => ({ ...split }))
           : [...account.splitDefinitions, { ...templateSplit }];
 
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           splitDefinitions: splitsToApply,
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
 
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   updateSplitDefinition: (accountId, splitId, updates) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === accountId);
       if (!targetAccount) {
         return state;
@@ -1532,13 +1584,17 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
 
         if (shouldApplyToAll) {
-          return applyDerivedStatus({
+          const updated = applyDerivedStatus({
             ...account,
             splitDefinitions: updatedTargetSplits.map(split => ({ ...split })),
           });
+          if (updated !== account) {
+            dirtyIds.push(account.id);
+          }
+          return updated;
         }
 
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           splitDefinitions: account.splitDefinitions.map(split =>
             split.id === splitId
@@ -1549,13 +1605,21 @@ export const useMappingStore = create<MappingState>((set, get) => ({
               : split,
           ),
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
 
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   removeSplitDefinition: (accountId, splitId) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetAccount = state.accounts.find(acc => acc.id === accountId);
       if (!targetAccount) {
         return state;
@@ -1574,23 +1638,35 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
 
         if (shouldApplyToAll) {
-          return applyDerivedStatus({
+          const updated = applyDerivedStatus({
             ...account,
             splitDefinitions: updatedTargetSplits.map(split => ({ ...split })),
           });
+          if (updated !== account) {
+            dirtyIds.push(account.id);
+          }
+          return updated;
         }
 
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           splitDefinitions: account.splitDefinitions.filter(split => split.id !== splitId),
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
 
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   applyBatchMapping: (ids, updates) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const accounts = state.accounts.map(account => {
         if (!ids.includes(account.id)) {
           return account;
@@ -1652,13 +1728,21 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (next.mappingType !== 'dynamic') {
           next.dynamicExclusionAmount = undefined;
         }
-        return applyDerivedStatus(next);
+        const updated = applyDerivedStatus(next);
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   applyMappingToMonths: (entityId, accountId, months, mapping) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const targetIds = state.accounts
         .filter(account => {
           const matchesAccount = account.entityId === entityId && account.accountId === accountId;
@@ -1731,13 +1815,21 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (next.mappingType !== 'dynamic') {
           next.dynamicExclusionAmount = undefined;
         }
-        return applyDerivedStatus(next);
+        const updated = applyDerivedStatus(next);
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   applyPresetToAccounts: (ids, presetId) => {
     set(state => {
+      const dirtyIds: string[] = [];
       if (!ids.length) {
         return state;
       }
@@ -1776,7 +1868,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         }
 
         if (!presetId) {
-          return applyDerivedStatus({ ...account, presetId: undefined });
+          const updated = applyDerivedStatus({ ...account, presetId: undefined });
+          if (updated !== account) {
+            dirtyIds.push(account.id);
+          }
+          return updated;
         }
 
         const nextStatus: MappingStatus = account.status === 'Excluded' ? 'Unmapped' : account.status;
@@ -1785,21 +1881,29 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           ? templateSplitsByKey.get(key)?.map(split => ({ ...split })) ??
             ensureMinimumPercentageSplits(account.splitDefinitions)
           : ensureMinimumPercentageSplits(account.splitDefinitions);
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           mappingType: 'percentage',
           splitDefinitions: baseSplits,
           presetId,
           status: nextStatus,
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
 
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     });
   },
   bulkAccept: ids =>
     set(state => {
+      const dirtyIds: string[] = [];
       if (!ids.length) {
         return state;
       }
@@ -1810,15 +1914,22 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         if (account.mappingType === 'exclude' || account.status === 'Excluded') {
           return account;
         }
-        return applyDerivedStatus({
+        const updated = applyDerivedStatus({
           ...account,
           manualCOAId: account.suggestedCOAId,
           status: 'Mapped',
           mappingType: account.mappingType === 'direct' ? account.mappingType : 'direct',
         });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
       });
       updateDynamicBasisAccounts(accounts);
-      return { accounts };
+      const dirtyMappingIds = dirtyIds.length
+        ? appendDirtyIds(state.dirtyMappingIds, dirtyIds)
+        : state.dirtyMappingIds;
+      return { accounts, dirtyMappingIds };
     }),
   finalizeMappings: ids => {
     const sourceIds = ids.length ? ids : get().accounts.map(account => account.id);
@@ -1842,6 +1953,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   },
   updateAccountEntity: (accountId, payload) =>
     set(state => {
+      const dirtyIds: string[] = [];
       const trimmedName = payload.entityName.trim();
       const normalizedId =
         trimmedName.length > 0
@@ -1855,17 +1967,20 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           return account;
         }
 
-        return {
+        const updated = {
           ...account,
           entityId: normalizedId,
           entityName: trimmedName,
           entities: ensureEntityBreakdown(account, normalizedId, trimmedName),
         };
+        dirtyIds.push(account.id);
+        return updated;
       });
 
       const resolved = resolveEntityConflicts(accounts, state.activeEntities);
       updateDynamicBasisAccounts(resolved);
-      return { accounts: resolved };
+      const dirtyMappingIds = appendDirtyIds(state.dirtyMappingIds, dirtyIds);
+      return { accounts: resolved, dirtyMappingIds };
     }),
   hydrateFromHistory: async (uploadGuid, mode = 'resume', entityIds = []) => {
     if ((mode === 'none') || (!uploadGuid && entityIds.length === 0)) {
@@ -1928,7 +2043,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       set(state => {
         const merged = mergeSavedMappings(state.accounts, aggregated, mode);
         updateDynamicBasisAccounts(merged);
-        return { accounts: merged };
+        return { accounts: merged, dirtyMappingIds: new Set<string>() };
       });
     } catch (error) {
       logError('Unable to hydrate saved mappings', error);
@@ -1936,10 +2051,18 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   },
   saveMappings: async (accountIds) => {
     const state = get();
-    const { accounts, activeEntityId } = state;
+    const { accounts, activeEntityId, dirtyMappingIds } = state;
     const scope = Array.isArray(accountIds) && accountIds.length > 0 ? accountIds : null;
+    const idsToSave = scope
+      ? scope.filter(id => dirtyMappingIds.has(id))
+      : Array.from(dirtyMappingIds);
 
-    const scopedAccounts = accounts.filter(account => (scope ? scope.includes(account.id) : true));
+    if (!idsToSave.length) {
+      set({ saveError: 'No changes ready to save.', lastSavedCount: 0 });
+      return 0;
+    }
+
+    const scopedAccounts = accounts.filter(account => idsToSave.includes(account.id));
 
     const availableEntities = selectAvailableEntities(state);
     const activeEntity = activeEntityId
@@ -1972,10 +2095,11 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     set({ isSavingMappings: true, saveError: null });
 
     try {
+      const requestBody: MappingSaveRequest = { items: payload };
       const response = await fetch(`${API_BASE_URL}/entityAccountMappings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: payload }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -1985,7 +2109,16 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       const body = (await response.json()) as { items?: unknown[] };
       const savedCount = body.items?.length ?? payload.length;
 
-      set({ isSavingMappings: false, lastSavedCount: savedCount, saveError: null });
+      set(current => {
+        const nextDirty = new Set(current.dirtyMappingIds);
+        idsToSave.forEach(id => nextDirty.delete(id));
+        return {
+          isSavingMappings: false,
+          lastSavedCount: savedCount,
+          saveError: null,
+          dirtyMappingIds: nextDirty,
+        };
+      });
       return savedCount;
     } catch (error) {
       logError('Unable to save mappings', error);
@@ -2056,6 +2189,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
     set({
       accounts: resolvedAccounts,
+      dirtyMappingIds: new Set<string>(),
       searchTerm: '',
       activeStatuses: [],
       activeUploadId: uploadId,
