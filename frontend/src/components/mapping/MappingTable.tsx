@@ -163,6 +163,7 @@ export default function MappingTable() {
   const activePeriod = useMappingStore((state) => state.activePeriod);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
+  const dirtyMappingIds = useMappingStore((state) => state.dirtyMappingIds);
   const updateTarget = useMappingStore((state) => state.updateTarget);
   const updateMappingType = useMappingStore((state) => state.updateMappingType);
   const updatePolarity = useMappingStore((state) => state.updatePolarity);
@@ -477,6 +478,7 @@ export default function MappingTable() {
               }
 
               const isSelected = selectedIds.has(account.id);
+              const isDirty = dirtyMappingIds.has(account.id);
               const targetScoa =
                 account.manualCOAId ?? account.suggestedCOAId ?? '';
               const requiresSplit =
@@ -531,6 +533,7 @@ export default function MappingTable() {
                     className={
                       isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : undefined
                     }
+                    data-dirty={isDirty ? 'true' : undefined}
                   >
                     <td className="px-3 py-4">
                       <input
