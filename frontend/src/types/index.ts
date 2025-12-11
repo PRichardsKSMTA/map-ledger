@@ -544,6 +544,30 @@ export interface GLAccountMappingRow {
   requiresEntityAssignment?: boolean;
 }
 
+export interface MappingSaveInput {
+  entityId: string;
+  entityAccountId: string;
+  accountName?: string | null;
+  polarity?: MappingPolarity | null;
+  mappingType?: MappingType | null;
+  mappingStatus?: MappingStatus | null;
+  presetId?: string | null;
+  exclusionPct?: number | null;
+  netChange?: number | null;
+  glMonth?: string | null;
+  splitDefinitions?: {
+    targetId?: string | null;
+    allocationType?: 'percentage' | 'amount' | 'dynamic';
+    allocationValue?: number | null;
+    basisDatapoint?: string | null;
+    isCalculated?: boolean | null;
+  }[];
+}
+
+export interface MappingSaveRequest {
+  items: MappingSaveInput[];
+}
+
 export interface GLUpload {
   id: number;
   fileName: string;

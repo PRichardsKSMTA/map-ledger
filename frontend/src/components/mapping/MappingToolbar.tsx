@@ -51,6 +51,7 @@ export default function MappingToolbar() {
   const applyBatchMapping = useMappingStore(state => state.applyBatchMapping);
   const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const saveMappings = useMappingStore(state => state.saveMappings);
+  const dirtyMappingIds = useMappingStore(state => state.dirtyMappingIds);
   const isSavingMappings = useMappingStore(state => state.isSavingMappings);
   const saveError = useMappingStore(state => state.saveError);
   const { selectedIds, clearSelection } = useMappingSelectionStore();
@@ -117,7 +118,7 @@ export default function MappingToolbar() {
 
   const handleSaveProgress = async () => {
     setSaveSuccess(null);
-    const savedCount = await saveMappings();
+    const savedCount = await saveMappings(Array.from(dirtyMappingIds));
     if (savedCount > 0) {
       setSaveSuccess(`Saved ${savedCount} mapped row${savedCount === 1 ? '' : 's'} for later.`);
       setFinalizeError(null);
