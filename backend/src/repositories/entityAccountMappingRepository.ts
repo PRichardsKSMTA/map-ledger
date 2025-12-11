@@ -359,22 +359,22 @@ export const upsertEntityAccountMappings = async (
   }
 
   const params: Record<string, unknown> = {};
-  const valuesClause = inputs
-    .map((input, index) => {
-      const presetId = normalizePresetId(input.presetId);
+  const valueRows = inputs.map((input, index) => {
+    const presetId = normalizePresetId(input.presetId);
 
-      params[`entityId${index}`] = input.entityId;
-      params[`entityAccountId${index}`] = input.entityAccountId;
-      params[`polarity${index}`] = normalizeText(input.polarity);
-      params[`mappingType${index}`] = normalizeText(input.mappingType);
-      params[`presetId${index}`] = presetId;
-      params[`mappingStatus${index}`] = normalizeText(input.mappingStatus);
-      params[`exclusionPct${index}`] = normalizeExclusionPct(input.exclusionPct);
-      params[`updatedBy${index}`] = normalizeText(input.updatedBy);
+    params[`entityId${index}`] = input.entityId;
+    params[`entityAccountId${index}`] = input.entityAccountId;
+    params[`polarity${index}`] = normalizeText(input.polarity);
+    params[`mappingType${index}`] = normalizeText(input.mappingType);
+    params[`presetId${index}`] = presetId;
+    params[`mappingStatus${index}`] = normalizeText(input.mappingStatus);
+    params[`exclusionPct${index}`] = normalizeExclusionPct(input.exclusionPct);
+    params[`updatedBy${index}`] = normalizeText(input.updatedBy);
 
-      return `(@entityId${index}, @entityAccountId${index}, @polarity${index}, @mappingType${index}, @presetId${index}, @mappingStatus${index}, @exclusionPct${index}, @updatedBy${index})`;
-    })
-    .join(', ');
+    return `(@entityId${index}, @entityAccountId${index}, @polarity${index}, @mappingType${index}, @presetId${index}, @mappingStatus${index}, @exclusionPct${index}, @updatedBy${index})`;
+  });
+
+  const valuesClause = valueRows.join(', ');
 
   const result = await runQuery<{
     entity_id: string;
@@ -388,60 +388,76 @@ export const upsertEntityAccountMappings = async (
     updated_dttm?: Date | string | null;
     updated_by?: string | null;
   }>(
-    `MERGE ${TABLE_NAME} AS target
-    USING (VALUES ${valuesClause}) AS source(
-      entity_id,
-      entity_account_id,
-      polarity,
-      mapping_type,
-      preset_id,
-      mapping_status,
-      exclusion_pct,
-      updated_by
-    )
-    ON target.ENTITY_ID = source.entity_id AND target.ENTITY_ACCOUNT_ID = source.entity_account_id
-    WHEN MATCHED THEN
-      UPDATE SET
-        POLARITY = ISNULL(source.polarity, target.POLARITY),
-        MAPPING_TYPE = ISNULL(source.mapping_type, target.MAPPING_TYPE),
-        PRESET_GUID = ISNULL(source.preset_id, target.PRESET_GUID),
-        MAPPING_STATUS = ISNULL(source.mapping_status, target.MAPPING_STATUS),
-        EXCLUSION_PCT = ISNULL(source.exclusion_pct, target.EXCLUSION_PCT),
-        UPDATED_BY = source.updated_by,
-        UPDATED_DTTM = SYSUTCDATETIME()
-    WHEN NOT MATCHED THEN
-      INSERT (
-        ENTITY_ID,
-        ENTITY_ACCOUNT_ID,
-        POLARITY,
-        MAPPING_TYPE,
-        PRESET_GUID,
-        MAPPING_STATUS,
-        EXCLUSION_PCT,
-        UPDATED_DTTM,
-        UPDATED_BY
-      ) VALUES (
-        source.entity_id,
-        source.entity_account_id,
-        source.polarity,
-        source.mapping_type,
-        source.preset_id,
-        source.mapping_status,
-        source.exclusion_pct,
-        NULL,
-        source.updated_by
-      )
-    OUTPUT
-      inserted.ENTITY_ID as entity_id,
-      inserted.ENTITY_ACCOUNT_ID as entity_account_id,
-      inserted.POLARITY as polarity,
-      inserted.MAPPING_TYPE as mapping_type,
-      inserted.PRESET_GUID as preset_id,
-      inserted.MAPPING_STATUS as mapping_status,
-      inserted.EXCLUSION_PCT as exclusion_pct,
-      inserted.INSERTED_DTTM as inserted_dttm,
-      inserted.UPDATED_DTTM as updated_dttm,
-      inserted.UPDATED_BY as updated_by;`,
+    `SET XACT_ABORT ON;
+    BEGIN TRANSACTION;
+      DECLARE @payload TABLE (
+        entity_id varchar(36),
+        entity_account_id varchar(36),
+        polarity varchar(50),
+        mapping_type varchar(50),
+        preset_id varchar(36),
+        mapping_status varchar(50),
+        exclusion_pct decimal(10, 3),
+        updated_by varchar(100)
+      );
+
+      INSERT INTO @payload (
+        entity_id,
+        entity_account_id,
+        polarity,
+        mapping_type,
+        preset_id,
+        mapping_status,
+        exclusion_pct,
+        updated_by
+      ) VALUES ${valuesClause};
+
+      MERGE ${TABLE_NAME} AS target
+      USING @payload AS source
+      ON target.ENTITY_ID = source.entity_id AND target.ENTITY_ACCOUNT_ID = source.entity_account_id
+      WHEN MATCHED THEN
+        UPDATE SET
+          POLARITY = ISNULL(source.polarity, target.POLARITY),
+          MAPPING_TYPE = ISNULL(source.mapping_type, target.MAPPING_TYPE),
+          PRESET_GUID = ISNULL(source.preset_id, target.PRESET_GUID),
+          MAPPING_STATUS = ISNULL(source.mapping_status, target.MAPPING_STATUS),
+          EXCLUSION_PCT = ISNULL(source.exclusion_pct, target.EXCLUSION_PCT),
+          UPDATED_BY = source.updated_by,
+          UPDATED_DTTM = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN
+        INSERT (
+          ENTITY_ID,
+          ENTITY_ACCOUNT_ID,
+          POLARITY,
+          MAPPING_TYPE,
+          PRESET_GUID,
+          MAPPING_STATUS,
+          EXCLUSION_PCT,
+          UPDATED_DTTM,
+          UPDATED_BY
+        ) VALUES (
+          source.entity_id,
+          source.entity_account_id,
+          source.polarity,
+          source.mapping_type,
+          source.preset_id,
+          source.mapping_status,
+          source.exclusion_pct,
+          NULL,
+          source.updated_by
+        )
+      OUTPUT
+        inserted.ENTITY_ID as entity_id,
+        inserted.ENTITY_ACCOUNT_ID as entity_account_id,
+        inserted.POLARITY as polarity,
+        inserted.MAPPING_TYPE as mapping_type,
+        inserted.PRESET_GUID as preset_id,
+        inserted.MAPPING_STATUS as mapping_status,
+        inserted.EXCLUSION_PCT as exclusion_pct,
+        inserted.INSERTED_DTTM as inserted_dttm,
+        inserted.UPDATED_DTTM as updated_dttm,
+        inserted.UPDATED_BY as updated_by;
+    COMMIT TRANSACTION;`,
     params
   );
 

@@ -1,59 +1,62 @@
-jest.mock('../dist/src/utils/sqlClient', () => ({
+jest.mock('../src/utils/sqlClient', () => ({
   runQuery: jest.fn().mockResolvedValue({ recordset: [] }),
 }));
 
-jest.mock('../dist/src/http', () => ({
+jest.mock('../src/http', () => ({
   readJson: jest.fn(),
   json: jest.fn().mockImplementation((payload) => payload),
 }));
 
-jest.mock('../dist/src/repositories/entityAccountMappingRepository', () => ({
+jest.mock('../src/repositories/entityAccountMappingRepository', () => ({
   listEntityAccountMappingsForAccounts: jest.fn(),
   upsertEntityAccountMappings: jest.fn(),
+}));
+
+jest.mock('../src/repositories/entityAccountRepository', () => ({
   upsertEntityAccounts: jest.fn(),
 }));
 
-jest.mock('../dist/src/repositories/entityMappingPresetRepository', () => ({
+jest.mock('../src/repositories/entityMappingPresetRepository', () => ({
   listEntityMappingPresets: jest.fn(),
   createEntityMappingPreset: jest.fn(),
 }));
 
-jest.mock('../dist/src/repositories/entityMappingPresetDetailRepository', () => ({
+jest.mock('../src/repositories/entityMappingPresetDetailRepository', () => ({
   listEntityMappingPresetDetails: jest.fn(),
   createEntityMappingPresetDetails: jest.fn(),
   updateEntityMappingPresetDetail: jest.fn(),
 }));
 
-jest.mock('../dist/src/repositories/entityScoaActivityRepository', () => ({
+jest.mock('../src/repositories/entityScoaActivityRepository', () => ({
   upsertEntityScoaActivity: jest.fn(),
 }));
 
-jest.mock('../dist/src/repositories/entityPresetMappingRepository', () => ({
+jest.mock('../src/repositories/entityPresetMappingRepository', () => ({
   deleteEntityPresetMappings: jest.fn(),
   createEntityPresetMappings: jest.fn(),
 }));
 
-const { saveHandler } = require('../dist/src/functions/entityAccountMappings/index');
-const { readJson, json } = require('../dist/src/http');
+const { saveHandler } = require('../src/functions/entityAccountMappings/index');
+const { readJson, json } = require('../src/http');
 const {
   listEntityAccountMappingsForAccounts,
   upsertEntityAccountMappings,
-  upsertEntityAccounts,
-} = require('../dist/src/repositories/entityAccountMappingRepository');
+} = require('../src/repositories/entityAccountMappingRepository');
+const { upsertEntityAccounts } = require('../src/repositories/entityAccountRepository');
 const {
   listEntityMappingPresets,
   createEntityMappingPreset,
-} = require('../dist/src/repositories/entityMappingPresetRepository');
+} = require('../src/repositories/entityMappingPresetRepository');
 const {
   listEntityMappingPresetDetails,
   createEntityMappingPresetDetails,
   updateEntityMappingPresetDetail,
-} = require('../dist/src/repositories/entityMappingPresetDetailRepository');
-const { upsertEntityScoaActivity } = require('../dist/src/repositories/entityScoaActivityRepository');
+} = require('../src/repositories/entityMappingPresetDetailRepository');
+const { upsertEntityScoaActivity } = require('../src/repositories/entityScoaActivityRepository');
 const {
   deleteEntityPresetMappings,
   createEntityPresetMappings,
-} = require('../dist/src/repositories/entityPresetMappingRepository');
+} = require('../src/repositories/entityPresetMappingRepository');
 
 const mockedReadJson = readJson;
 const mockedJson = json;

@@ -50,6 +50,7 @@ interface MappingSaveInput {
   glMonth?: string | null;
   updatedBy?: string | null;
   splitDefinitions?: IncomingSplitDefinition[];
+  isChanged?: boolean;
 }
 
 const normalizeText = (value: unknown): string | null => {
@@ -206,7 +207,7 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
   }
 
   const payloadRecord = payload as Record<string, unknown>;
-  const candidateItems = payloadRecord?.items;
+  const candidateItems = payloadRecord?.changedRows ?? payloadRecord?.items;
   const rawItems: unknown[] = Array.isArray(candidateItems)
     ? candidateItems
     : Array.isArray(payload)
@@ -233,9 +234,13 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
         glMonth: getFirstStringValue(entryRecord?.glMonth),
         updatedBy: normalizeText(entryRecord?.updatedBy),
         splitDefinitions,
+        isChanged: entryRecord?.isChanged !== false,
       };
     })
-    .filter((item): item is MappingSaveInput => Boolean(item.entityId && item.entityAccountId));
+    .filter(
+      (item): item is MappingSaveInput =>
+        Boolean(item.entityId && item.entityAccountId && item.isChanged !== false),
+    );
 
   return inputs;
 };
@@ -460,10 +465,22 @@ const saveHandler = async (
     const inputs = buildUpsertInputs(body ?? {});
 
     if (!inputs.length) {
-      return json({ message: 'No mapping records provided' }, 400);
+      return json({ items: [], message: 'No mapping changes to apply' });
     }
 
     const { presetLookup, knownPresetGuids } = await buildExistingPresetLookup(inputs);
+    const existingMappings = await listEntityAccountMappingsForAccounts(
+      inputs.map((input) => ({
+        entityId: input.entityId as string,
+        entityAccountId: input.entityAccountId as string,
+      })),
+    );
+    const existingLookup = new Map(
+      existingMappings.map((mapping) => [
+        toPresetCacheKey(mapping.entityId, mapping.entityAccountId),
+        mapping,
+      ]),
+    );
     const upserts: EntityAccountMappingUpsertInput[] = [];
     const entityAccounts: EntityAccountInput[] = [];
     const scoaActivityLookup = new Map<string, EntityScoaActivityInput>();
@@ -511,29 +528,7 @@ const saveHandler = async (
         presetDescription,
       );
 
-      if (presetDetails.length) {
-        await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
-      }
-
-      // For dynamic mappings, also insert into ENTITY_PRESET_MAPPING with calculated percentages
-      if (presetType === 'dynamic') {
-        const presetMappingInputs = buildDynamicPresetMappingInputs(
-          presetGuid,
-          presetType,
-          input.splitDefinitions,
-          input.updatedBy ?? null,
-          input.netChange ?? null,
-          input.exclusionPct ?? null,
-          normalizationTools,
-        );
-
-        if (presetMappingInputs.length) {
-          await deleteEntityPresetMappings(presetGuid);
-          await createEntityPresetMappings(presetMappingInputs);
-        }
-      }
-
-      upserts.push({
+      const upsertPayload: EntityAccountMappingUpsertInput = {
         entityId: input.entityId as string,
         entityAccountId: input.entityAccountId as string,
         polarity: input.polarity,
@@ -544,7 +539,42 @@ const saveHandler = async (
           (effectiveMappingType?.toLowerCase() === 'exclude' ? 'Excluded' : 'Mapped'),
         exclusionPct: input.exclusionPct,
         updatedBy: input.updatedBy,
-      });
+      };
+      const existing = existingLookup.get(cacheKey);
+
+      const hasChanges =
+        !existing ||
+        upsertPayload.polarity !== existing.polarity ||
+        upsertPayload.mappingType !== existing.mappingType ||
+        upsertPayload.presetId !== existing.presetId ||
+        upsertPayload.mappingStatus !== existing.mappingStatus ||
+        upsertPayload.exclusionPct !== existing.exclusionPct;
+
+      if (hasChanges) {
+        if (presetDetails.length) {
+          await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
+        }
+
+        // For dynamic mappings, also insert into ENTITY_PRESET_MAPPING with calculated percentages
+        if (presetType === 'dynamic') {
+          const presetMappingInputs = buildDynamicPresetMappingInputs(
+            presetGuid,
+            presetType,
+            input.splitDefinitions,
+            input.updatedBy ?? null,
+            input.netChange ?? null,
+            input.exclusionPct ?? null,
+            normalizationTools,
+          );
+
+          if (presetMappingInputs.length) {
+            await deleteEntityPresetMappings(presetGuid);
+            await createEntityPresetMappings(presetMappingInputs);
+          }
+        }
+
+        upserts.push(upsertPayload);
+      }
 
       entityAccounts.push({
         entityId: input.entityId as string,
