@@ -29,15 +29,13 @@ import {
   deleteEntityPresetMappings,
   EntityPresetMappingInput,
 } from '../../repositories/entityPresetMappingRepository';
-
-interface IncomingSplitDefinition {
-  targetId?: string | null;
-  basisDatapoint?: string | null;
-  allocationType?: string | null;
-  allocationValue?: number | null;
-  isCalculated?: boolean | null;
-  isExclusion?: boolean | null;
-}
+import {
+  mapSplitDefinitionsToPresetDetails,
+  buildDynamicPresetMappingInputs,
+  determinePresetType,
+} from './helpers';
+import type { NormalizationTools } from './helpers';
+import type { IncomingSplitDefinition } from './types';
 
 interface MappingSaveInput {
   entityId?: string;
@@ -92,6 +90,12 @@ const resolvePresetType = (value: string | null | undefined): string => {
     return normalized;
   }
   return 'direct';
+};
+
+const normalizationTools: NormalizationTools = {
+  normalizeText,
+  normalizeNumber,
+  resolvePresetType,
 };
 
 const normalizePercentageDetails = (
@@ -172,103 +176,6 @@ const normalizePercentageDetails = (
   });
 };
 
-const mapSplitDefinitionsToPresetDetails = (
-  presetGuid: string,
-  mappingType: string | null,
-  splits?: IncomingSplitDefinition[],
-  updatedBy?: string | null,
-  baseAmount?: number | null,
-  exclusionPct?: number | null,
-): EntityMappingPresetDetailInput[] => {
-  if (!splits || splits.length === 0) {
-    return [];
-  }
-
-  const normalizedType = resolvePresetType(mappingType);
-  const normalizedBaseAmount =
-    baseAmount === null || baseAmount === undefined
-      ? null
-      : Math.abs(baseAmount);
-
-  const rawDetails = splits.reduce<EntityMappingPresetDetailInput[]>((results, split) => {
-    const targetDatapoint = normalizeText(split.targetId);
-
-    // Check if this is an exclusion split (marked with isExclusion flag)
-    const isExclusionSplit = split.isExclusion === true;
-
-    // For exclusion splits, use 'excluded' as the target datapoint
-    // For regular splits, skip if no targetDatapoint
-    let finalTargetDatapoint: string;
-    if (isExclusionSplit) {
-      finalTargetDatapoint = 'excluded';
-    } else if (!targetDatapoint) {
-      return results;
-    } else {
-      finalTargetDatapoint = targetDatapoint;
-    }
-
-    const basisDatapoint = normalizeText(split.basisDatapoint);
-    const isCalculated = split.isCalculated ?? normalizedType === 'dynamic';
-    const allocationType = normalizeText(split.allocationType) ?? 'percentage';
-    const allocationValue = normalizeNumber(split.allocationValue);
-
-    let specifiedPct: number | null = null;
-
-    if (normalizedType === 'dynamic') {
-      specifiedPct = null;
-    } else if (normalizedType === 'direct') {
-      specifiedPct = 100;
-    } else if (allocationType === 'amount' && normalizedBaseAmount) {
-      specifiedPct = Number(
-        (((allocationValue ?? 0) / normalizedBaseAmount) * 100).toFixed(3),
-      );
-    } else {
-      specifiedPct = allocationValue ?? null;
-    }
-
-    results.push({
-      presetGuid,
-      basisDatapoint: basisDatapoint ?? null,
-      targetDatapoint: finalTargetDatapoint,
-      isCalculated,
-      specifiedPct,
-      updatedBy: updatedBy ?? null,
-    });
-
-    return results;
-  }, []);
-
-  // If exclusionPct is provided and no exclusion split exists in rawDetails, add one
-
-  if (normalizedType === 'percentage' && typeof exclusionPct === 'number' && exclusionPct > 0) {
-
-    const hasExclusionSplit = rawDetails.some(detail => detail.targetDatapoint === 'excluded');
-
-    if (!hasExclusionSplit) {
-
-      rawDetails.push({
-
-        presetGuid,
-
-        basisDatapoint: null,
-
-        targetDatapoint: 'excluded',
-
-        isCalculated: false,
-
-        specifiedPct: exclusionPct,
-
-        updatedBy: updatedBy ?? null,
-
-      });
-
-    }
-
-  }
-
-  return rawDetails;
-};
-
 const buildPresetDescription = (
   accountName: string | null | undefined,
   mappingType: string | null,
@@ -333,6 +240,21 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
   return inputs;
 };
 
+const normalizeActivityMonth = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const match = trimmed.match(/^(\d{4}-\d{2})/);
+  return match ? match[1] : trimmed;
+};
+
 const buildScoaActivities = (
   input: MappingSaveInput,
 ): EntityScoaActivityInput[] => {
@@ -369,10 +291,16 @@ const buildScoaActivities = (
         ? allocationValue
         : baseAmount * (allocationValue / 100);
 
+    const activityMonth = normalizeActivityMonth(glMonth);
+
+    if (!activityMonth) {
+      return results;
+    }
+
     results.push({
       entityId,
       scoaAccountId,
-      activityMonth: glMonth,
+      activityMonth,
       activityValue: calculatedValue,
       updatedBy: input.updatedBy ?? null,
     });
@@ -550,7 +478,14 @@ const saveHandler = async (
         presetLookup.get(cacheKey) ??
         crypto.randomUUID();
 
-      const presetType = resolvePresetType(input.mappingType);
+      const presetType = determinePresetType(
+        input.mappingType ?? null,
+        input.splitDefinitions,
+        normalizationTools,
+      );
+      const mappingTypeForPersistence =
+        presetType === 'dynamic' ? 'dynamic' : input.mappingType;
+      const effectiveMappingType = mappingTypeForPersistence ?? input.mappingType;
       const presetDetails = mapSplitDefinitionsToPresetDetails(
         presetGuid,
         presetType,
@@ -558,6 +493,7 @@ const saveHandler = async (
         input.updatedBy ?? null,
         input.netChange ?? null,
         input.exclusionPct ?? null,
+        normalizationTools,
       );
       const presetDescription = buildPresetDescription(
         input.accountName ?? input.entityAccountId ?? null,
@@ -580,22 +516,19 @@ const saveHandler = async (
       }
 
       // For dynamic mappings, also insert into ENTITY_PRESET_MAPPING with calculated percentages
-      if (presetType === 'dynamic' && input.splitDefinitions?.length) {
-        // Delete existing preset mappings for this preset
-        await deleteEntityPresetMappings(presetGuid);
-
-        // Build preset mapping inputs with applied percentages
-        const presetMappingInputs: EntityPresetMappingInput[] = input.splitDefinitions
-          .filter(split => normalizeText(split.targetId))
-          .map(split => ({
-            presetGuid,
-            basisDatapoint: normalizeText(split.basisDatapoint),
-            targetDatapoint: normalizeText(split.targetId) as string,
-            appliedPct: normalizeNumber(split.allocationValue),
-            updatedBy: input.updatedBy ?? null,
-          }));
+      if (presetType === 'dynamic') {
+        const presetMappingInputs = buildDynamicPresetMappingInputs(
+          presetGuid,
+          presetType,
+          input.splitDefinitions,
+          input.updatedBy ?? null,
+          input.netChange ?? null,
+          input.exclusionPct ?? null,
+          normalizationTools,
+        );
 
         if (presetMappingInputs.length) {
+          await deleteEntityPresetMappings(presetGuid);
           await createEntityPresetMappings(presetMappingInputs);
         }
       }
@@ -604,11 +537,11 @@ const saveHandler = async (
         entityId: input.entityId as string,
         entityAccountId: input.entityAccountId as string,
         polarity: input.polarity,
-        mappingType: input.mappingType,
+        mappingType: mappingTypeForPersistence,
         presetId: presetGuid,
         mappingStatus:
           input.mappingStatus ??
-          (input.mappingType?.toLowerCase() === 'exclude' ? 'Excluded' : 'Mapped'),
+          (effectiveMappingType?.toLowerCase() === 'exclude' ? 'Excluded' : 'Mapped'),
         exclusionPct: input.exclusionPct,
         updatedBy: input.updatedBy,
       });
@@ -620,7 +553,10 @@ const saveHandler = async (
         updatedBy: input.updatedBy ?? null,
       });
 
-      const activities = buildScoaActivities(input);
+      const activities = buildScoaActivities({
+        ...input,
+        mappingType: effectiveMappingType,
+      });
       activities.forEach((activity) => {
         const key = `${activity.entityId}|${activity.scoaAccountId}|${activity.activityMonth}`;
         const existing = scoaActivityLookup.get(key);
@@ -691,5 +627,7 @@ app.http('entityAccountMappings-save', {
   route: 'entityAccountMappings',
   handler: saveHandler,
 });
+
+export { saveHandler };
 
 export default listHandler;
