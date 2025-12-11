@@ -851,7 +851,16 @@ const deriveMappingStatus = (account: GLAccountMappingRow): MappingStatus => {
   }
 
   if (account.mappingType === 'dynamic') {
-    return account.status;
+    const ratioState = useRatioAllocationStore.getState();
+    const allocation = ratioState.allocations.find(
+      alloc => alloc.sourceAccount.id === account.id,
+    );
+
+    const hasDynamicTargets =
+      allocation?.targetDatapoints?.length ||
+      account.splitDefinitions.some(split => split.allocationType === 'dynamic');
+
+    return hasDynamicTargets ? 'Mapped' : 'Unmapped';
   }
 
   if (account.mappingType === 'percentage') {
