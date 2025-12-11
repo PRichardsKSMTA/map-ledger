@@ -495,6 +495,22 @@ export interface MappingSplitDefinition {
   isCalculated?: boolean;
 }
 
+export interface MappingPresetDetail {
+  targetDatapoint: string;
+  basisDatapoint?: string | null;
+  isCalculated?: boolean | null;
+  specifiedPct?: number | null;
+}
+
+export interface MappingPresetLibraryEntry {
+  id: string;
+  entityId: string;
+  name: string;
+  type: MappingType;
+  description?: string | null;
+  presetDetails: MappingPresetDetail[];
+}
+
 export type DistributionType = 'direct' | 'percentage' | 'dynamic';
 
 export interface DistributionOperationShare {
