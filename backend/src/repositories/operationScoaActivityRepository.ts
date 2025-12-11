@@ -29,7 +29,7 @@ const toSqlMonth = (value?: string | null): string | null => {
     return null;
   }
   const normalized = normalizeGlMonth(value);
-  return normalized ? `${normalized}-01` : null;
+  return normalized || null;
 };
 
 const mapRow = (row: {
