@@ -30,6 +30,33 @@ const normalizeText = (value?: string | null): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizePresetTypeValue = (value?: string | null): string => {
+  const normalized = normalizeText(value);
+  if (!normalized) {
+    return 'direct';
+  }
+  const lower = normalized.toLowerCase();
+  switch (lower) {
+    case 'dynamic':
+      return 'dynamic';
+    case 'percentage':
+      return 'percentage';
+    case 'direct':
+      return 'direct';
+    case 'exclude':
+    case 'excluded':
+      return 'excluded';
+    case 'p':
+      return 'percentage';
+    case 'd':
+      return 'dynamic';
+    case 'x':
+      return 'excluded';
+    default:
+      return lower;
+  }
+};
+
 const normalizePresetGuid = (value?: string | null): string | null => {
   if (value === undefined || value === null) {
     return null;
@@ -77,7 +104,7 @@ export const listEntityMappingPresets = async (
   return (result.recordset ?? []).map((row) => ({
     presetGuid: row.preset_guid,
     entityId: row.entity_id,
-    presetType: row.preset_type,
+    presetType: normalizePresetTypeValue(row.preset_type),
     presetDescription: row.preset_description ?? null,
     insertedDttm:
       row.inserted_dttm instanceof Date
@@ -149,7 +176,7 @@ export const createEntityMappingPreset = async (
   return {
     presetGuid: row.preset_guid,
     entityId: row.entity_id,
-    presetType: row.preset_type,
+    presetType: normalizePresetTypeValue(row.preset_type),
     presetDescription: row.preset_description ?? null,
     insertedDttm:
       row.inserted_dttm instanceof Date
@@ -296,9 +323,9 @@ export const listEntityMappingPresetsWithDetails = async (
   rows.forEach((row) => {
     const key = row.preset_guid;
     const base: EntityMappingPresetRow = {
-      presetGuid: row.preset_guid,
-      entityId: row.entity_id,
-      presetType: row.preset_type,
+    presetGuid: row.preset_guid,
+    entityId: row.entity_id,
+    presetType: normalizePresetTypeValue(row.preset_type),
       presetDescription: row.preset_description,
       insertedDttm: row.inserted_dttm,
       updatedDttm: row.updated_dttm,

@@ -5,6 +5,7 @@ export interface IncomingSplitDefinition {
   allocationValue?: number | null;
   isCalculated?: boolean | null;
   isExclusion?: boolean | null;
+  recordId?: number | null;
 }
 
 export interface NormalizedSplitDefinition {
@@ -13,4 +14,5 @@ export interface NormalizedSplitDefinition {
   isCalculated: boolean | null;
   specifiedPct: number | null;
   appliedPct: number | null;
+  recordId?: number | null;
 }

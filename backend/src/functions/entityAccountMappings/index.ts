@@ -16,9 +16,11 @@ import {
   createEntityMappingPreset,
   EntityMappingPresetInput,
   listEntityMappingPresets,
+  updateEntityMappingPreset,
 } from '../../repositories/entityMappingPresetRepository';
 import {
   createEntityMappingPresetDetails,
+  deleteEntityMappingPresetDetailsByIds,
   EntityMappingPresetDetailInput,
   listEntityMappingPresetDetails,
   updateEntityMappingPresetDetail,
@@ -26,7 +28,6 @@ import {
 import { EntityAccountInput, upsertEntityAccounts } from '../../repositories/entityAccountRepository';
 import { EntityScoaActivityInput, upsertEntityScoaActivity } from '../../repositories/entityScoaActivityRepository';
 import {
-  createEntityPresetMappings,
   deleteEntityPresetMappings,
   EntityPresetMappingInput,
 } from '../../repositories/entityPresetMappingRepository';
@@ -34,6 +35,7 @@ import {
   mapSplitDefinitionsToPresetDetails,
   buildDynamicPresetMappingInputs,
   determinePresetType,
+  syncEntityPresetMappings,
 } from './helpers';
 import type { NormalizationTools } from './helpers';
 import type { IncomingSplitDefinition } from './types';
@@ -88,10 +90,22 @@ const normalizeMappingType = (value: unknown): string | null => {
 
 const resolvePresetType = (value: string | null | undefined): string => {
   const normalized = normalizeMappingType(value);
-  if (normalized === 'percentage' || normalized === 'dynamic') {
-    return normalized;
+  switch (normalized) {
+    case 'dynamic':
+    case 'd':
+      return 'dynamic';
+    case 'percentage':
+    case 'p':
+      return 'percentage';
+    case 'direct':
+      return 'direct';
+    case 'exclude':
+    case 'excluded':
+    case 'x':
+      return 'excluded';
+    default:
+      return 'direct';
   }
-  return 'direct';
 };
 
 const normalizationTools: NormalizationTools = {
@@ -185,7 +199,7 @@ const buildPresetDescription = (
   mappingType: string | null,
   details: EntityMappingPresetDetailInput[],
 ): string | null => {
-  const source = normalizeText(accountName);
+  const source = typeof accountName === 'string' ? accountName.trim() : null;
   const normalizedType = resolvePresetType(mappingType);
 
   if (normalizedType === 'dynamic') {
@@ -384,28 +398,80 @@ const buildExistingPresetLookup = async (
   return { presetLookup, knownPresetGuids };
 };
 
+const isValidRecordId = (value?: number | null): value is number =>
+  Number.isFinite(value ?? NaN) && value! > 0;
+
 const syncPresetDetails = async (
   presetGuid: string,
   desiredDetails: EntityMappingPresetDetailInput[],
   updatedBy?: string | null,
 ): Promise<void> => {
+  const existing = await listEntityMappingPresetDetails(presetGuid);
   if (!desiredDetails.length) {
+    if (existing.length) {
+      const allIds = existing.reduce<number[]>((ids, row) => {
+        const recordId = row.recordId;
+        if (isValidRecordId(recordId)) {
+          ids.push(recordId);
+        }
+        return ids;
+      }, []);
+      if (allIds.length) {
+        await deleteEntityMappingPresetDetailsByIds(allIds);
+        await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
+        return;
+      }
+    }
     return;
   }
 
-  const existing = await listEntityMappingPresetDetails(presetGuid);
-  const updates: Promise<unknown>[] = [];
-  const creations: EntityMappingPresetDetailInput[] = [];
+  const existingById = new Map<number, typeof existing[number]>();
+  existing.forEach(row => {
+    if (isValidRecordId(row.recordId)) {
+      existingById.set(row.recordId, row);
+    }
+  });
 
-  desiredDetails.forEach((detail) => {
-    const match = existing.find(
+  const matchedRecordIds = new Set<number>();
+  const creations: EntityMappingPresetDetailInput[] = [];
+  const updates: Promise<unknown>[] = [];
+
+  const findFallback = (detail: EntityMappingPresetDetailInput) =>
+    existing.find(
       (row) =>
-        row.presetGuid === presetGuid &&
         row.targetDatapoint === detail.targetDatapoint &&
         (row.basisDatapoint ?? null) === (detail.basisDatapoint ?? null),
     );
 
-    if (match) {
+  desiredDetails.forEach((detail) => {
+    const detailRecordId = detail.recordId;
+    if (isValidRecordId(detailRecordId)) {
+      const resolvedDetailRecordId = detailRecordId;
+      const match = existingById.get(resolvedDetailRecordId);
+      if (match) {
+        matchedRecordIds.add(resolvedDetailRecordId);
+        updates.push(
+          updateEntityMappingPresetDetail(
+            presetGuid,
+            detail.basisDatapoint ?? null,
+            detail.targetDatapoint,
+            {
+              isCalculated: detail.isCalculated ?? undefined,
+              specifiedPct: detail.specifiedPct ?? undefined,
+              updatedBy: detail.updatedBy ?? null,
+            },
+          resolvedDetailRecordId,
+          ),
+        );
+        return;
+      }
+    }
+
+    const fallback = findFallback(detail);
+    const fallbackRecordId = fallback?.recordId;
+    if (isValidRecordId(fallbackRecordId)) {
+      const resolvedFallbackRecordId = fallbackRecordId;
+      matchedRecordIds.add(resolvedFallbackRecordId);
       updates.push(
         updateEntityMappingPresetDetail(
           presetGuid,
@@ -416,12 +482,22 @@ const syncPresetDetails = async (
             specifiedPct: detail.specifiedPct ?? undefined,
             updatedBy: detail.updatedBy ?? null,
           },
+          resolvedFallbackRecordId,
         ),
       );
-    } else {
-      creations.push(detail);
+      return;
     }
+
+    creations.push(detail);
   });
+
+  const deletions = existing.reduce<number[]>((ids, row) => {
+    const rowRecordId = row.recordId;
+    if (isValidRecordId(rowRecordId) && !matchedRecordIds.has(rowRecordId)) {
+      ids.push(rowRecordId);
+    }
+    return ids;
+  }, []);
 
   if (creations.length) {
     await createEntityMappingPresetDetails(creations);
@@ -429,6 +505,14 @@ const syncPresetDetails = async (
 
   if (updates.length) {
     await Promise.all(updates);
+  }
+
+  if (deletions.length) {
+    await deleteEntityMappingPresetDetailsByIds(deletions);
+  }
+
+  if (creations.length > 0 || updates.length > 0 || deletions.length > 0) {
+    await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
   }
 };
 
@@ -591,8 +675,13 @@ const saveHandler = async (
             );
 
             if (presetMappingInputs.length) {
+              await syncEntityPresetMappings(
+                presetGuid,
+                presetMappingInputs,
+                input.updatedBy ?? null,
+              );
+            } else if (presetLookup.has(cacheKey)) {
               await deleteEntityPresetMappings(presetGuid);
-              await createEntityPresetMappings(presetMappingInputs);
             }
           }
 

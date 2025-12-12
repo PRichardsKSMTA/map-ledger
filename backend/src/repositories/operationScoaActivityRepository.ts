@@ -103,9 +103,7 @@ export const insertOperationScoaActivity = async (
       params[`scoaAccountId${index}`] = normalizeText(activity.scoaAccountId);
       params[`activityMonth${index}`] = toSqlMonth(activity.activityMonth);
       params[`activityValue${index}`] = activity.activityValue;
-      params[`updatedBy${index}`] = normalizeText(activity.updatedBy);
-
-      return `(@operationCd${index}, @scoaAccountId${index}, @activityMonth${index}, @activityValue${index}, NULL, @updatedBy${index})`;
+      return `(@operationCd${index}, @scoaAccountId${index}, @activityMonth${index}, @activityValue${index})`;
     })
     .join(', ');
 
@@ -122,9 +120,7 @@ export const insertOperationScoaActivity = async (
       OPERATION_CD,
       SCOA_ACCOUNT_ID,
       ACTIVITY_MONTH,
-      ACTIVITY_VALUE,
-      UPDATED_DTTM,
-      UPDATED_BY
+      ACTIVITY_VALUE
     )
     OUTPUT
       INSERTED.OPERATION_CD as operation_cd,

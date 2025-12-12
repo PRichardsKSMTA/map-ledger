@@ -32,6 +32,8 @@ export interface EntityMappingPresetDetailRow {
   targetDatapoint?: string | null;
   isCalculated?: boolean | null;
   specifiedPct?: number | null;
+  recordId?: number | null;
+  presetDetailRecordId?: number | null;
 }
 
 const normalizeText = (value?: string | null): string | null => {
@@ -160,6 +162,7 @@ const hydratePresetDetails = <T extends EntityAccountMappingRow>(
   rows: (T &
     EntityMappingPresetDetailRow & {
       recordId?: number | null;
+      presetDetailRecordId?: number | null;
     })[],
 ): (T & {
   presetDetails?: EntityMappingPresetDetailRow[];
@@ -179,6 +182,7 @@ const hydratePresetDetails = <T extends EntityAccountMappingRow>(
           basisDatapoint: row.basisDatapoint ?? null,
           isCalculated: row.isCalculated ?? null,
           specifiedPct: row.specifiedPct ?? null,
+          recordId: row.presetDetailRecordId ?? null,
         }
       : null;
 
@@ -228,6 +232,7 @@ export const listEntityAccountMappingsWithPresets = async (
       targetDatapoint?: string | null;
       isCalculated?: boolean | null;
       specifiedPct?: number | null;
+      presetDetailRecordId?: number | null;
     }
   >(
     `SELECT
@@ -244,7 +249,8 @@ export const listEntityAccountMappingsWithPresets = async (
       emd.BASIS_DATAPOINT as basisDatapoint,
       emd.TARGET_DATAPOINT as targetDatapoint,
       emd.IS_CALCULATED as isCalculated,
-      emd.SPECIFIED_PCT as specifiedPct
+      emd.SPECIFIED_PCT as specifiedPct,
+      emd.RECORD_ID as presetDetailRecordId
     FROM ${TABLE_NAME} eam
     LEFT JOIN ml.ENTITY_MAPPING_PRESETS emp ON emp.PRESET_GUID = eam.PRESET_GUID
     LEFT JOIN ml.ENTITY_MAPPING_PRESET_DETAIL emd ON emd.PRESET_GUID = emp.PRESET_GUID
@@ -263,6 +269,7 @@ export const listEntityAccountMappingsWithPresets = async (
     specifiedPct: row.specifiedPct !== null && row.specifiedPct !== undefined
       ? row.specifiedPct * 100
       : null,
+    presetDetailRecordId: row.presetDetailRecordId ?? null,
   }));
   const decorated = hydratePresetDetails(rows);
   return decorated.map(({ presetDetails, ...rest }) => ({
@@ -298,6 +305,7 @@ export const listEntityAccountMappingsByFileUpload = async (
     targetDatapoint?: string | null;
     isCalculated?: boolean | null;
     specifiedPct?: number | null;
+    presetDetailRecordId?: number | null;
   }>(
     `SELECT
       fr.FILE_UPLOAD_GUID as file_upload_guid,
@@ -318,7 +326,8 @@ export const listEntityAccountMappingsByFileUpload = async (
       emd.BASIS_DATAPOINT as basisDatapoint,
       emd.TARGET_DATAPOINT as targetDatapoint,
       emd.IS_CALCULATED as isCalculated,
-      emd.SPECIFIED_PCT as specifiedPct
+      emd.SPECIFIED_PCT as specifiedPct,
+      emd.RECORD_ID as presetDetailRecordId
     FROM ml.FILE_RECORDS fr
     LEFT JOIN ${TABLE_NAME} eam
       ON eam.ENTITY_ID = fr.ENTITY_ID AND eam.ENTITY_ACCOUNT_ID = fr.ACCOUNT_ID
@@ -343,6 +352,7 @@ export const listEntityAccountMappingsByFileUpload = async (
     specifiedPct: row.specifiedPct !== null && row.specifiedPct !== undefined
       ? row.specifiedPct * 100
       : null,
+    presetDetailRecordId: row.presetDetailRecordId ?? null,
   }));
 
   return hydratePresetDetails(rows).map(({ presetDetails, ...rest }) => ({
@@ -444,7 +454,7 @@ export const upsertEntityAccountMappings = async (
           source.mapping_status,
           source.exclusion_pct,
           NULL,
-          source.updated_by
+          NULL
         )
       OUTPUT
         inserted.ENTITY_ID as entity_id,

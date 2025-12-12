@@ -20,12 +20,12 @@ describe('entityDistributionPresetDetailRepository', () => {
   it('persists 100%/20% splits without scaling and returns the stored values', async () => {
     const inputs = [
       {
-        presetId: 'dist-preset-1',
+        presetGuid: 'dist-preset-1',
         operationCd: 'OP1',
         specifiedPct: 100,
       },
       {
-        presetId: 'dist-preset-1',
+        presetGuid: 'dist-preset-1',
         operationCd: 'OP2',
         specifiedPct: 20,
       },
@@ -33,7 +33,7 @@ describe('entityDistributionPresetDetailRepository', () => {
 
     mockedRunQuery.mockResolvedValueOnce({
       recordset: inputs.map((detail) => ({
-        preset_id: detail.presetId,
+        preset_guid: detail.presetGuid,
         operation_cd: detail.operationCd,
         is_calculated: null,
         specified_pct: detail.specifiedPct / 100,

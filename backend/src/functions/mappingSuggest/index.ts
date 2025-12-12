@@ -122,6 +122,7 @@ const mapToSuggestion = (
         basisDatapoint: detail.basisDatapoint ?? undefined,
         isCalculated: detail.isCalculated ?? undefined,
         isExclusion: isExclusionSplit,
+        recordId: detail.recordId ?? undefined,
       };
     }),
     entities: [

@@ -492,7 +492,8 @@ export interface MappingSplitDefinition {
   notes?: string;
   isExclusion?: boolean;
   basisDatapoint?: string | null;
-  isCalculated?: boolean;
+  isCalculated?: boolean | null;
+  recordId?: number | null;
 }
 
 export interface MappingPresetDetail {
@@ -536,6 +537,29 @@ export interface DistributionRow {
   status: DistributionStatus;
 }
 
+export interface DistributionSaveOperation {
+  operationCd: string;
+  allocation?: number | null;
+  notes?: string | null;
+}
+
+export interface DistributionSaveRowInput {
+  scoaAccountId: string;
+  distributionType: DistributionType;
+  presetGuid?: string | null;
+  presetDescription?: string | null;
+  distributionStatus?: DistributionStatus;
+  operations?: DistributionSaveOperation[];
+  updatedBy?: string | null;
+}
+
+export interface DistributionSaveResponseItem {
+  scoaAccountId: string;
+  distributionType: DistributionType;
+  distributionStatus: DistributionStatus;
+  presetGuid: string;
+}
+
 export interface GLAccountMappingRow {
   id: string;
   entityId: string | null;
@@ -573,12 +597,14 @@ export interface MappingSaveInput {
   exclusionPct?: number | null;
   netChange?: number | null;
   glMonth?: string | null;
+  updatedBy?: string | null;
   splitDefinitions?: {
     targetId?: string | null;
     allocationType?: 'percentage' | 'amount' | 'dynamic';
     allocationValue?: number | null;
     basisDatapoint?: string | null;
     isCalculated?: boolean | null;
+    isExclusion?: boolean | null;
   }[];
 }
 

@@ -25,6 +25,7 @@ import { getSourceValue } from '../utils/dynamicAllocation';
 import { computeDynamicExclusionSummaries } from '../utils/dynamicExclusions';
 import { trackMappingSaveAttempt } from '../utils/telemetry';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
+import { useOrganizationStore } from './organizationStore';
 import {
   findChartOfAccountOption,
   getChartOfAccountOptions,
@@ -54,6 +55,38 @@ const logError = (...args: unknown[]) => {
   if (!shouldLog) return;
   // eslint-disable-next-line no-console
   console.error(logPrefix, ...args);
+};
+
+const deletePresetDetailRecord = async (recordId: number): Promise<boolean> => {
+  if (!Number.isFinite(recordId) || recordId <= 0) {
+    return false;
+  }
+
+  try {
+    const params = new URLSearchParams({ recordId: recordId.toString() });
+    const response = await fetch(
+      `${API_BASE_URL}/entityMappingPresetDetails?${params.toString()}`,
+      {
+        method: 'DELETE',
+      },
+    );
+
+    if (response.ok || response.status === 404) {
+      return true;
+    }
+
+    logError('Failed to delete preset detail record', {
+      recordId,
+      status: response.status,
+    });
+    return false;
+  } catch (error) {
+    logError('Failed to delete preset detail record', {
+      recordId,
+      error,
+    });
+    return false;
+  }
 };
 
 type SavedMappingRow = {
@@ -694,6 +727,7 @@ const buildSaveInputFromAccount = (
   account: GLAccountMappingRow,
   defaultEntity?: EntitySummary | null,
   selectedEntityId?: string | null,
+  updatedBy?: string | null,
 ): MappingSaveInput | null => {
   const resolvedEntityId =
     account.entityId ||
@@ -732,6 +766,8 @@ const buildSaveInputFromAccount = (
     glMonth: account.glMonth ?? null,
   };
 
+  payload.updatedBy = updatedBy ?? null;
+
   if (normalizedType === 'direct' && account.manualCOAId) {
     payload.splitDefinitions = [
       {
@@ -751,6 +787,7 @@ const buildSaveInputFromAccount = (
         allocationType: split.allocationType,
         allocationValue: split.allocationValue,
         isCalculated: false,
+        recordId: split.recordId ?? null,
       }));
     if (splits.length) {
       payload.splitDefinitions = splits;
@@ -791,12 +828,20 @@ const buildSaveInputFromAccount = (
             alloc => alloc.targetId === row.targetAccountId,
           );
 
+          const matchingTarget = allocation.targetDatapoints.find(
+            target =>
+              target.groupId === presetId &&
+              target.datapointId === row.targetAccountId,
+          );
+          const isExclusionSplit = Boolean(matchingTarget?.isExclusion);
+
           dynamicSplits.push({
             targetId: row.targetAccountId,
             basisDatapoint: row.dynamicAccountId,
             allocationType: 'dynamic',
             allocationValue: resultAllocation?.percentage ?? null,
             isCalculated: true,
+            isExclusion: isExclusionSplit,
           });
         });
       });
@@ -809,13 +854,14 @@ const buildSaveInputFromAccount = (
             alloc => alloc.targetId === target.datapointId,
           );
 
-          dynamicSplits.push({
-            targetId: target.datapointId,
-            basisDatapoint: target.ratioMetric.id,
-            allocationType: 'dynamic',
-            allocationValue: resultAllocation?.percentage ?? null,
-            isCalculated: true,
-          });
+        dynamicSplits.push({
+          targetId: target.datapointId,
+          basisDatapoint: target.ratioMetric.id,
+          allocationType: 'dynamic',
+          allocationValue: resultAllocation?.percentage ?? null,
+          isCalculated: true,
+          isExclusion: Boolean(target.isExclusion),
+        });
         });
 
       if (dynamicSplits.length) {
@@ -1119,6 +1165,7 @@ interface MappingState {
   saveError: string | null;
   lastSavedCount: number;
   rowSaveStatuses: Record<string, RowSaveMetadata>;
+  removedPresetDetailRecordIds: Set<number>;
   presetLibrary: MappingPresetLibraryEntry[];
   setActiveClientId: (clientId: string | null) => void;
   setSearchTerm: (term: string) => void;
@@ -1342,6 +1389,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
   saveError: null,
   lastSavedCount: 0,
   rowSaveStatuses: {},
+  removedPresetDetailRecordIds: new Set<number>(),
   presetLibrary: [],
   setActiveClientId: clientId =>
     set({ activeClientId: normalizeClientId(clientId) }),
@@ -1762,6 +1810,12 @@ export const useMappingStore = create<MappingState>((set, get) => ({
         return state;
       }
 
+      const splitToRemove = targetAccount.splitDefinitions.find(split => split.id === splitId);
+      const nextRemoved = new Set(state.removedPresetDetailRecordIds);
+      if (splitToRemove?.recordId) {
+        nextRemoved.add(splitToRemove.recordId);
+      }
+
       const shouldApplyToAll = state.activePeriod === null;
       const updatedTargetSplits = targetAccount.splitDefinitions.filter(split => split.id !== splitId);
       const key = `${targetAccount.entityId}__${targetAccount.accountId}`;
@@ -1797,7 +1851,12 @@ export const useMappingStore = create<MappingState>((set, get) => ({
 
       updateDynamicBasisAccounts(accounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
-      return { accounts, dirtyMappingIds, rowSaveStatuses };
+      return {
+        accounts,
+        dirtyMappingIds,
+        rowSaveStatuses,
+        removedPresetDetailRecordIds: nextRemoved,
+      };
     }),
   applyBatchMapping: (ids, updates) =>
     set(state => {
@@ -2239,21 +2298,24 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       }
 
       set(state => {
-        const merged = mergeSavedMappings(state.accounts, aggregated, mode);
-        updateDynamicBasisAccounts(merged);
-        return {
-          accounts: merged,
-          dirtyMappingIds: new Set<string>(),
-          rowSaveStatuses: {},
-        };
-      });
-    } catch (error) {
+      const merged = mergeSavedMappings(state.accounts, aggregated, mode);
+      updateDynamicBasisAccounts(merged);
+      return {
+        accounts: merged,
+        dirtyMappingIds: new Set<string>(),
+        rowSaveStatuses: {},
+        removedPresetDetailRecordIds: new Set<number>(),
+      };
+    });
+  } catch (error) {
       logError('Unable to hydrate saved mappings', error);
     }
   },
   saveMappings: async (accountIds) => {
     const state = get();
     const { accounts, activeEntityId, dirtyMappingIds } = state;
+    const pendingPresetDetailDeletes = Array.from(state.removedPresetDetailRecordIds);
+    const currentUserEmail = useOrganizationStore.getState().currentEmail ?? null;
     const scope = Array.isArray(accountIds) && accountIds.length > 0 ? accountIds : null;
     const idsToSave = scope
       ? scope.filter(id => dirtyMappingIds.has(id))
@@ -2273,7 +2335,9 @@ export const useMappingStore = create<MappingState>((set, get) => ({
     const defaultEntity = activeEntity ?? (availableEntities.length === 1 ? availableEntities[0] : null);
 
     const payload = scopedAccounts
-      .map(account => buildSaveInputFromAccount(account, defaultEntity, activeEntityId))
+      .map(account =>
+        buildSaveInputFromAccount(account, defaultEntity, activeEntityId, currentUserEmail),
+      )
       .filter((entry): entry is MappingSaveInput => Boolean(entry));
 
     if (!payload.length) {
@@ -2300,6 +2364,18 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       rowSaveStatuses: markRowsSaving(state.rowSaveStatuses, idsToSave),
     }));
     const metricStartTime = Date.now();
+    const flushDeletedPresetDetails = async (recordIds: number[]) => {
+      for (const recordId of recordIds) {
+        const deleted = await deletePresetDetailRecord(recordId);
+        if (deleted) {
+          set(current => {
+            const nextIds = new Set(current.removedPresetDetailRecordIds);
+            nextIds.delete(recordId);
+            return { removedPresetDetailRecordIds: nextIds };
+          });
+        }
+      }
+    };
 
     try {
       const requestBody: MappingSaveRequest = { items: payload };
@@ -2341,6 +2417,9 @@ export const useMappingStore = create<MappingState>((set, get) => ({
           rowSaveStatuses: nextRowStatuses,
         };
       });
+      if (pendingPresetDetailDeletes.length) {
+        await flushDeletedPresetDetails(pendingPresetDetailDeletes);
+      }
       return savedCount;
     } catch (error) {
       const elapsedMs = Date.now() - metricStartTime;
@@ -2430,6 +2509,7 @@ export const useMappingStore = create<MappingState>((set, get) => ({
       accounts: resolvedAccounts,
       dirtyMappingIds: new Set<string>(),
       rowSaveStatuses: {},
+      removedPresetDetailRecordIds: new Set<number>(),
       searchTerm: '',
       activeStatuses: [],
       activeUploadId: uploadId,
@@ -2546,6 +2626,7 @@ const createBlankSplitDefinition = (): MappingSplitDefinition => ({
   allocationValue: 0,
   notes: '',
   isExclusion: false,
+  recordId: null,
 });
 
 const ensureMinimumPercentageSplits = (
@@ -2938,17 +3019,25 @@ export { getAccountExcludedAmount, getAllocatableNetChange };
 useRatioAllocationStore.subscribe(
   (state: RatioAllocationStoreState, previousState?: RatioAllocationStoreState) => {
     const prevState = previousState ?? state;
+    const prevMutation = prevState.lastDynamicMutation ?? null;
+    const currentMutation = state.lastDynamicMutation ?? null;
+    const mutationChanged =
+      currentMutation !== null &&
+      (!prevMutation || prevMutation.timestamp !== currentMutation.timestamp);
+
     if (
       state.results === prevState.results &&
       state.selectedPeriod === prevState.selectedPeriod &&
       state.allocations === prevState.allocations &&
       state.basisAccounts === prevState.basisAccounts &&
       state.groups === prevState.groups &&
-      state.sourceAccounts === prevState.sourceAccounts
+      state.sourceAccounts === prevState.sourceAccounts &&
+      !mutationChanged
     ) {
       return;
     }
 
+    const mutatedAccountId = mutationChanged ? currentMutation?.accountId ?? null : null;
     const { results, selectedPeriod, allocations, basisAccounts, groups, sourceAccounts } = state;
 
     useMappingStore.setState(currentState => {
@@ -3011,11 +3100,30 @@ useRatioAllocationStore.subscribe(
         return { ...account, dynamicExclusionAmount: resolvedAmount };
       });
 
-      if (!changed) {
+      const dirtyIds =
+        mutatedAccountId && nextAccounts.some(account => account.id === mutatedAccountId)
+          ? [mutatedAccountId]
+          : [];
+
+      if (!changed && dirtyIds.length === 0) {
         return currentState;
       }
 
-      return { accounts: nextAccounts };
+      const nextState: Partial<MappingState> = {};
+      if (changed) {
+        nextState.accounts = nextAccounts;
+      }
+
+      if (dirtyIds.length > 0) {
+        const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(
+          currentState,
+          dirtyIds,
+        );
+        nextState.dirtyMappingIds = dirtyMappingIds;
+        nextState.rowSaveStatuses = rowSaveStatuses;
+      }
+
+      return nextState;
     });
   },
 );

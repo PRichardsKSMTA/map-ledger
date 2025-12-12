@@ -1,5 +1,14 @@
+import {
+  createEntityPresetMappings,
+  listEntityPresetMappings,
+  updateEntityPresetMappingRecord,
+  deleteEntityPresetMappingRecords,
+} from '../../repositories/entityPresetMappingRepository';
 import type { EntityMappingPresetDetailInput } from '../../repositories/entityMappingPresetDetailRepository';
-import type { EntityPresetMappingInput } from '../../repositories/entityPresetMappingRepository';
+import type {
+  EntityPresetMappingInput,
+  EntityPresetMappingRow,
+} from '../../repositories/entityPresetMappingRepository';
 import type { IncomingSplitDefinition, NormalizedSplitDefinition } from './types';
 
 export interface NormalizationTools {
@@ -64,6 +73,7 @@ export const normalizeSplitDefinitions = (
       isCalculated,
       specifiedPct,
       appliedPct: normalizedType === 'dynamic' ? allocationValue ?? null : null,
+      recordId: split.recordId ?? null,
     });
   });
 
@@ -83,6 +93,7 @@ export const normalizeSplitDefinitions = (
         isCalculated: false,
         specifiedPct: exclusionPct,
         appliedPct: null,
+        recordId: null,
       });
     }
   }
@@ -118,6 +129,7 @@ export const mapSplitDefinitionsToPresetDetails = (
     isCalculated: detail.isCalculated,
     specifiedPct: detail.specifiedPct,
     updatedBy: updatedBy ?? null,
+    recordId: detail.recordId ?? null,
   }));
 };
 
@@ -153,6 +165,7 @@ export const buildDynamicPresetMappingInputs = (
     targetDatapoint: detail.targetDatapoint,
     appliedPct: detail.appliedPct,
     updatedBy: updatedBy ?? null,
+    recordId: detail.recordId ?? null,
   }));
 };
 
@@ -175,4 +188,84 @@ export const determinePresetType = (
   }
 
   return normalized;
+};
+
+const normalizeBasisKey = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized;
+};
+
+export const syncEntityPresetMappings = async (
+  presetGuid: string,
+  inputs: EntityPresetMappingInput[],
+  updatedBy: string | null,
+): Promise<boolean> => {
+  if (!presetGuid) {
+    return false;
+  }
+
+  const existing = await listEntityPresetMappings(presetGuid);
+  if (!existing.length && inputs.length === 0) {
+    return false;
+  }
+
+  const existingByBasis = new Map<string, EntityPresetMappingRow>();
+  existing.forEach(row => {
+    const key = normalizeBasisKey(row.basisDatapoint);
+    existingByBasis.set(key, row);
+  });
+
+  const matchedBasis = new Set<string>();
+  const creations: EntityPresetMappingInput[] = [];
+  const updatePromises: Promise<void>[] = [];
+
+  inputs.forEach(input => {
+    const key = normalizeBasisKey(input.basisDatapoint);
+    const existingRow = existingByBasis.get(key);
+    matchedBasis.add(key);
+
+    if (existingRow) {
+      const recordId = existingRow.recordId;
+      if (typeof recordId === 'number' && Number.isFinite(recordId) && recordId > 0) {
+        updatePromises.push(
+          updateEntityPresetMappingRecord(recordId, {
+            basisDatapoint: input.basisDatapoint ?? existingRow.basisDatapoint,
+            targetDatapoint: input.targetDatapoint,
+            appliedPct: input.appliedPct,
+            updatedBy,
+          }),
+        );
+      }
+    } else {
+      creations.push(input);
+    }
+  });
+
+  const deletionIds = existing
+    .filter(row => !matchedBasis.has(normalizeBasisKey(row.basisDatapoint)))
+    .map(row => row.recordId ?? null)
+    .filter(
+      (id): id is number =>
+        id !== null &&
+        typeof id === 'number' &&
+        Number.isFinite(id) &&
+        id > 0,
+    );
+
+  if (creations.length) {
+    await createEntityPresetMappings(creations);
+  }
+
+  if (deletionIds.length) {
+    await deleteEntityPresetMappingRecords(deletionIds);
+  }
+
+  if (updatePromises.length) {
+    await Promise.all(updatePromises);
+  }
+
+  return Boolean(creations.length || deletionIds.length || updatePromises.length);
 };
