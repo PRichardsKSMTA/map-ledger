@@ -33,6 +33,12 @@ const formatToYearMonth = (date: Date): string => {
   return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
 };
 
+const formatToYearMonthDay = (date: Date): string => {
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+};
+
 export const formatPeriodLabel = (
   value: string,
   _locales: Intl.LocalesArgument = 'default'
@@ -66,4 +72,38 @@ export const formatPeriodLabel = (
   }
 
   return value;
+};
+
+export const formatPeriodDate = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const parsed = parsePeriodString(trimmed);
+  if (parsed) {
+    return formatToYearMonthDay(parsed);
+  }
+
+  const fallbackMatch = /^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/.exec(trimmed);
+  if (fallbackMatch) {
+    const [, yearPart, monthPart, dayPart] = fallbackMatch;
+    const year = Number(yearPart);
+    const monthIndex = Number(monthPart) - 1;
+    const day = dayPart ? Number(dayPart) : 1;
+    if (!Number.isNaN(year) && !Number.isNaN(monthIndex) && !Number.isNaN(day)) {
+      return formatToYearMonthDay(new Date(year, monthIndex, day));
+    }
+  }
+
+  const [primary] = trimmed.split('T');
+  if (primary) {
+    return primary.length >= 10 ? primary.slice(0, 10) : primary;
+  }
+
+  return trimmed;
 };

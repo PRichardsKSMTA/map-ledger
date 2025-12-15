@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
 import type {
   DistributionOperationShare,
@@ -6,6 +6,8 @@ import type {
   MappingPresetLibraryEntry,
 } from '../../types';
 import type { DistributionOperationCatalogItem } from '../../store/distributionStore';
+import { useDistributionStore } from '../../store/distributionStore';
+import { getOperationLabel } from '../../utils/operationLabel';
 
 export type DistributionOperationDraft = DistributionOperationShare & {
   draftId: string;
@@ -21,6 +23,7 @@ interface DistributionSplitRowProps {
   presetOptions: MappingPresetLibraryEntry[];
   selectedPresetId: string | null;
   onApplyPreset: (presetId: string | null) => void;
+  panelId?: string;
 }
 
 const amountFormatter = new Intl.NumberFormat('en-US', {
@@ -75,10 +78,16 @@ export default function DistributionSplitRow({
   presetOptions,
   selectedPresetId,
   onApplyPreset,
+  panelId,
 }: DistributionSplitRowProps) {
+  const headingId = panelId ? `${panelId}-heading` : undefined;
   const [percentageInputs, setPercentageInputs] = useState<
     Record<string, string>
   >(() => buildPercentageState(operationsDraft));
+  const queueAutoSave = useDistributionStore(state => state.queueAutoSave);
+  const triggerImmediateAutoSave = useCallback(() => {
+    queueAutoSave([row.id], { immediate: true });
+  }, [queueAutoSave, row.id]);
 
   useEffect(() => {
     setPercentageInputs(prev => {
@@ -187,8 +196,38 @@ export default function DistributionSplitRow({
     });
   };
 
-  const updateAllocation = (draftId: string, normalizedValue: number) => {
+  const updatePercentageAllocations = (draftId: string, normalizedValue: number) => {
+    const totalOperationCount = operationsDraft.length;
+
+    // Auto-calculate the partner split only when there are exactly 2 operations
+    const shouldRedistribute = totalOperationCount === 2;
+
+    const partnerOperation = shouldRedistribute
+      ? operationsDraft.find(operation => operation.draftId !== draftId)
+      : null;
+
+    // Update the edited operation
     updateOperationByDraft(draftId, { allocation: normalizedValue });
+
+    // Auto-calculate partner split when exactly 2 operations
+    if (partnerOperation) {
+      const remaining = roundToTwoDecimals(Math.max(0, 100 - normalizedValue));
+      updateOperationByDraft(partnerOperation.draftId, { allocation: remaining });
+
+      // Update both input displays
+      setPercentageInputs(prev => ({
+        ...prev,
+        [draftId]: formatPercentageLabel(normalizedValue),
+        [partnerOperation.draftId]: formatPercentageLabel(remaining),
+      }));
+      return;
+    }
+
+    // No auto-calculation if not exactly 2 operations
+    setPercentageInputs(prev => ({
+      ...prev,
+      [draftId]: formatPercentageLabel(normalizedValue),
+    }));
   };
 
   const handlePercentageChange = (draftId: string, value: string) => {
@@ -211,11 +250,8 @@ export default function DistributionSplitRow({
     }
 
     const normalizedValue = roundToTwoDecimals(clampPercentage(parsedValue));
-    updateAllocation(draftId, normalizedValue);
-    setPercentageInputs(prev => ({
-      ...prev,
-      [draftId]: formatPercentageLabel(normalizedValue),
-    }));
+    updatePercentageAllocations(draftId, normalizedValue);
+    triggerImmediateAutoSave();
   };
 
   const handleNotesChange = (draftId: string, value: string) => {
@@ -233,10 +269,20 @@ export default function DistributionSplitRow({
   };
 
   return (
-    <div className="space-y-4">
+    <div
+      id={panelId}
+      role="region"
+      aria-labelledby={headingId}
+      className="space-y-4"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Allocation splits</p>
+          <p
+            id={headingId}
+            className="text-sm font-semibold text-slate-700 dark:text-slate-200"
+          >
+            Allocation splits
+          </p>
           <p className="text-xs text-slate-500 dark:text-slate-400">Ensure 100% allocation across targets.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -306,11 +352,9 @@ export default function DistributionSplitRow({
                     >
                       <option value="">Select target</option>
                       {optionsForOperation(operation).map(option => (
-                        <option key={option.id} value={option.id}>
-                          {option.name && option.name !== option.id
-                            ? `${option.id} - ${option.name}`
-                            : option.id}
-                        </option>
+                      <option key={option.id} value={option.id}>
+                          {getOperationLabel(option)}
+                      </option>
                       ))}
                     </select>
                   </td>
@@ -352,6 +396,7 @@ export default function DistributionSplitRow({
                       onChange={event =>
                         handleNotesChange(operation.draftId, event.target.value)
                       }
+                      onBlur={triggerImmediateAutoSave}
                       placeholder="Optional notes"
                       className="w-full rounded-md border border-slate-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                     />

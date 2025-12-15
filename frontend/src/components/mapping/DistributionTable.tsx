@@ -1,13 +1,17 @@
-import { ChangeEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronRight, HelpCircle, X } from 'lucide-react';
+import { ChangeEvent, Fragment, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowUpDown, Check, ChevronRight, HelpCircle, Loader2, X } from 'lucide-react';
 import RatioAllocationManager from './RatioAllocationManager';
 import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
 import {
   useDistributionStore,
   type DistributionOperationCatalogItem,
 } from '../../store/distributionStore';
-import { selectPresetSummaries, useRatioAllocationStore } from '../../store/ratioAllocationStore';
-import { selectStandardScoaSummaries, useMappingStore } from '../../store/mappingStore';
+import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
+import {
+  selectActiveEntityId,
+  selectStandardScoaSummaries,
+  useMappingStore,
+} from '../../store/mappingStore';
 import { useOrganizationStore } from '../../store/organizationStore';
 import { useClientStore } from '../../store/clientStore';
 import { useDistributionSelectionStore } from '../../store/distributionSelectionStore';
@@ -15,13 +19,22 @@ import DistributionToolbar from './DistributionToolbar';
 import DistributionSplitRow, {
   type DistributionOperationDraft,
 } from './DistributionSplitRow';
+import {
+  fetchDistributionPresetsFromApi,
+  mapDistributionPresetsToDynamic,
+  toDistributionPresetType,
+  type DistributionPresetPayload,
+} from '../../services/distributionPresetService';
 import type {
   DistributionOperationShare,
   DistributionRow,
   DistributionStatus,
   DistributionType,
   MappingPresetLibraryEntry,
+  MappingType,
 } from '../../types';
+import { getOperationLabel } from '../../utils/operationLabel';
+import { normalizeDistributionStatus } from '../../utils/distributionStatus';
 
 interface DistributionTableProps {
   focusMappingId?: string | null;
@@ -87,13 +100,12 @@ const formatCurrency = (value: number): string => currencyFormatter.format(value
 const statusLabel = (value: DistributionStatus) =>
   STATUS_DEFINITIONS.find(status => status.value === value)?.label ?? value;
 
-const formatOperationLabel = (operation: DistributionOperationShare) => {
-  const code = operation.code || operation.id;
-  if (operation.name && operation.name !== code) {
-    return `${code} – ${operation.name}`;
-  }
-  return code;
-};
+const formatOperationLabel = (operation: DistributionOperationShare) =>
+  getOperationLabel({
+    code: operation.code,
+    id: operation.id,
+    name: operation.name,
+  });
 
 const formatOperations = (row: DistributionRow) => {
   const validOperations = row.operations.filter(operation => Boolean(operation.id?.trim()));
@@ -137,7 +149,8 @@ const operationsAreEqual = (
       (operation.code ?? null) === (comparison.code ?? null) &&
       operation.name === comparison.name &&
       (operation.allocation ?? null) === (comparison.allocation ?? null) &&
-      (operation.notes ?? '') === (comparison.notes ?? '')
+      (operation.notes ?? '') === (comparison.notes ?? '') &&
+      (operation.basisDatapoint ?? null) === (comparison.basisDatapoint ?? null)
     );
   });
 };
@@ -163,8 +176,10 @@ const getSortValue = (row: DistributionRow, key: SortKey): string | number => {
 
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const standardTargets = useMappingStore(selectStandardScoaSummaries);
+  const activeEntityId = useMappingStore(selectActiveEntityId);
   const activeClientId = useClientStore(state => state.activeClientId);
   const companies = useOrganizationStore(state => state.companies);
+  const currentEmail = useOrganizationStore(state => state.currentEmail);
   const summarySignature = useMemo(
     () => standardTargets.map(target => `${target.id}:${target.mappedAmount}`).join('|'),
     [standardTargets],
@@ -198,7 +213,10 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType,
     updateRowOperations,
     updateRowPreset,
+    queueAutoSave,
+    setSaveContext,
     setOperationsCatalog,
+    loadHistoryForEntity,
   } = useDistributionStore(state => ({
     rows: state.rows,
     operationsCatalog: state.operationsCatalog,
@@ -208,7 +226,10 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType: state.updateRowType,
     updateRowOperations: state.updateRowOperations,
     updateRowPreset: state.updateRowPreset,
+    queueAutoSave: state.queueAutoSave,
+    setSaveContext: state.setSaveContext,
     setOperationsCatalog: state.setOperationsCatalog,
+    loadHistoryForEntity: state.loadHistoryForEntity,
   }));
 
   const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
@@ -218,30 +239,33 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const previousTypesRef = useRef<Map<string, DistributionType>>(new Map());
+  const lastSyncedOperationsRef = useRef<{
+    rowId: string;
+    operations: DistributionOperationShare[];
+  } | null>(null);
 
   const { selectedIds, toggleSelection, setSelection, clearSelection } = useDistributionSelectionStore();
 
   const { getActivePresetForSource } = useRatioAllocationStore(state => ({
     getActivePresetForSource: state.getActivePresetForSource,
   }));
-  const presetOptions = useRatioAllocationStore(selectPresetSummaries);
-  const presetLibrary = useMappingStore(state => state.presetLibrary);
-  const percentagePresetOptions = useMemo<MappingPresetLibraryEntry[]>(
-    () => presetLibrary.filter(entry => entry.type === 'percentage'),
-    [presetLibrary],
+  const setDistributionPresets = useRatioAllocationStore(state => state.setContextPresets);
+  const [distributionPresetLibrary, setDistributionPresetLibrary] = useState<
+    MappingPresetLibraryEntry[]
+  >([]);
+  const percentageDistributionPresetOptions = useMemo(
+    () => distributionPresetLibrary.filter(entry => entry.type === 'percentage'),
+    [distributionPresetLibrary],
   );
 
-  const operationTargetCatalog = useMemo(
-    () =>
-      clientOperations.map(operation => ({
-        id: operation.id,
-        label:
-          operation.name && operation.name !== operation.code
-            ? `${operation.code} – ${operation.name}`
-            : operation.code,
-      })),
-    [clientOperations],
-  );
+const operationTargetCatalog = useMemo(
+  () =>
+    clientOperations.map(operation => ({
+      id: operation.id,
+      label: getOperationLabel(operation),
+    })),
+  [clientOperations],
+);
 
   const resolveOperationCanonicalTargetId = useCallback((targetId?: string | null) => {
     if (!targetId) {
@@ -254,8 +278,8 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     return normalized.toUpperCase();
   }, []);
 
-  const sanitizeOperationsDraft = useCallback((draft: DistributionOperationShare[]): DistributionOperationShare[] => {
-    const sanitized = draft.reduce<DistributionOperationShare[]>((acc, operation) => {
+const sanitizeOperationsDraft = useCallback((draft: DistributionOperationShare[]): DistributionOperationShare[] => {
+  const sanitized = draft.reduce<DistributionOperationShare[]>((acc, operation) => {
       const id = operation.id?.trim();
       if (!id) {
         return acc;
@@ -266,18 +290,52 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
           ? operation.allocation
           : undefined;
       const notes = operation.notes?.trim();
+      const basisDatapoint = operation.basisDatapoint?.trim();
       acc.push({
         id,
         code,
         name: operation.name?.trim() || code,
         allocation,
         notes: notes || undefined,
+        basisDatapoint: basisDatapoint || undefined,
       });
       return acc;
     }, []);
 
-    return sanitized;
-  }, []);
+  return sanitized;
+}, []);
+
+const mapDistributionPayloadToLibraryEntry = (
+  payload: DistributionPresetPayload,
+): MappingPresetLibraryEntry => ({
+  id: payload.presetGuid,
+  entityId: payload.entityId,
+  name: payload.presetDescription?.trim() || payload.presetGuid,
+  type: toDistributionPresetType(payload.presetType),
+  description: payload.presetDescription ?? null,
+  presetDetails:
+    (payload.presetDetails ?? [])
+      .map(detail => ({
+        targetDatapoint: detail.operationCd?.trim() ?? '',
+        basisDatapoint: detail.basisDatapoint?.trim() ?? null,
+        isCalculated: detail.isCalculated ?? null,
+        specifiedPct: detail.specifiedPct ?? null,
+      }))
+      .filter(detail => detail.targetDatapoint.length > 0),
+});
+
+const buildDistributionPresetLibraryEntries = (
+  payloads: DistributionPresetPayload[],
+): MappingPresetLibraryEntry[] => {
+  const entries = new Map<string, MappingPresetLibraryEntry>();
+  payloads.forEach(payload => {
+    const entry = mapDistributionPayloadToLibraryEntry(payload);
+    if (!entries.has(entry.id)) {
+      entries.set(entry.id, entry);
+    }
+  });
+  return Array.from(entries.values());
+};
 
   useEffect(() => {
     if (previousSignature.current === summarySignature) {
@@ -290,6 +348,50 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   useEffect(() => {
     setOperationsCatalog(clientOperations);
   }, [clientOperations, setOperationsCatalog]);
+
+  useEffect(() => {
+    setSaveContext(activeEntityId ?? null, currentEmail ?? null);
+  }, [activeEntityId, currentEmail, setSaveContext]);
+
+  useEffect(() => {
+    let canceled = false;
+
+    const hydrateDistributionPresets = async () => {
+      if (!activeEntityId) {
+        setDistributionPresets('distribution', []);
+        setDistributionPresetLibrary([]);
+        await loadHistoryForEntity(null);
+        return;
+      }
+
+      try {
+        const payload = await fetchDistributionPresetsFromApi(activeEntityId);
+        if (canceled) {
+          return;
+        }
+        const dynamicPresets = mapDistributionPresetsToDynamic(payload);
+        setDistributionPresets('distribution', dynamicPresets);
+        setDistributionPresetLibrary(buildDistributionPresetLibraryEntries(payload));
+      } catch (error) {
+        console.error('Unable to load distribution presets', error);
+      } finally {
+        if (!canceled) {
+          await loadHistoryForEntity(activeEntityId);
+        }
+      }
+    };
+
+    void hydrateDistributionPresets();
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    activeEntityId,
+    loadHistoryForEntity,
+    setDistributionPresetLibrary,
+    setDistributionPresets,
+  ]);
 
   useEffect(() => {
     if (!focusMappingId) {
@@ -305,47 +407,85 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   }, [focusMappingId, rows]);
 
   useEffect(() => {
-    let autoOpenedId: string | null = null;
     const previousTypes = previousTypesRef.current;
-    setExpandedRows(prev => {
-      const next = new Set<string>();
-      rows.forEach(row => {
-        if (prev.has(row.id) && row.type !== 'direct') {
-          next.add(row.id);
-        }
-      });
-      rows.forEach(row => {
-        const requiresExpanded = row.type === 'percentage' || row.type === 'dynamic';
-        const previousType = previousTypes.get(row.id);
-        const previouslyRequired = previousType === 'percentage' || previousType === 'dynamic';
-        if (requiresExpanded && !previouslyRequired && !next.has(row.id)) {
-          next.add(row.id);
-          autoOpenedId = row.id;
-        }
-      });
-      return next;
-    });
-    setEditingRowId(prev => {
-      if (autoOpenedId) {
-        return autoOpenedId;
+    const requiresExpanded = (type: DistributionType) => type === 'percentage' || type === 'dynamic';
+
+    const nextExpanded = new Set<string>();
+    expandedRows.forEach(id => {
+      const matchingRow = rows.find(row => row.id === id);
+      if (matchingRow && matchingRow.type !== 'direct') {
+        nextExpanded.add(id);
       }
-      if (!prev) {
-        return null;
-      }
-      const row = rows.find(item => item.id === prev);
-      return row && row.type !== 'direct' ? prev : null;
     });
+
+    let autoOpenedId: string | null = null;
+    rows.forEach(row => {
+      if (!requiresExpanded(row.type)) {
+        return;
+      }
+      const previousType = previousTypes.get(row.id);
+      const previouslyRequired = previousType ? requiresExpanded(previousType) : false;
+      if (!previouslyRequired && !nextExpanded.has(row.id)) {
+        nextExpanded.add(row.id);
+        autoOpenedId = row.id;
+      }
+    });
+
+    const expandedChanged =
+      nextExpanded.size !== expandedRows.size ||
+      Array.from(nextExpanded).some(id => !expandedRows.has(id));
+    if (expandedChanged) {
+      setExpandedRows(nextExpanded);
+    }
+
+    let nextEditingId = editingRowId;
+    if (autoOpenedId) {
+      nextEditingId = autoOpenedId;
+    } else if (editingRowId) {
+      const row = rows.find(item => item.id === editingRowId);
+      if (!row || row.type === 'direct') {
+        nextEditingId = null;
+      }
+    }
+    if (nextEditingId !== editingRowId) {
+      setEditingRowId(nextEditingId);
+    }
+
     if (autoOpenedId) {
       const targetRow = rows.find(item => item.id === autoOpenedId);
       if (targetRow) {
-        setOperationsDraft(toDraftOperations(targetRow.operations));
+        const nextDraft = toDraftOperations(targetRow.operations);
+        const draftsMatch =
+          operationsDraft.length === nextDraft.length &&
+          operationsDraft.every((draft, index) => {
+            const candidate = nextDraft[index];
+            return (
+              candidate &&
+              (draft.id ?? '').trim() === (candidate.id ?? '').trim() &&
+              (draft.code ?? '').trim() === (candidate.code ?? '').trim() &&
+              (draft.name ?? '').trim() === (candidate.name ?? '').trim() &&
+              (draft.allocation ?? null) === (candidate.allocation ?? null) &&
+              (draft.notes ?? '').trim() === (candidate.notes ?? '').trim() &&
+              (draft.basisDatapoint ?? '').trim() === (candidate.basisDatapoint ?? '').trim()
+            );
+          });
+        if (!draftsMatch) {
+          setOperationsDraft(nextDraft);
+        }
       }
     }
+
     previousTypesRef.current = new Map(rows.map(row => [row.id, row.type]));
-  }, [rows]);
+  }, [editingRowId, expandedRows, operationsDraft, rows]);
+
+  const normalizedStatusFilters = useMemo(
+    () => statusFilters.map(normalizeDistributionStatus),
+    [statusFilters],
+  );
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
+    const activeStatuses = new Set(normalizedStatusFilters);
     return rows.filter(row => {
       const matchesSearch =
         !normalizedQuery ||
@@ -353,10 +493,11 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery);
-      const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.status);
+      const rowStatus = normalizeDistributionStatus(row.status);
+      const matchesStatus = activeStatuses.size === 0 || activeStatuses.has(rowStatus);
       return matchesSearch && matchesStatus;
     });
-  }, [rows, searchTerm, statusFilters]);
+  }, [rows, searchTerm, normalizedStatusFilters]);
 
   const sortedRows = useMemo(() => {
     if (!sortConfig) {
@@ -426,19 +567,43 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
 
   useEffect(() => {
     if (!editingRowId) {
+      lastSyncedOperationsRef.current = null;
       return;
     }
 
     const targetRow = rows.find(row => row.id === editingRowId);
     if (!targetRow || targetRow.type === 'direct') {
+      lastSyncedOperationsRef.current = null;
+      return;
+    }
+
+    // Dynamic rows manage operations via the preset builder/ratio store, not the inline draft state,
+    // so avoid overwriting those values with an empty operationsDraft.
+    if (targetRow.type === 'dynamic') {
+      lastSyncedOperationsRef.current = null;
       return;
     }
 
     const sanitized = sanitizeOperationsDraft(operationsDraft);
+
+    // Check if store already has these exact operations
     if (operationsAreEqual(targetRow.operations, sanitized)) {
+      lastSyncedOperationsRef.current = null;
       return;
     }
 
+    // Prevent infinite loop: skip if we just synced these exact operations
+    // This can happen when the store update triggers a re-render but the
+    // comparison still fails due to subtle differences in sanitization
+    if (
+      lastSyncedOperationsRef.current &&
+      lastSyncedOperationsRef.current.rowId === editingRowId &&
+      operationsAreEqual(lastSyncedOperationsRef.current.operations, sanitized)
+    ) {
+      return;
+    }
+
+    lastSyncedOperationsRef.current = { rowId: editingRowId, operations: sanitized };
     updateRowOperations(editingRowId, sanitized);
   }, [editingRowId, operationsDraft, rows, sanitizeOperationsDraft, updateRowOperations]);
 
@@ -455,6 +620,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowOperations(row.id, [
       { id: catalogItem.id, code: catalogItem.code, name: catalogItem.name },
     ]);
+    queueAutoSave([row.id], { immediate: true });
   };
 
   const getAriaSort = (columnKey: SortKey): 'ascending' | 'descending' | 'none' => {
@@ -494,17 +660,21 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                 const spacingClass = COLUMN_SPACING_CLASSES[column.key] ?? '';
                 const buttonAlignmentClass = column.align === 'right' ? 'justify-end text-right' : '';
                 return (
-                  <th
-                    key={column.key}
-                    scope="col"
-                    aria-sort={getAriaSort(column.key)}
-                    className={`px-3 py-3 ${widthClass} ${spacingClass} ${column.align === 'right' ? 'text-right' : ''}`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleSort(column.key)}
-                      className={`flex w-full items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${buttonAlignmentClass}`}
-                    >
+              <th
+                key={column.key}
+                scope="col"
+                aria-sort={getAriaSort(column.key)}
+                onClick={() => handleSort(column.key)}
+                className={`cursor-pointer px-3 py-3 ${widthClass} ${spacingClass} ${column.align === 'right' ? 'text-right' : ''}`}
+              >
+                <button
+                  type="button"
+                  onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                    event.stopPropagation();
+                    handleSort(column.key);
+                  }}
+                  className={`flex w-full items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${buttonAlignmentClass}`}
+                >
                       {column.label}
                       <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
                     </button>
@@ -514,16 +684,28 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white text-sm dark:divide-slate-700 dark:bg-slate-900">
-            {sortedRows.map(row => {
+            {sortedRows.map((row, index) => {
               const isExpanded = expandedRows.has(row.id);
               const isEditing = editingRowId === row.id;
               const operationsSummary = formatOperations(row);
               const statusBadgeClass = STATUS_BADGE_CLASSES[row.status];
               const isSelected = selectedIds.has(row.id);
               const activePreset = row.type === 'dynamic' ? getActivePresetForSource(row.accountId) : null;
+              const hasAccordion = row.type !== 'direct';
+              const rowClasses = [
+                'align-middle transition',
+                isSelected
+                  ? 'bg-blue-50 dark:bg-slate-800/50'
+                  : hasAccordion
+                    ? 'bg-slate-50/60 dark:bg-slate-900/60'
+                    : 'bg-white dark:bg-slate-900',
+                hasAccordion ? 'ring-1 ring-slate-900/40 dark:ring-slate-700/80' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
               return (
-                <Fragment key={row.id}>
-                  <tr className={`align-middle ${isSelected ? 'bg-blue-50 dark:bg-slate-800/50' : ''}`}>
+                <Fragment key={`${row.id}-${index}`}>
+                  <tr className={rowClasses}>
                     <td className="px-3 py-4 text-center align-middle">
                       {row.type !== 'direct' ? (
                         <button
@@ -552,11 +734,15 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className={`whitespace-nowrap px-3 py-4 font-medium text-slate-900 dark:text-slate-100 ${COLUMN_WIDTH_CLASSES.accountId ?? ''}`}>
-                      {row.accountId}
+                    <td className={`whitespace-nowrap px-3 py-4 ${COLUMN_WIDTH_CLASSES.accountId ?? ''}`}>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{row.accountId}</span>
+                      </div>
                     </td>
                     <td className={`px-3 py-4 text-slate-700 dark:text-slate-200 ${COLUMN_WIDTH_CLASSES.description ?? ''}`}>
-                      {row.description}
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{row.description}</span>
+                      </div>
                     </td>
                     <td
                       className={`pl-3 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''} ${COLUMN_SPACING_CLASSES.activity ?? ''}`}
@@ -591,9 +777,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                           >
                             <option value="">Select operation</option>
                             {operationsCatalog.map(option => (
-                              <option key={option.id} value={option.id}>
-                                {option.name && option.name !== option.id ? `${option.id} – ${option.name}` : option.id}
-                              </option>
+                            <option key={option.id} value={option.id}>
+                                {getOperationLabel(option)}
+                            </option>
                             ))}
                           </select>
                         ) : (
@@ -613,11 +799,29 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                     <td className={`px-3 py-4 text-right ${COLUMN_WIDTH_CLASSES.status ?? ''}`}>
                       {(() => {
                         const StatusIcon = STATUS_ICONS[row.status];
+                        const isSavingRow = row.autoSaveState === 'saving';
                         return (
-                          <span className={`inline-flex min-w-[7rem] items-center justify-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClass}`}>
-                            <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                            {statusLabel(row.status)}
-                          </span>
+                          <div className="flex flex-col items-end gap-1 text-right">
+                            <div className="flex items-center gap-1">
+                              {isSavingRow && (
+                                <Loader2
+                                  className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-300"
+                                  aria-hidden="true"
+                                />
+                              )}
+                              <span
+                                className={`inline-flex min-w-[7rem] items-center justify-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClass}`}
+                              >
+                                <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                                {statusLabel(row.status)}
+                              </span>
+                            </div>
+                            {row.autoSaveError && (
+                              <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300" role="alert">
+                                {row.autoSaveError}
+                              </span>
+                            )}
+                          </div>
                         );
                       })()}
                     </td>
@@ -625,17 +829,16 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                   {isExpanded && isEditing && row.type === 'percentage' && (
                     <tr id={`distribution-panel-${row.id}`}>
                       <td colSpan={COLUMN_DEFINITIONS.length + 2} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
-                        <div className="space-y-6">
-                          <DistributionSplitRow
-                            row={row}
-                            operationsCatalog={operationsCatalog}
-                            operationsDraft={operationsDraft}
-                            setOperationsDraft={setOperationsDraft}
-                            presetOptions={percentagePresetOptions}
-                            selectedPresetId={row.presetId ?? null}
-                            onApplyPreset={presetId => updateRowPreset(row.id, presetId)}
-                          />
-                        </div>
+                        <DistributionSplitRow
+                          row={row}
+                          operationsCatalog={operationsCatalog}
+                          operationsDraft={operationsDraft}
+                          setOperationsDraft={setOperationsDraft}
+                          presetOptions={percentageDistributionPresetOptions}
+                          selectedPresetId={row.presetId ?? null}
+                          onApplyPreset={presetId => updateRowPreset(row.id, presetId)}
+                          panelId={`distribution-panel-${row.id}`}
+                        />
                       </td>
                     </tr>
                   )}
@@ -694,6 +897,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
                 targetLabel="Target operation"
                 targetPlaceholder="Select target operation"
                 targetEmptyLabel="No operations available"
+                presetContext="distribution"
               />
             </div>
           </div>

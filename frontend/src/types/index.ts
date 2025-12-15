@@ -174,6 +174,12 @@ export interface ReconciliationSubcategoryGroup {
   accounts: ReconciliationAccountBreakdown[];
 }
 
+export interface EntityReconciliationGroup {
+  entityId: string;
+  entityName: string;
+  total: number;
+  categories: ReconciliationSubcategoryGroup[];
+}
 export interface ImportPreviewRow {
   entity: string;
   accountId: string;
@@ -371,6 +377,8 @@ export interface DynamicBasisAccount {
   valuesByPeriod?: Record<string, number>;
 }
 
+export type DynamicAllocationPresetContext = 'mapping' | 'distribution';
+
 export interface DynamicAllocationPresetRow {
   dynamicAccountId: string;
   targetAccountId: string;
@@ -381,6 +389,7 @@ export interface DynamicAllocationPreset {
   name: string;
   rows: DynamicAllocationPresetRow[];
   notes?: string;
+  context?: DynamicAllocationPresetContext;
 }
 
 export interface DynamicAllocationBasisMember {
@@ -520,6 +529,7 @@ export interface DistributionOperationShare {
   code?: string;
   allocation?: number;
   notes?: string;
+  basisDatapoint?: string | null;
 }
 
 export type DistributionStatus = 'Distributed' | 'Undistributed';
@@ -535,12 +545,16 @@ export interface DistributionRow {
   presetId?: string | null;
   notes?: string;
   status: DistributionStatus;
+  isDirty?: boolean;
+  autoSaveState?: 'idle' | 'queued' | 'saving' | 'saved' | 'error';
+  autoSaveError?: string | null;
 }
 
 export interface DistributionSaveOperation {
   operationCd: string;
   allocation?: number | null;
   notes?: string | null;
+  basisDatapoint?: string | null;
 }
 
 export interface DistributionSaveRowInput {
@@ -582,7 +596,7 @@ export interface GLAccountMappingRow {
   splitDefinitions: MappingSplitDefinition[];
   entities: GLAccountEntityBreakdown[];
   dynamicExclusionAmount?: number;
-  glMonth?: string; // GL month in YYYY-MM format
+  glMonth?: string; // GL month in YYYY-MM-01 format
   requiresEntityAssignment?: boolean;
 }
 

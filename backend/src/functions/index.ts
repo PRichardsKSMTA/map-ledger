@@ -7,6 +7,7 @@ import './health';
 import './industries';
 import './chartOfAccounts';
 import './mappingSuggest';
+import './distributionSuggest';
 import './masterclients';
 import './userClients';
 import './datapointConfigs/create';
@@ -27,5 +28,6 @@ import './entityMappingPresets';
 import './entityScoaActivity';
 import './entityScoaDistribution';
 import './operationScoaActivity';
+import './distributionActivity';
 
 export default app;

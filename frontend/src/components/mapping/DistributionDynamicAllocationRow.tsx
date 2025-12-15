@@ -1,14 +1,20 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, Calculator, Layers, XCircle } from 'lucide-react';
-import type { DistributionRow } from '../../types';
+import type { DistributionOperationShare, DistributionRow } from '../../types';
 import type { DistributionOperationCatalogItem } from '../../store/distributionStore';
-import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
+import {
+  useRatioAllocationStore,
+  DEFAULT_PRESET_CONTEXT,
+} from '../../store/ratioAllocationStore';
 import {
   allocateDynamic,
   getBasisValue,
   getSourceValue,
 } from '../../utils/dynamicAllocation';
 import { formatCurrencyAmount } from '../../utils/currency';
+import { formatPeriodDate } from '../../utils/period';
+import { useDistributionStore } from '../../store/distributionStore';
+import { getOperationLabel } from '../../utils/operationLabel';
 
 interface DistributionDynamicAllocationRowProps {
   row: DistributionRow;
@@ -51,6 +57,10 @@ const DistributionDynamicAllocationRow = ({
   onOpenBuilder,
   operationsCatalog,
 }: DistributionDynamicAllocationRowProps) => {
+  const { updateRowPreset, updateRowOperations } = useDistributionStore(state => ({
+    updateRowPreset: state.updateRowPreset,
+    updateRowOperations: state.updateRowOperations,
+  }));
   const {
     allocations,
     basisAccounts,
@@ -58,10 +68,10 @@ const DistributionDynamicAllocationRow = ({
     selectedPeriod,
     results,
     validationErrors,
-    toggleTargetExclusion,
     presets,
     getActivePresetForSource,
     setActivePresetForSource,
+    syncSourceAccountBalance,
   } = useRatioAllocationStore(state => ({
     allocations: state.allocations,
     basisAccounts: state.basisAccounts,
@@ -69,35 +79,61 @@ const DistributionDynamicAllocationRow = ({
     selectedPeriod: state.selectedPeriod,
     results: state.results,
     validationErrors: state.validationErrors,
-    toggleTargetExclusion: state.toggleTargetExclusion,
     presets: state.presets,
     getActivePresetForSource: state.getActivePresetForSource,
     setActivePresetForSource: state.setActivePresetForSource,
+    syncSourceAccountBalance: state.syncSourceAccountBalance,
   }));
 
+  const distributionContextPresets = useMemo(
+    () =>
+      presets.filter(
+        preset => (preset.context ?? DEFAULT_PRESET_CONTEXT) === 'distribution',
+      ),
+    [presets],
+  );
+  const formattedSelectedPeriod =
+    selectedPeriod ? formatPeriodDate(selectedPeriod) || selectedPeriod : null;
+
+  const normalizeOperationId = useCallback((value?: string | null): string => {
+    if (!value) {
+      return '';
+    }
+    return value.trim().toUpperCase();
+  }, []);
+
   const operationLabelLookup = useMemo(() => {
-    const lookup = new Map<string, string>();
+    const lookup = new Map<string, DistributionOperationCatalogItem>();
     operationsCatalog.forEach(operation => {
-      if (!operation.id) {
+      const key =
+        normalizeOperationId(operation.code) ||
+        normalizeOperationId(operation.id);
+      if (!key) {
         return;
       }
-      lookup.set(operation.id.trim().toUpperCase(), operation.name ?? operation.id);
+      lookup.set(key, operation);
     });
     return lookup;
-  }, [operationsCatalog]);
+  }, [normalizeOperationId, operationsCatalog]);
 
   const resolveOperationLabel = useCallback(
     (operationId?: string | null, fallback?: string | null) => {
-      if (!operationId) {
-        return fallback ?? '';
-      }
-      const normalized = operationId.trim().toUpperCase();
+      const normalized = normalizeOperationId(operationId ?? fallback ?? null);
       if (!normalized) {
         return fallback ?? '';
       }
-      return operationLabelLookup.get(normalized) ?? fallback ?? operationId;
+      const match = operationLabelLookup.get(normalized);
+      if (match) {
+        const label = getOperationLabel({
+          code: match.code,
+          id: match.id,
+          name: match.name,
+        });
+        return label || normalized;
+      }
+      return normalized;
     },
-    [operationLabelLookup],
+    [normalizeOperationId, operationLabelLookup],
   );
 
   const allocation = useMemo(
@@ -110,11 +146,48 @@ const DistributionDynamicAllocationRow = ({
     [row.accountId, sourceAccounts],
   );
 
-  const sourceValue = useMemo(() => {
-    if (!sourceAccount) {
-      return row.activity;
+  // Track last synced activity to avoid redundant sync calls
+  const lastSyncedActivityRef = useRef<{ accountId: string; activity: number; period: string | null } | null>(null);
+
+  useEffect(() => {
+    const normalizedActivity = Number.isFinite(row.activity) ? row.activity : 0;
+    const normalizedPeriod = selectedPeriod ?? null;
+
+    // Skip if we already synced this exact value
+    const lastSync = lastSyncedActivityRef.current;
+    if (
+      lastSync &&
+      lastSync.accountId === row.accountId &&
+      Math.abs(lastSync.activity - normalizedActivity) < 0.001 &&
+      lastSync.period === normalizedPeriod
+    ) {
+      return;
     }
-    return getSourceValue(sourceAccount, selectedPeriod);
+
+    lastSyncedActivityRef.current = {
+      accountId: row.accountId,
+      activity: normalizedActivity,
+      period: normalizedPeriod,
+    };
+    syncSourceAccountBalance(row.accountId, normalizedActivity, normalizedPeriod);
+  }, [row.accountId, row.activity, selectedPeriod, syncSourceAccountBalance]);
+
+  const sourceValue = useMemo(() => {
+    const fallbackValue = row.activity;
+    if (!sourceAccount) {
+      return fallbackValue;
+    }
+    const resolved = getSourceValue(sourceAccount, selectedPeriod);
+    if (!Number.isFinite(resolved)) {
+      return fallbackValue;
+    }
+    if (Math.abs(resolved) < 1e-6 && Math.abs(fallbackValue) > 0) {
+      return fallbackValue;
+    }
+    if (Math.abs(fallbackValue) > 0 && Math.abs(resolved - fallbackValue) > 0.01) {
+      return fallbackValue;
+    }
+    return resolved;
   }, [row.activity, selectedPeriod, sourceAccount]);
 
   const targetDetails = useMemo<TargetDetail[]>(() => {
@@ -124,7 +197,9 @@ const DistributionDynamicAllocationRow = ({
 
     return allocation.targetDatapoints.map(target => {
       const isExclusion = Boolean(target.isExclusion);
-      const preset = target.groupId ? presets.find(item => item.id === target.groupId) : null;
+      const preset = target.groupId
+        ? distributionContextPresets.find(item => item.id === target.groupId)
+        : null;
       const matchingRow = preset?.rows.find(presetRow => presetRow.targetAccountId === target.datapointId) ?? null;
       const fallbackBasisAccount =
         basisAccounts.find(account => account.id === target.ratioMetric.id) ?? null;
@@ -162,7 +237,7 @@ const DistributionDynamicAllocationRow = ({
         isExclusion,
       } satisfies TargetDetail;
     });
-  }, [allocation, basisAccounts, presets, resolveOperationLabel, selectedPeriod]);
+  }, [allocation, basisAccounts, distributionContextPresets, resolveOperationLabel, selectedPeriod]);
 
   const basisTotal = useMemo(
     () => targetDetails.reduce((sum, detail) => sum + detail.basisValue, 0),
@@ -189,7 +264,10 @@ const DistributionDynamicAllocationRow = ({
   }, [row.accountId, selectedPeriod, validationErrors]);
 
   const computedPreview = useMemo(() => {
-    if (periodResult) {
+    const mapResultToPreview = () => {
+      if (!periodResult) {
+        return null;
+      }
       return {
         allocations: periodResult.allocations.map(target => ({
           targetId: target.targetId,
@@ -208,10 +286,16 @@ const DistributionDynamicAllocationRow = ({
             }
           : null,
       } as const;
+    };
+
+    const shouldUseSavedResult =
+      periodResult && Math.abs(periodResult.sourceValue - sourceValue) < 0.01;
+    if (shouldUseSavedResult) {
+      return mapResultToPreview();
     }
 
     if (!allocation || targetDetails.length === 0 || basisTotal <= 0) {
-      return null;
+      return mapResultToPreview();
     }
 
     try {
@@ -266,6 +350,153 @@ const DistributionDynamicAllocationRow = ({
 
   const activePreset = getActivePresetForSource(row.accountId);
 
+  // Track last synced preset to avoid redundant syncs
+  const lastSyncedPresetRef = useRef<string | null>(null);
+  // Track if a preset change is in progress to prevent effect from duplicating updates
+  const presetChangeInProgressRef = useRef(false);
+
+const buildPresetOperations = useCallback(
+  (presetId: string | null) => {
+    if (!presetId) {
+      return [];
+    }
+    const preset = distributionContextPresets.find(item => item.id === presetId);
+    if (!preset) {
+      return [];
+    }
+
+    // Calculate total basis value to derive allocation percentages
+    const rowsWithBasis = preset.rows.map(presetRow => {
+      const basisAccount = basisAccounts.find(acc => acc.id === presetRow.dynamicAccountId);
+      const basisValue = basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
+      return { presetRow, basisValue };
+    });
+    const totalBasis = rowsWithBasis.reduce((sum, item) => sum + item.basisValue, 0);
+
+    return rowsWithBasis
+      .map(({ presetRow, basisValue }) => {
+        const targetId = normalizeOperationId(presetRow.targetAccountId);
+        if (!targetId) {
+          return null;
+        }
+        const catalogMatch = operationLabelLookup.get(targetId);
+        const code = targetId;
+        // Calculate allocation percentage based on basis value ratio
+        const allocationPct = totalBasis > 0 ? (basisValue / totalBasis) * 100 : 0;
+        return {
+          id: code,
+          code,
+          name: getOperationLabel({
+            code,
+            id: catalogMatch?.id ?? code,
+            name: catalogMatch?.name ?? code,
+          }),
+          basisDatapoint: presetRow.dynamicAccountId?.trim() || undefined,
+          allocation: allocationPct,
+        };
+      })
+      .filter((op): op is DistributionOperationShare => Boolean(op))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  },
+  [distributionContextPresets, normalizeOperationId, operationLabelLookup, basisAccounts, selectedPeriod],
+);
+
+const operationsMatch = useCallback(
+  (next: DistributionOperationShare[] = []) => {
+    if (row.operations.length !== next.length) {
+      return false;
+    }
+    const normalize = (ops: DistributionOperationShare[]) =>
+      [...ops]
+        .map(op => ({
+          id: normalizeOperationId(op.id),
+          code: normalizeOperationId(op.code ?? op.id),
+          name: (op.name ?? '').trim(),
+          basis: (op.basisDatapoint ?? '').trim(),
+        }))
+        .sort((a, b) => a.code.localeCompare(b.code));
+
+    const current = normalize(row.operations);
+    const candidate = normalize(next);
+
+    return current.every((operation, index) => {
+      const comparison = candidate[index];
+      if (!comparison) {
+        return false;
+      }
+      return (
+        operation.id === comparison.id &&
+        operation.code === comparison.code &&
+        operation.name === comparison.name &&
+        operation.basis === comparison.basis
+      );
+    });
+  },
+  [normalizeOperationId, row.operations],
+);
+
+  // Sync preset from ratioAllocationStore to distributionStore when it changes externally.
+  // This handles the case where a preset is created via the RatioAllocationBuilder and
+  // automatically applied to this row. We need to sync both the presetId AND the operations
+  // so that the backend receives the correct basisDatapoint values for each operation.
+  useEffect(() => {
+    // Skip if a preset change is already in progress (handlePresetChange is running)
+    if (presetChangeInProgressRef.current) {
+      return;
+    }
+
+    const resolvedPresetId = activePreset?.id ?? null;
+    const currentPresetId = row.presetId ?? null;
+
+    // Skip syncing when no active preset is attached in the ratio store; this avoids
+    // repeatedly clearing a server-assigned preset while presets are still hydrating.
+    if (!resolvedPresetId) {
+      lastSyncedPresetRef.current = null;
+      return;
+    }
+
+    // Skip if we already synced this preset
+    if (lastSyncedPresetRef.current === resolvedPresetId) {
+      return;
+    }
+
+    lastSyncedPresetRef.current = resolvedPresetId;
+
+    // Sync presetId if it changed
+    if (currentPresetId !== resolvedPresetId) {
+      updateRowPreset(row.id, resolvedPresetId);
+    }
+
+    // Also sync operations from the preset - this ensures basisDatapoint values
+    // are included when the row is saved to the backend
+    const derivedOperations = buildPresetOperations(resolvedPresetId);
+    updateRowOperations(row.id, derivedOperations);
+  }, [activePreset?.id, row.id, row.presetId, updateRowPreset, buildPresetOperations, updateRowOperations]);
+
+  const handlePresetChange = (presetId: string | null) => {
+    // Mark that a preset change is in progress to prevent the useEffect from
+    // duplicating updates and causing an infinite loop
+    presetChangeInProgressRef.current = true;
+    lastSyncedPresetRef.current = presetId;
+
+    try {
+      syncSourceAccountBalance(row.accountId, sourceValue, selectedPeriod ?? null);
+      setActivePresetForSource(row.accountId, presetId);
+      updateRowPreset(row.id, presetId);
+      if (!presetId) {
+        updateRowOperations(row.id, []);
+        return;
+      }
+      const derivedOperations = buildPresetOperations(presetId);
+      updateRowOperations(row.id, derivedOperations);
+    } finally {
+      // Reset the flag after a microtask to ensure all synchronous updates complete
+      queueMicrotask(() => {
+        presetChangeInProgressRef.current = false;
+      });
+    }
+  };
+
   return (
     <tr id={panelId}>
       <td colSpan={colSpan} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/40">
@@ -290,13 +521,11 @@ const DistributionDynamicAllocationRow = ({
                 <select
                   id={`distribution-preset-select-${row.id}`}
                   value={activePreset?.id ?? ''}
-                  onChange={event =>
-                    setActivePresetForSource(row.accountId, event.target.value || null)
-                  }
+                  onChange={event => handlePresetChange(event.target.value || null)}
                   className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value="">No preset selected</option>
-                  {presets.map(preset => (
+                  {distributionContextPresets.map(preset => (
                     <option key={preset.id} value={preset.id}>
                       {preset.name}
                     </option>
@@ -317,7 +546,7 @@ const DistributionDynamicAllocationRow = ({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
               <div className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                Source balance {selectedPeriod ? `(${selectedPeriod})` : ''}
+                Source balance {formattedSelectedPeriod ? `(${formattedSelectedPeriod})` : ''}
               </div>
               <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">
                 {formatCurrencyAmount(sourceValue)}
@@ -380,9 +609,6 @@ const DistributionDynamicAllocationRow = ({
                       <th scope="col" className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                         Preview allocation
                       </th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Exclude
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 bg-white text-sm dark:divide-slate-700 dark:bg-slate-900">
@@ -392,7 +618,6 @@ const DistributionDynamicAllocationRow = ({
                       const percent = previewAllocation?.percentage ?? ratio * 100;
                       const allocatedValue = previewAllocation?.value ?? sourceValue * ratio;
                       const isExclusion = detail.isExclusion;
-                      const allocationId = allocation?.id ?? null;
                       const basisLabel = stripParentheticalSuffix(detail.basisAccountName || detail.metricName);
                       const metricLabel = stripParentheticalSuffix(detail.metricName);
                       const rowClasses = isExclusion
@@ -440,19 +665,6 @@ const DistributionDynamicAllocationRow = ({
                           >
                             {formatCurrencyAmount(allocatedValue)}
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            {allocationId && (
-                              <label className="inline-flex items-center justify-end gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600"
-                                  checked={isExclusion}
-                                  onChange={() => toggleTargetExclusion(allocationId, detail.id)}
-                                />
-                                {isExclusion ? 'Excluded' : 'Exclude'}
-                              </label>
-                            )}
-                          </td>
                         </tr>
                       );
                     })}
@@ -468,7 +680,7 @@ const DistributionDynamicAllocationRow = ({
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
                   <div className="text-sm font-semibold">
                     Allocation preview for {sourceAccountLabel}
-                    {selectedPeriod ? ` · ${selectedPeriod}` : ''}
+                    {formattedSelectedPeriod ? ` · ${formattedSelectedPeriod}` : ''}
                   </div>
                   <div className="text-xs text-blue-700 dark:text-blue-200">
                     Total distributes {formatCurrencyAmount(sourceValue)} across {computedPreview.allocations.length} targets.
@@ -524,7 +736,7 @@ const DistributionDynamicAllocationRow = ({
             ) : (
               <p className="rounded-md border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/10 dark:text-blue-100">
                 Run preset allocation checks for {sourceAccountLabel}
-                {selectedPeriod ? ` in ${selectedPeriod}` : ''} to generate preview amounts.
+                {formattedSelectedPeriod ? ` in ${formattedSelectedPeriod}` : ''} to generate preview amounts.
               </p>
             )
           ) : (

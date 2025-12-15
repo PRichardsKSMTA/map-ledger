@@ -6,6 +6,7 @@ import {
   DynamicAllocationGroupMember,
   DynamicAllocationPreset,
   DynamicAllocationPresetRow,
+  DynamicAllocationPresetContext,
   DynamicAllocationValidationIssue,
   DynamicBasisAccount,
   DynamicSourceAccount,
@@ -109,6 +110,63 @@ const deriveGroups = (
 const normalizeAccountId = (value?: string | null): string =>
   typeof value === 'string' ? value.trim() : '';
 
+const normalizeSourceAccountId = (value?: string | null): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const coerceFiniteNumber = (value?: number | null): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const upsertSourceAccountBalance = (
+  accounts: DynamicSourceAccount[],
+  sourceAccountId: string,
+  value: number,
+  periodId?: string | null,
+): DynamicSourceAccount[] => {
+  const normalizedId = normalizeSourceAccountId(sourceAccountId);
+  if (!normalizedId) {
+    return accounts;
+  }
+
+  const normalizedValue = coerceFiniteNumber(value);
+  const periodKey =
+    typeof periodId === 'string' && periodId.trim().length > 0 ? periodId.trim() : null;
+
+  const existingIndex = accounts.findIndex(account => account.id === normalizedId);
+  if (existingIndex === -1) {
+    const nextAccount: DynamicSourceAccount = {
+      id: normalizedId,
+      name: normalizedId,
+      number: normalizedId,
+      description: normalizedId,
+      value: normalizedValue,
+      ...(periodKey ? { valuesByPeriod: { [periodKey]: normalizedValue } } : {}),
+    };
+    return [...accounts, nextAccount];
+  }
+
+  const existing = accounts[existingIndex];
+  const existingPeriodValue = periodKey ? existing.valuesByPeriod?.[periodKey] : undefined;
+
+  if (existing.value === normalizedValue && (!periodKey || existingPeriodValue === normalizedValue)) {
+    return accounts;
+  }
+
+  const nextAccounts = [...accounts];
+  nextAccounts[existingIndex] = {
+    ...existing,
+    value: normalizedValue,
+    valuesByPeriod: periodKey
+      ? { ...(existing.valuesByPeriod ?? {}), [periodKey]: normalizedValue }
+      : existing.valuesByPeriod,
+  };
+  return nextAccounts;
+};
+
 const buildPresetTargetDatapoint = (
   preset: DynamicAllocationPreset,
   row: DynamicAllocationPresetRow,
@@ -204,6 +262,26 @@ const sanitizePresetRows = (
   return sanitized;
 };
 
+export const DEFAULT_PRESET_CONTEXT: DynamicAllocationPresetContext = 'mapping';
+
+const getPresetsByContext = (
+  presets: DynamicAllocationPreset[],
+  context: DynamicAllocationPresetContext,
+): DynamicAllocationPreset[] => presets.filter(preset => preset.context === context);
+
+const replacePresetsForContext = (
+  existing: DynamicAllocationPreset[],
+  context: DynamicAllocationPresetContext,
+  replacements: DynamicAllocationPreset[],
+): DynamicAllocationPreset[] => {
+  const filtered = existing.filter(preset => preset.context !== context);
+  const prepared = replacements.map(preset => ({
+    ...preset,
+    context,
+  }));
+  return [...filtered, ...prepared];
+};
+
 export type RatioAllocationHydrationPayload = {
   basisAccounts?: DynamicBasisAccount[];
   sourceAccounts?: DynamicSourceAccount[];
@@ -233,6 +311,10 @@ export type RatioAllocationState = {
   auditLog: DynamicAllocationAuditRecord[];
   lastDynamicMutation: DynamicAllocationMutation | null;
   hydrate: (payload: RatioAllocationHydrationPayload) => void;
+  setContextPresets: (
+    context: DynamicAllocationPresetContext,
+    presets: DynamicAllocationPreset[],
+  ) => void;
   setBasisAccounts: (basisAccounts: DynamicBasisAccount[]) => void;
   getOrCreateAllocation: (sourceAccountId: string) => RatioAllocation;
   addAllocation: (allocation: Omit<RatioAllocation, 'id'>) => void;
@@ -241,11 +323,17 @@ export type RatioAllocationState = {
   setAvailablePeriods: (periods: string[]) => void;
   setSelectedPeriod: (period: string) => void;
   calculateAllocations: (periodId: string) => Promise<void>;
+  syncSourceAccountBalance: (
+    sourceAccountId: string,
+    value: number,
+    periodId?: string | null,
+  ) => void;
   createPreset: (payload: {
     name: string;
     rows: DynamicAllocationPresetRow[];
     notes?: string;
     applyToAllocationId?: string | null;
+    context?: DynamicAllocationPresetContext;
   }) => string;
   updatePreset: (
     presetId: string,
@@ -283,7 +371,24 @@ export type RatioAllocationState = {
 
 export const selectPresetSummaries = (
   state: RatioAllocationState,
-): RatioPresetSummary[] => state.presets.map(preset => ({ id: preset.id, name: preset.name }));
+): RatioPresetSummary[] =>
+  getPresetsByContext(state.presets, DEFAULT_PRESET_CONTEXT).map(preset => ({
+    id: preset.id,
+    name: preset.name,
+  }));
+
+export const selectDistributionPresetSummaries = (
+  state: RatioAllocationState,
+): RatioPresetSummary[] =>
+  getPresetsByContext(state.presets, 'distribution').map(preset => ({
+    id: preset.id,
+    name: preset.name,
+  }));
+
+export const selectPresetsByContext = (
+  state: RatioAllocationState,
+  context: DynamicAllocationPresetContext,
+): DynamicAllocationPreset[] => getPresetsByContext(state.presets, context);
 
 export const useRatioAllocationStore = create<RatioAllocationState>((set, get) => ({
   allocations: [],
@@ -299,59 +404,101 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   auditLog: [],
   lastDynamicMutation: null,
 
-  hydrate: payload => {
-    set(state => {
-      const basisAccounts = payload.basisAccounts ?? state.basisAccounts;
-      const presetSource =
-        payload.presets ??
-        (payload.groups
-          ? payload.groups.map(group => ({
-              id: group.id,
-              name: group.name,
-              rows: group.rows,
-              notes: group.notes,
-            }))
-          : state.presets);
-      const presets = presetSource.map(preset => ({
-        ...preset,
-        name: preset.name.trim(),
-        notes: typeof preset.notes === 'string' ? preset.notes : preset.notes,
-        rows: sanitizePresetRows(preset.rows),
-      }));
-      const allocationsInput = payload.allocations ?? state.allocations;
-      const availablePeriods = payload.availablePeriods ?? state.availablePeriods;
-      const selectedPeriod =
-        payload.selectedPeriod ?? state.selectedPeriod ?? availablePeriods[0] ?? null;
-      const allocations = allocationsInput.map(allocation =>
-        synchronizeAllocationTargets(allocation, presets, basisAccounts, selectedPeriod),
-      );
-      const groups = deriveGroups(presets, basisAccounts, selectedPeriod);
+    hydrate: payload => {
+      set(state => {
+        const basisAccounts = payload.basisAccounts ?? state.basisAccounts;
+        const presetSource =
+          payload.presets ??
+          (payload.groups
+            ? payload.groups.map(group => ({
+                id: group.id,
+                name: group.name,
+                rows: group.rows,
+                notes: group.notes,
+              }))
+            : getPresetsByContext(state.presets, DEFAULT_PRESET_CONTEXT));
+        const sanitizedPresets = presetSource.map(preset => ({
+          ...preset,
+          context: preset.context ?? DEFAULT_PRESET_CONTEXT,
+          name: preset.name.trim(),
+          notes: typeof preset.notes === 'string' ? preset.notes : preset.notes,
+          rows: sanitizePresetRows(preset.rows),
+        }));
+        const combinedPresets = replacePresetsForContext(
+          state.presets,
+          DEFAULT_PRESET_CONTEXT,
+          sanitizedPresets,
+        );
+        const mappingPresets = getPresetsByContext(combinedPresets, DEFAULT_PRESET_CONTEXT);
+        const allocationsInput = payload.allocations ?? state.allocations;
+        const availablePeriods = payload.availablePeriods ?? state.availablePeriods;
+        const selectedPeriod =
+          payload.selectedPeriod ?? state.selectedPeriod ?? availablePeriods[0] ?? null;
+        const allocations = allocationsInput.map(allocation =>
+          synchronizeAllocationTargets(allocation, mappingPresets, basisAccounts, selectedPeriod),
+        );
+        const groups = deriveGroups(mappingPresets, basisAccounts, selectedPeriod);
 
-      return {
-        allocations,
-        basisAccounts,
-        presets,
-        groups,
-        sourceAccounts: payload.sourceAccounts ?? state.sourceAccounts,
-        availablePeriods,
-        selectedPeriod,
-        lastDynamicMutation: null,
-      };
-    });
-  },
+        return {
+          allocations,
+          basisAccounts,
+          presets: combinedPresets,
+          groups,
+          sourceAccounts: payload.sourceAccounts ?? state.sourceAccounts,
+          availablePeriods,
+          selectedPeriod,
+          lastDynamicMutation: null,
+        };
+      });
+    },
+    setContextPresets: (context, presets) => {
+      set(state => ({
+        presets: replacePresetsForContext(
+          state.presets,
+          context,
+          presets.map(preset => ({
+            ...preset,
+            name: preset.name.trim(),
+            notes: typeof preset.notes === 'string' ? preset.notes : preset.notes,
+            rows: sanitizePresetRows(preset.rows),
+          })),
+        ),
+      }));
+    },
 
   setBasisAccounts: basisAccounts => {
     set(state => {
+      const mappingPresets = getPresetsByContext(state.presets, DEFAULT_PRESET_CONTEXT);
       const allocations = state.allocations.map(allocation =>
-        synchronizeAllocationTargets(allocation, state.presets, basisAccounts, state.selectedPeriod),
+        synchronizeAllocationTargets(allocation, mappingPresets, basisAccounts, state.selectedPeriod),
       );
-      const groups = deriveGroups(state.presets, basisAccounts, state.selectedPeriod);
+      const groups = deriveGroups(mappingPresets, basisAccounts, state.selectedPeriod);
       return {
         basisAccounts,
         presets: state.presets,
         groups,
         allocations,
       };
+    });
+  },
+
+  syncSourceAccountBalance: (sourceAccountId, value, periodId) => {
+    const normalizedId = normalizeSourceAccountId(sourceAccountId);
+    if (!normalizedId) {
+      return;
+    }
+    const normalizedValue = coerceFiniteNumber(value);
+    set(state => {
+      const nextAccounts = upsertSourceAccountBalance(
+        state.sourceAccounts,
+        normalizedId,
+        normalizedValue,
+        periodId,
+      );
+      if (nextAccounts === state.sourceAccounts) {
+        return {};
+      }
+      return { sourceAccounts: nextAccounts };
     });
   },
 
@@ -363,14 +510,17 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     const sourceAccount =
       get().sourceAccounts.find(account => account.id === sourceAccountId) ??
       (() => {
+        const fallbackValue = 0;
         const fallback: DynamicSourceAccount = {
           id: sourceAccountId,
           name: sourceAccountId,
           number: sourceAccountId,
           description: sourceAccountId,
-          value: 0,
+          value: fallbackValue,
         };
-        set(state => ({ sourceAccounts: [...state.sourceAccounts, fallback] }));
+        set(state => ({
+          sourceAccounts: upsertSourceAccountBalance(state.sourceAccounts, sourceAccountId, fallbackValue),
+        }));
         return fallback;
       })();
     const allocation: RatioAllocation = {
@@ -462,16 +612,25 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     });
   },
 
-  setSelectedPeriod: period => {
-    set(state => ({
-      selectedPeriod: period,
-      allocations: state.allocations.map(allocation =>
-        synchronizeAllocationTargets(allocation, state.presets, state.basisAccounts, period),
-      ),
-      groups: deriveGroups(state.presets, state.basisAccounts, period),
-    }));
-    get()
-      .calculateAllocations(period)
+    setSelectedPeriod: period => {
+      set(state => ({
+        selectedPeriod: period,
+        allocations: state.allocations.map(allocation =>
+          synchronizeAllocationTargets(
+            allocation,
+            getPresetsByContext(state.presets, DEFAULT_PRESET_CONTEXT),
+            state.basisAccounts,
+            period,
+          ),
+        ),
+        groups: deriveGroups(
+          getPresetsByContext(state.presets, DEFAULT_PRESET_CONTEXT),
+          state.basisAccounts,
+          period,
+        ),
+      }));
+      get()
+        .calculateAllocations(period)
       .catch(error => {
         console.error('Failed to calculate allocations', error);
       });
@@ -489,6 +648,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         validationErrors: existingValidationErrors,
         auditLog: existingAuditLog,
       } = get();
+      const mappingPresets = getPresetsByContext(presets, DEFAULT_PRESET_CONTEXT);
 
       const filteredResults = existingResults.filter(result => result.periodId !== periodId);
       const filteredValidationErrors = existingValidationErrors.filter(issue => issue.periodId !== periodId);
@@ -499,7 +659,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       const runTimestamp = new Date().toISOString();
 
       // Validate all presets before processing allocations
-      presets.forEach(preset => {
+      mappingPresets.forEach(preset => {
         if (preset.rows.length === 0) {
           newValidationErrors.push({
             id: createId(),
@@ -591,7 +751,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         });
 
         presetTargetsMap.forEach((_, presetId) => {
-          const preset = presets.find(item => item.id === presetId);
+          const preset = mappingPresets.find(item => item.id === presetId);
           if (!preset) {
             targetErrors.push({
               message: `Dynamic allocation preset with ID ${presetId} is missing.`,
@@ -907,7 +1067,19 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     }
   },
 
-  createPreset: ({ name, rows, notes, applyToAllocationId }) => {
+  createPreset: ({
+    name,
+    rows,
+    notes,
+    applyToAllocationId,
+    context = DEFAULT_PRESET_CONTEXT,
+  }: {
+    name: string;
+    rows: DynamicAllocationPresetRow[];
+    notes?: string;
+    applyToAllocationId?: string | null;
+    context?: DynamicAllocationPresetContext;
+  }) => {
     let newPresetId = '';
     set(state => {
       const sanitizedRows = sanitizePresetRows(rows);
@@ -916,13 +1088,15 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         name: name.trim(),
         rows: sanitizedRows,
         notes,
+        context,
       };
       newPresetId = preset.id;
       const presets = [...state.presets, preset];
+      const mappingPresets = getPresetsByContext(presets, DEFAULT_PRESET_CONTEXT);
       const allocations = state.allocations.map(allocation =>
-        synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
+        synchronizeAllocationTargets(allocation, mappingPresets, state.basisAccounts, state.selectedPeriod),
       );
-      const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
+      const groups = deriveGroups(mappingPresets, state.basisAccounts, state.selectedPeriod);
       return { presets, groups, allocations };
     });
 

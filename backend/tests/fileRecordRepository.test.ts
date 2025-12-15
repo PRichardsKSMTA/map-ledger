@@ -26,7 +26,7 @@ describe('fileRecordRepository', () => {
         accountName: 'Cash',
         activityAmount: 50,
         entityId: 'ent-1',
-        glMonth: '2024-01',
+        glMonth: '2024-01-01',
         sourceSheetName: 'Sheet1',
         openingBalance: 5,
         closingBalance: 55,
@@ -61,6 +61,45 @@ describe('fileRecordRepository', () => {
     );
   });
 
+  it('batches large inserts to avoid SQL Server 2100 parameter limit', async () => {
+    // Create 200 records to test batching (BATCH_SIZE is 150)
+    const records = Array.from({ length: 200 }, (_, i) => ({
+      accountId: `${100 + i}`,
+      accountName: `Account ${i}`,
+      activityAmount: i * 10,
+      sourceSheetName: 'Sheet1',
+    }));
+
+    // Mock responses for two batches (150 + 50 records)
+    mockedRunQuery
+      .mockResolvedValueOnce({
+        recordset: Array.from({ length: 150 }, (_, i) => ({ record_id: i + 1 })),
+      } as any)
+      .mockResolvedValueOnce({
+        recordset: Array.from({ length: 50 }, (_, i) => ({ record_id: i + 151 })),
+      } as any);
+
+    const insertedRecords = await insertFileRecords(guid, records);
+
+    // Should have called runQuery twice (once per batch)
+    expect(mockedRunQuery).toHaveBeenCalledTimes(2);
+
+    // First batch should have 150 records
+    const [sql1, params1] = mockedRunQuery.mock.calls[0];
+    expect(Object.keys(params1 as object).filter(k => k.startsWith('accountId')).length).toBe(150);
+
+    // Second batch should have 50 records
+    const [sql2, params2] = mockedRunQuery.mock.calls[1];
+    expect(Object.keys(params2 as object).filter(k => k.startsWith('accountId')).length).toBe(50);
+
+    // Should return all 200 records
+    expect(insertedRecords.length).toBe(200);
+    expect(insertedRecords[0].recordId).toBe(1);
+    expect(insertedRecords[149].recordId).toBe(150);
+    expect(insertedRecords[150].recordId).toBe(151);
+    expect(insertedRecords[199].recordId).toBe(200);
+  });
+
   it('retrieves file records by GUID', async () => {
     const insertedDttm = new Date('2024-01-02T00:00:00.000Z');
     mockedRunQuery.mockResolvedValue({
@@ -77,7 +116,7 @@ describe('fileRecordRepository', () => {
           opening_balance: 0,
           closing_balance: 100,
           activity_amount: 100,
-          gl_month: '2024-02',
+      gl_month: '2024-02-01',
           user_defined1: 'U1',
           user_defined2: 2,
           user_defined3: 'U3',
@@ -102,7 +141,7 @@ describe('fileRecordRepository', () => {
       openingBalance: 0,
       closingBalance: 100,
       activityAmount: 100,
-      glMonth: '2024-02',
+      glMonth: '2024-02-01',
       userDefined1: 'U1',
       userDefined2: '2',
       userDefined3: 'U3',

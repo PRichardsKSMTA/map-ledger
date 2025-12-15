@@ -14,9 +14,12 @@ import {
 } from '../../repositories/entityAccountMappingRepository';
 import {
   createEntityMappingPreset,
+  EntityMappingPresetDbRow,
   EntityMappingPresetInput,
-  listEntityMappingPresets,
+  listEntityMappingPresetsRaw,
   updateEntityMappingPreset,
+  ALLOWED_PRESET_TYPES,
+  normalizePresetTypeValue,
 } from '../../repositories/entityMappingPresetRepository';
 import {
   createEntityMappingPresetDetails,
@@ -26,11 +29,11 @@ import {
   updateEntityMappingPresetDetail,
 } from '../../repositories/entityMappingPresetDetailRepository';
 import { EntityAccountInput, upsertEntityAccounts } from '../../repositories/entityAccountRepository';
-import { EntityScoaActivityInput, upsertEntityScoaActivity } from '../../repositories/entityScoaActivityRepository';
+import { deleteEntityPresetMappings } from '../../repositories/entityPresetMappingRepository';
 import {
-  deleteEntityPresetMappings,
-  EntityPresetMappingInput,
-} from '../../repositories/entityPresetMappingRepository';
+  normalizeActivityMonth,
+  recalculateEntityScoaActivityTotals,
+} from '../entityScoaActivity/recalculate';
 import {
   mapSplitDefinitionsToPresetDetails,
   buildDynamicPresetMappingInputs,
@@ -114,6 +117,17 @@ const normalizationTools: NormalizationTools = {
   resolvePresetType,
 };
 
+const isMeaningfulDescription = (value?: string | null): boolean =>
+  typeof value === 'string' && value.trim().length > 1;
+
+const isCanonicalPresetType = (value?: string | null): boolean => {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return ALLOWED_PRESET_TYPES.has(normalized);
+};
+
 export const SAVE_ROW_LIMIT = 200;
 
 const normalizePercentageDetails = (
@@ -195,27 +209,10 @@ const normalizePercentageDetails = (
 };
 
 const buildPresetDescription = (
-  accountName: string | null | undefined,
-  mappingType: string | null,
-  details: EntityMappingPresetDetailInput[],
+  accountIdentifier: string | null | undefined,
 ): string | null => {
-  const source = typeof accountName === 'string' ? accountName.trim() : null;
-  const normalizedType = resolvePresetType(mappingType);
-
-  if (normalizedType === 'dynamic') {
-    return source ?? 'Dynamic mapping preset';
-  }
-
-  const targets = details
-    .map((detail) => normalizeText(detail.targetDatapoint))
-    .filter((value): value is string => Boolean(value));
-
-  if (!targets.length) {
-    return source;
-  }
-
-  const descriptionSource = source ?? 'Mapping';
-  return `${descriptionSource} -> ${targets.join(', ')}`;
+  const source = typeof accountIdentifier === 'string' ? accountIdentifier.trim() : null;
+  return source && source.length > 0 ? source : null;
 };
 
 const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
@@ -262,75 +259,6 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
   return inputs;
 };
 
-const normalizeActivityMonth = (value: unknown): string | null => {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const match = trimmed.match(/^(\d{4}-\d{2})/);
-  return match ? match[1] : trimmed;
-};
-
-const buildScoaActivities = (
-  input: MappingSaveInput,
-): EntityScoaActivityInput[] => {
-  const isExcluded =
-    input.mappingType?.toLowerCase() === 'exclude' ||
-    input.mappingStatus?.toLowerCase() === 'excluded';
-
-  const { entityId, glMonth } = input;
-
-  if (!entityId || !glMonth || isExcluded) {
-    return [];
-  }
-
-  const splits = input.splitDefinitions ?? [];
-  if (!splits.length) {
-    return [];
-  }
-
-  const baseAmount = input.netChange ?? null;
-  if (baseAmount === null) {
-    return [];
-  }
-
-  return splits.reduce<EntityScoaActivityInput[]>((results, split) => {
-    const scoaAccountId = normalizeText(split.targetId);
-    if (!scoaAccountId) {
-      return results;
-    }
-
-    const allocationValue = parseNumber(split.allocationValue) ?? 0;
-    const allocationType = split.allocationType ?? 'percentage';
-    const calculatedValue =
-      allocationType === 'amount'
-        ? allocationValue
-        : baseAmount * (allocationValue / 100);
-
-    const activityMonth = normalizeActivityMonth(glMonth);
-
-    if (!activityMonth) {
-      return results;
-    }
-
-    results.push({
-      entityId,
-      scoaAccountId,
-      activityMonth,
-      activityValue: calculatedValue,
-      updatedBy: input.updatedBy ?? null,
-    });
-
-    return results;
-  }, []);
-};
-
 const toPresetCacheKey = (entityId: string, entityAccountId: string): string =>
   `${entityId}|${entityAccountId}`;
 
@@ -339,6 +267,7 @@ const buildExistingPresetLookup = async (
 ): Promise<{
   presetLookup: Map<string, string>;
   knownPresetGuids: Set<string>;
+  presetMetadata: Map<string, EntityMappingPresetDbRow>;
 }> => {
   const uniqueMappings: { entityId: string; entityAccountId: string }[] = [];
   const seen = new Set<string>();
@@ -365,6 +294,7 @@ const buildExistingPresetLookup = async (
     : [];
   const presetLookup = new Map<string, string>();
   const knownPresetGuids = new Set<string>();
+  const presetMetadata = new Map<string, EntityMappingPresetDbRow>();
 
   existingMappings.forEach((mapping) => {
     if (mapping.presetId) {
@@ -383,19 +313,20 @@ const buildExistingPresetLookup = async (
 
   if (entityIds.length) {
     const presetLists = await Promise.all(
-      entityIds.map((entityId) => listEntityMappingPresets(entityId)),
+      entityIds.map((entityId) => listEntityMappingPresetsRaw(entityId)),
     );
 
     presetLists.forEach((rows) => {
       rows.forEach((row) => {
         if (row.presetGuid) {
           knownPresetGuids.add(row.presetGuid);
+          presetMetadata.set(row.presetGuid, row);
         }
       });
     });
   }
 
-  return { presetLookup, knownPresetGuids };
+  return { presetLookup, knownPresetGuids, presetMetadata };
 };
 
 const isValidRecordId = (value?: number | null): value is number =>
@@ -405,6 +336,7 @@ const syncPresetDetails = async (
   presetGuid: string,
   desiredDetails: EntityMappingPresetDetailInput[],
   updatedBy?: string | null,
+  skipPresetMetadataUpdate = false,
 ): Promise<void> => {
   const existing = await listEntityMappingPresetDetails(presetGuid);
   if (!desiredDetails.length) {
@@ -418,7 +350,9 @@ const syncPresetDetails = async (
       }, []);
       if (allIds.length) {
         await deleteEntityMappingPresetDetailsByIds(allIds);
-        await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
+        if (!skipPresetMetadataUpdate) {
+          await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
+        }
         return;
       }
     }
@@ -511,7 +445,7 @@ const syncPresetDetails = async (
     await deleteEntityMappingPresetDetailsByIds(deletions);
   }
 
-  if (creations.length > 0 || updates.length > 0 || deletions.length > 0) {
+  if (!skipPresetMetadataUpdate && (creations.length > 0 || updates.length > 0 || deletions.length > 0)) {
     await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
   }
 };
@@ -523,24 +457,65 @@ const ensurePreset = async (
   presetGuid: string,
   presetLookup: Map<string, string>,
   knownPresetGuids: Set<string>,
+  presetMetadata: Map<string, EntityMappingPresetDbRow>,
   presetDescription: string | null,
-): Promise<void> => {
+  updatedBy?: string | null,
+): Promise<boolean> => {
   const cacheKey = toPresetCacheKey(entityId, entityAccountId);
   presetLookup.set(cacheKey, presetGuid);
 
-  if (knownPresetGuids.has(presetGuid)) {
-    return;
+  const targetPresetType = resolvePresetType(mappingType);
+  const existingPreset = presetMetadata.get(presetGuid);
+
+  if (existingPreset) {
+    const currentPresetType = normalizePresetTypeValue(existingPreset.presetType);
+    const needsTypeRepair = !isCanonicalPresetType(existingPreset.presetType);
+    const needsTypeUpdate = currentPresetType !== targetPresetType;
+    const needsDescriptionRepair =
+      presetDescription !== null && !isMeaningfulDescription(existingPreset.presetDescription);
+
+    if (needsTypeRepair || needsTypeUpdate || needsDescriptionRepair) {
+      await updateEntityMappingPreset(presetGuid, {
+        presetType: needsTypeRepair || needsTypeUpdate ? targetPresetType : undefined,
+        presetDescription: needsDescriptionRepair ? presetDescription : undefined,
+        updatedBy: updatedBy ?? null,
+      });
+
+      presetMetadata.set(presetGuid, {
+        ...existingPreset,
+        presetType:
+          needsTypeRepair || needsTypeUpdate ? targetPresetType : existingPreset.presetType,
+        presetDescription: needsDescriptionRepair
+          ? presetDescription
+          : existingPreset.presetDescription,
+        updatedBy: updatedBy ?? existingPreset.updatedBy,
+      });
+    }
+    knownPresetGuids.add(presetGuid);
+    return false;
   }
 
   const presetInput: EntityMappingPresetInput = {
     entityId,
-    presetType: resolvePresetType(mappingType),
+    presetType: targetPresetType,
     presetDescription,
     presetGuid,
   };
 
-  await createEntityMappingPreset(presetInput);
-  knownPresetGuids.add(presetGuid);
+  const created = await createEntityMappingPreset(presetInput);
+  if (created) {
+    presetMetadata.set(presetGuid, {
+      presetGuid: created.presetGuid,
+      entityId: created.entityId,
+      presetType: created.presetType,
+      presetDescription: created.presetDescription ?? null,
+      insertedDttm: created.insertedDttm ?? null,
+      updatedDttm: created.updatedDttm ?? null,
+      updatedBy: created.updatedBy ?? null,
+    });
+    knownPresetGuids.add(presetGuid);
+  }
+  return Boolean(created);
 };
 
 const saveHandler = async (
@@ -575,7 +550,9 @@ const saveHandler = async (
     }
 
     const { result: saveResult, queryCount } = await withQueryTracking(async () => {
-      const { presetLookup, knownPresetGuids } = await buildExistingPresetLookup(inputs);
+      const { presetLookup, knownPresetGuids, presetMetadata } =
+        await buildExistingPresetLookup(inputs);
+      const freshPresetGuids = new Set<string>();
       const existingMappings = await listEntityAccountMappingsForAccounts(
         inputs.map((input) => ({
           entityId: input.entityId as string,
@@ -590,7 +567,8 @@ const saveHandler = async (
       );
       const upserts: EntityAccountMappingUpsertInput[] = [];
       const entityAccounts: EntityAccountInput[] = [];
-      const scoaActivityLookup = new Map<string, EntityScoaActivityInput>();
+      const affectedMonths = new Map<string, Set<string>>();
+      const entityUpdatedByLookup = new Map<string, string | null>();
 
       for (const input of inputs) {
         const cacheKey = toPresetCacheKey(
@@ -619,21 +597,36 @@ const saveHandler = async (
           input.exclusionPct ?? null,
           normalizationTools,
         );
+        const presetMappingInputs =
+          presetType === 'dynamic'
+            ? buildDynamicPresetMappingInputs(
+                presetGuid,
+                presetType,
+                input.splitDefinitions,
+                input.updatedBy ?? null,
+                input.netChange ?? null,
+                input.exclusionPct ?? null,
+                normalizationTools,
+              )
+            : [];
         const presetDescription = buildPresetDescription(
           input.accountName ?? input.entityAccountId ?? null,
-          presetType,
-          presetDetails,
         );
 
-        await ensurePreset(
+        const createdPreset = await ensurePreset(
           input.entityId as string,
           input.entityAccountId as string,
           presetType,
           presetGuid,
           presetLookup,
           knownPresetGuids,
+          presetMetadata,
           presetDescription,
+          input.updatedBy ?? null,
         );
+        if (createdPreset) {
+          freshPresetGuids.add(presetGuid);
+        }
 
         const upsertPayload: EntityAccountMappingUpsertInput = {
           entityId: input.entityId as string,
@@ -650,37 +643,42 @@ const saveHandler = async (
         };
         const existing = existingLookup.get(cacheKey);
 
+        const shouldSyncPresetDetails =
+          presetDetails.length > 0 || (existing?.presetId && existing.presetId === presetGuid);
+        const shouldSyncDynamicMappings =
+          presetType === 'dynamic' &&
+          (presetMappingInputs.length > 0 ||
+            existing?.presetId === presetGuid ||
+            presetLookup.has(cacheKey));
+
         const hasChanges =
           !existing ||
           upsertPayload.polarity !== existing.polarity ||
           upsertPayload.mappingType !== existing.mappingType ||
           upsertPayload.presetId !== existing.presetId ||
           upsertPayload.mappingStatus !== existing.mappingStatus ||
-          upsertPayload.exclusionPct !== existing.exclusionPct;
+          upsertPayload.exclusionPct !== existing.exclusionPct ||
+          shouldSyncPresetDetails ||
+          shouldSyncDynamicMappings;
 
         if (hasChanges) {
-          if (presetDetails.length) {
-            await syncPresetDetails(presetGuid, presetDetails, input.updatedBy ?? null);
+          if (shouldSyncPresetDetails) {
+            await syncPresetDetails(
+              presetGuid,
+              presetDetails,
+              input.updatedBy ?? null,
+              freshPresetGuids.has(presetGuid),
+            );
           }
 
           if (presetType === 'dynamic') {
-            const presetMappingInputs = buildDynamicPresetMappingInputs(
-              presetGuid,
-              presetType,
-              input.splitDefinitions,
-              input.updatedBy ?? null,
-              input.netChange ?? null,
-              input.exclusionPct ?? null,
-              normalizationTools,
-            );
-
             if (presetMappingInputs.length) {
               await syncEntityPresetMappings(
                 presetGuid,
                 presetMappingInputs,
                 input.updatedBy ?? null,
               );
-            } else if (presetLookup.has(cacheKey)) {
+            } else if (presetLookup.has(cacheKey) || existing?.presetId === presetGuid) {
               await deleteEntityPresetMappings(presetGuid);
             }
           }
@@ -695,31 +693,32 @@ const saveHandler = async (
           updatedBy: input.updatedBy ?? null,
         });
 
-        const activities = buildScoaActivities({
-          ...input,
-          mappingType: effectiveMappingType,
-        });
-        activities.forEach((activity) => {
-          const key = `${activity.entityId}|${activity.scoaAccountId}|${activity.activityMonth}`;
-          const existing = scoaActivityLookup.get(key);
-          if (existing) {
-            existing.activityValue += activity.activityValue;
-            return;
-          }
-          scoaActivityLookup.set(key, activity);
-        });
+        const monthSet = affectedMonths.get(input.entityId as string) ?? new Set<string>();
+        const activityMonth = normalizeActivityMonth(input.glMonth);
+        if (activityMonth) {
+          monthSet.add(activityMonth);
+        }
+        affectedMonths.set(input.entityId as string, monthSet);
+
+        if (!entityUpdatedByLookup.has(input.entityId as string) && input.updatedBy) {
+          entityUpdatedByLookup.set(input.entityId as string, input.updatedBy ?? null);
+        }
       }
 
       const [mappings] = await Promise.all([
         upsertEntityAccountMappings(upserts),
         upsertEntityAccounts(entityAccounts),
-        upsertEntityScoaActivity(Array.from(scoaActivityLookup.values())),
       ]);
+
+      const scoaActivities = await recalculateEntityScoaActivityTotals(
+        affectedMonths,
+        entityUpdatedByLookup,
+      );
 
       return {
         mappings,
         accounts: entityAccounts.length,
-        scoaActivities: scoaActivityLookup.size,
+        scoaActivities,
       };
     });
 

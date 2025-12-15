@@ -17,6 +17,9 @@ const openApiSpec = {
     '/mapping/suggest': {
       get: { summary: 'Suggest account mapping' }
     },
+    '/distribution/suggest': {
+      get: { summary: 'Suggest SCOA distributions for an entity' }
+    },
     '/chart-of-accounts': {
       get: { summary: 'List chart of accounts' }
     },
@@ -48,6 +51,9 @@ const openApiSpec = {
     },
     '/file-records/ingest': {
       post: { summary: 'Ingest mapped file records for a file upload' }
+    },
+    '/distributionActivity': {
+      post: { summary: 'Persist SCOA activity entries for operations' }
     }
   }
 };
