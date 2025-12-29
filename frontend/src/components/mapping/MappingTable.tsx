@@ -166,6 +166,7 @@ export default function MappingTable() {
   const updateTarget = useMappingStore((state) => state.updateTarget);
   const updateMappingType = useMappingStore((state) => state.updateMappingType);
   const updatePolarity = useMappingStore((state) => state.updatePolarity);
+  const applyBatchMapping = useMappingStore((state) => state.applyBatchMapping);
   const applyPresetToAccounts = useMappingStore(
     (state) => state.applyPresetToAccounts
   );
@@ -209,9 +210,20 @@ export default function MappingTable() {
     }
     return availablePeriods[availablePeriods.length - 1] ?? null;
   }, [availablePeriods]);
-  const latestPeriodLabel = latestPeriod
-    ? formatPeriodDate(latestPeriod) || latestPeriod
-    : null;
+  const normalizedLatestPeriod = latestPeriod?.trim() ?? null;
+  const getGlMonthLabel = (period?: string | null) => {
+    const formatted = formatPeriodDate(period);
+    if (formatted) {
+      return formatted;
+    }
+    if (period) {
+      const trimmed = period.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return 'Unspecified GL month';
+  };
 
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
@@ -363,6 +375,44 @@ export default function MappingTable() {
     return [...filteredAccounts].sort(safeCompare);
   }, [filteredAccounts, sortConfig, getDisplayStatus]);
 
+  const shouldAutoMapNextAccount = (account: GLAccountMappingRow) =>
+    account.mappingType === 'direct' &&
+    !account.manualCOAId?.trim() &&
+    account.status !== 'Mapped' &&
+    account.status !== 'Excluded';
+
+  const handleTargetChange = (
+    account: GLAccountMappingRow,
+    index: number,
+    nextValue: string
+  ) => {
+    const hasBatchSelection = selectedIds.has(account.id) && selectedIds.size > 1;
+    if (hasBatchSelection) {
+      applyBatchMapping(Array.from(selectedIds), { target: nextValue || null });
+      return;
+    }
+
+    updateTarget(account.id, nextValue);
+
+    if (!nextValue) {
+      return;
+    }
+
+    const nextAccount = sortedAccounts[index + 1];
+    if (nextAccount && shouldAutoMapNextAccount(nextAccount)) {
+      updateTarget(nextAccount.id, nextValue);
+    }
+  };
+
+  const handleMappingTypeChange = (accountId: string, nextType: MappingType) => {
+    const hasBatchSelection = selectedIds.has(accountId) && selectedIds.size > 1;
+    if (hasBatchSelection) {
+      applyBatchMapping(Array.from(selectedIds), { mappingType: nextType });
+      return;
+    }
+    updateMappingType(accountId, nextType);
+  };
+
   const derivedSelectedPeriod = activePeriod ?? selectedPeriod ?? null;
 
   const dynamicExclusionSummaries = useMemo(
@@ -435,7 +485,7 @@ export default function MappingTable() {
     return sortConfig.direction === 'asc' ? 'ascending' : 'descending';
   };
 
-  let hasRenderedPriorPeriodDivider = false;
+  const renderedPeriods = new Set<string>();
 
   return (
     <div className="space-y-4">
@@ -481,11 +531,19 @@ export default function MappingTable() {
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
             {sortedAccounts.map((account, index) => {
-              const isPriorPeriod = latestPeriod !== null && account.glMonth !== latestPeriod;
-              const shouldRenderDivider = isPriorPeriod && !hasRenderedPriorPeriodDivider;
+              const normalizedAccountPeriod = account.glMonth?.trim() ?? null;
+              const periodKey = normalizedAccountPeriod ?? 'unspecified';
+              const isCurrentPeriod =
+                normalizedLatestPeriod !== null && periodKey === normalizedLatestPeriod;
+              const isPriorPeriod =
+                normalizedLatestPeriod !== null && periodKey !== normalizedLatestPeriod;
+              const shouldRenderDivider =
+                normalizedLatestPeriod !== null &&
+                (isCurrentPeriod || isPriorPeriod) &&
+                !renderedPeriods.has(periodKey);
 
               if (shouldRenderDivider) {
-                hasRenderedPriorPeriodDivider = true;
+                renderedPeriods.add(periodKey);
               }
 
               const isSelected = selectedIds.has(account.id);
@@ -540,8 +598,9 @@ export default function MappingTable() {
                         className="px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200"
                         colSpan={12}
                       >
-                        Earlier GL months
-                        {latestPeriodLabel ? ` (before ${latestPeriodLabel})` : ''}
+                        {isCurrentPeriod
+                          ? `Current GL month ${getGlMonthLabel(normalizedAccountPeriod)}`
+                          : `Records from GL month ${getGlMonthLabel(normalizedAccountPeriod)}`}
                       </td>
                     </tr>
                   )}
@@ -624,7 +683,7 @@ export default function MappingTable() {
                         id={`mapping-type-${account.id}`}
                         value={account.mappingType}
                         onChange={(event) =>
-                          updateMappingType(
+                          handleMappingTypeChange(
                             account.id,
                             event.target.value as MappingType
                           )
@@ -662,7 +721,9 @@ export default function MappingTable() {
                             value={targetScoa}
                             options={coaOptions}
                             placeholder="Search target"
-                            onChange={nextValue => updateTarget(account.id, nextValue)}
+                            onChange={(nextValue) =>
+                              handleTargetChange(account, index, nextValue)
+                            }
                             noOptionsMessage="No matching accounts"
                             className="w-full"
                           />

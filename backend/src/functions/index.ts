@@ -6,6 +6,8 @@ import './glUpload';
 import './health';
 import './industries';
 import './chartOfAccounts';
+import './coaManager';
+import './coaManagerImport';
 import './mappingSuggest';
 import './distributionSuggest';
 import './masterclients';

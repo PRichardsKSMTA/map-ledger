@@ -1,7 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Clock3, Download, History, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
-import { selectAccounts, selectSplitValidationIssues, useMappingStore } from '../../store/mappingStore';
+import {
+  selectAccounts,
+  selectSplitValidationIssues,
+  selectStandardScoaSummaries,
+  useMappingStore,
+} from '../../store/mappingStore';
 import {
   type DistributionOperationCatalogItem,
   useDistributionStore,
@@ -17,7 +22,7 @@ import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import { useOrganizationStore } from '../../store/organizationStore';
 import { useClientStore } from '../../store/clientStore';
 import { formatCurrencyAmount } from '../../utils/currency';
-import { getDistributedActivityForShare } from '../../utils/distributionActivity';
+import { getOperationShareFraction } from '../../utils/distributionActivity';
 import {
   buildOperationScoaActivitySheets,
   exportOperationScoaWorkbook,
@@ -65,6 +70,7 @@ const formatAllocationShare = (row: DistributionRow, share: DistributionOperatio
 type OperationReviewItem = {
   row: DistributionRow;
   share: DistributionOperationShare;
+  allocatedAmount: number;
 };
 
 interface OperationReviewEntry {
@@ -253,6 +259,7 @@ const ToggleIcon = ({ isOpen }: { isOpen: boolean }) =>
 const ReviewPane = () => {
   const accounts = useMappingStore(selectAccounts);
   const splitIssues = useMappingStore(selectSplitValidationIssues);
+  const standardTargets = useMappingStore(selectStandardScoaSummaries);
   const finalizeMappings = useMappingStore(state => state.finalizeMappings);
   const { selectedPeriod, validationErrors, isProcessing, calculateAllocations } =
     useRatioAllocationStore(state => ({
@@ -263,6 +270,14 @@ const ReviewPane = () => {
     }));
   const selectedPeriodLabel =
     selectedPeriod ? formatPeriodDate(selectedPeriod) || selectedPeriod : null;
+  const mappedActivityByTarget = useMemo(() => {
+    const lookup = new Map<string, number>();
+    standardTargets.forEach(target => {
+      lookup.set(target.id, target.mappedAmount);
+      lookup.set(target.value, target.mappedAmount);
+    });
+    return lookup;
+  }, [standardTargets]);
 
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [publishLog, setPublishLog] = useState<PublishLogEntry[]>([
@@ -328,6 +343,33 @@ const ReviewPane = () => {
   const entityContributionsByScoa = useMemo(
     () => buildEntityContributionsByScoa(accounts),
     [accounts],
+  );
+
+  const getPeriodActivityForRow = useCallback(
+    (row: DistributionRow): number => {
+      const mappingKey = row.mappingRowId?.trim();
+      const accountKey = row.accountId?.trim();
+      const resolved =
+        (mappingKey ? mappedActivityByTarget.get(mappingKey) : undefined) ??
+        (accountKey ? mappedActivityByTarget.get(accountKey) : undefined);
+      if (typeof resolved === 'number' && Number.isFinite(resolved)) {
+        return resolved;
+      }
+      return Number.isFinite(row.activity) ? row.activity : 0;
+    },
+    [mappedActivityByTarget],
+  );
+
+  const getAllocatedActivityForShare = useCallback(
+    (row: DistributionRow, share: DistributionOperationShare): number => {
+      const fraction = getOperationShareFraction(row, share);
+      if (!Number.isFinite(fraction)) {
+        return 0;
+      }
+      const baseActivity = getPeriodActivityForRow(row);
+      return Number.isFinite(baseActivity) ? baseActivity * fraction : 0;
+    },
+    [getPeriodActivityForRow],
   );
 
   // Build entity source groups for a given distribution row, scaled to the allocated activity
@@ -501,6 +543,10 @@ const ReviewPane = () => {
         if (!key) {
           return;
         }
+        const allocatedAmount = getAllocatedActivityForShare(row, share);
+        if (Math.abs(allocatedAmount) < 1e-6) {
+          return;
+        }
         let entry = entries.get(key);
         if (!entry) {
           const code = share.code?.trim() || share.id?.trim() || share.name?.trim() || key;
@@ -511,7 +557,7 @@ const ReviewPane = () => {
           };
           entries.set(key, entry);
         }
-        entry.items.push({ row, share });
+        entry.items.push({ row, share, allocatedAmount });
       });
     });
 
@@ -522,7 +568,7 @@ const ReviewPane = () => {
       entry.items.sort((a, b) => a.row.accountId.localeCompare(b.row.accountId));
     });
     return sortedEntries;
-  }, [clientOperations, distributedRows]);
+  }, [clientOperations, distributedRows, getAllocatedActivityForShare]);
 
   const appendLog = (entry: Omit<PublishLogEntry, 'id' | 'timestamp'> & { timestamp?: string }) => {
     setPublishLog(previous => [
@@ -749,10 +795,7 @@ const ReviewPane = () => {
           </div>
           <div className="space-y-6">
             {operationReviewEntries.map(entry => {
-              const totalActivity = entry.items.reduce(
-                (sum, { row, share }) => sum + getDistributedActivityForShare(row, share),
-                0,
-              );
+              const totalActivity = entry.items.reduce((sum, item) => sum + item.allocatedAmount, 0);
               return (
                 <Card key={entry.operation.code}>
                 <CardHeader>
@@ -794,8 +837,7 @@ const ReviewPane = () => {
                             </td>
                           </tr>
                         ) : (
-                          entry.items.map(({ row, share }) => {
-                            const allocatedAmount = getDistributedActivityForShare(row, share);
+                          entry.items.map(({ row, share, allocatedAmount }) => {
                             const rowKey = `${row.id}-${share.id ?? share.code ?? share.name ?? entry.operation.code}`;
                             const rowDetailId = `${rowKey}-details`;
                             const isRowExpanded = expandedRows[rowKey] ?? false;

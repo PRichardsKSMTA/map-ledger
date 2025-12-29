@@ -73,10 +73,25 @@ interface DistributionState {
   ) => Promise<number>;
 }
 
+const isEffectivelyZero = (value: number, tolerance = 0.0001): boolean =>
+  Math.abs(value) <= tolerance;
+
+const resolveDistributionStatusForSave = (
+  status: DistributionStatus,
+): DistributionStatus => (status === 'No balance' ? 'Distributed' : status);
+
+const isCompletedDistributionStatus = (status: DistributionStatus): boolean =>
+  status === 'Distributed' || status === 'No balance';
+
 const deriveDistributionStatus = (
   type: DistributionType,
   operations: DistributionRow['operations'],
+  activity: number,
 ): DistributionStatus => {
+  if (isEffectivelyZero(activity)) {
+    return 'No balance';
+  }
+
   if (type === 'direct') {
     return operations.length === 1 ? 'Distributed' : 'Undistributed';
   }
@@ -100,8 +115,30 @@ const deriveDistributionStatus = (
 
 const applyDistributionStatus = (row: DistributionRow): DistributionRow => ({
   ...row,
-  status: deriveDistributionStatus(row.type, row.operations),
+  status: deriveDistributionStatus(row.type, row.operations, row.activity),
 });
+
+export type DistributionProgress = {
+  totalRows: number;
+  distributedRows: number;
+  isComplete: boolean;
+};
+
+export const selectDistributionProgress = (state: DistributionState): DistributionProgress => {
+  const totalRows = state.rows.length;
+  const distributedRows = state.rows.filter(
+    row =>
+      isCompletedDistributionStatus(
+        deriveDistributionStatus(row.type, row.operations, row.activity),
+      ),
+  ).length;
+
+  return {
+    totalRows,
+    distributedRows,
+    isComplete: totalRows > 0 && distributedRows === totalRows,
+  };
+};
 
 const createBlankPercentageOperation = (): DistributionOperationShare => ({
   id: '',
@@ -242,7 +279,7 @@ const buildDistributionPayloadRows = (
     distributionType: row.type,
     presetGuid: row.presetId ?? null,
     presetDescription: row.description ?? row.accountId,
-    distributionStatus: row.status,
+    distributionStatus: resolveDistributionStatusForSave(row.status),
     operations: row.operations
       .map(buildOperationPayload)
       .filter((entry): entry is DistributionSaveOperation => Boolean(entry)),
@@ -267,7 +304,7 @@ const applySaveResults = (
       return row;
     }
     const match = lookup.get(row.accountId);
-    return {
+    const nextRow: DistributionRow = {
       ...row,
       presetId: match?.presetGuid ?? row.presetId,
       status: normalizeDistributionStatus(match?.distributionStatus ?? row.status),
@@ -275,6 +312,7 @@ const applySaveResults = (
       autoSaveState,
       autoSaveError: null,
     };
+    return applyDistributionStatus(nextRow);
   });
 };
 

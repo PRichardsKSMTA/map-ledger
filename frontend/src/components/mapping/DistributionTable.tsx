@@ -1,5 +1,6 @@
 import { ChangeEvent, Fragment, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronRight, HelpCircle, Loader2, X } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronRight, HelpCircle, Loader2, Minus, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import RatioAllocationManager from './RatioAllocationManager';
 import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
 import {
@@ -43,12 +44,14 @@ interface DistributionTableProps {
 const STATUS_DEFINITIONS: { value: DistributionStatus; label: string }[] = [
   { value: 'Undistributed', label: 'Undistributed' },
   { value: 'Distributed', label: 'Distributed' },
+  { value: 'No balance', label: 'No balance' },
 ];
 
 const STATUS_BADGE_CLASSES: Record<DistributionStatus, string> = {
   Undistributed:
     'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
   Distributed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200',
+  'No balance': 'bg-slate-200 text-slate-700 dark:bg-slate-700/60 dark:text-slate-200',
 };
 
 const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
@@ -84,9 +87,10 @@ const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
   operations: 'pr-6',
 };
 
-const STATUS_ICONS: Record<DistributionStatus, typeof Check | typeof HelpCircle> = {
+const STATUS_ICONS: Record<DistributionStatus, LucideIcon> = {
   Distributed: Check,
   Undistributed: HelpCircle,
+  'No balance': Minus,
 };
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
@@ -213,6 +217,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType,
     updateRowOperations,
     updateRowPreset,
+    applyBatchDistribution,
     queueAutoSave,
     setSaveContext,
     setOperationsCatalog,
@@ -226,6 +231,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType: state.updateRowType,
     updateRowOperations: state.updateRowOperations,
     updateRowPreset: state.updateRowPreset,
+    applyBatchDistribution: state.applyBatchDistribution,
     queueAutoSave: state.queueAutoSave,
     setSaveContext: state.setSaveContext,
     setOperationsCatalog: state.setOperationsCatalog,
@@ -608,19 +614,44 @@ const buildDistributionPresetLibraryEntries = (
   }, [editingRowId, operationsDraft, rows, sanitizeOperationsDraft, updateRowOperations]);
 
   const handleDirectOperationChange = (row: DistributionRow, operationId: string) => {
+    const hasBatchSelection = selectedIds.has(row.id) && selectedIds.size > 1;
     if (!operationId) {
-      updateRowOperations(row.id, []);
+      if (hasBatchSelection) {
+        applyBatchDistribution(Array.from(selectedIds), { operation: null });
+      } else {
+        updateRowOperations(row.id, []);
+      }
       return;
     }
     const catalogItem = operationsCatalog.find(item => item.id === operationId);
     if (!catalogItem) {
-      updateRowOperations(row.id, []);
+      if (hasBatchSelection) {
+        applyBatchDistribution(Array.from(selectedIds), { operation: null });
+      } else {
+        updateRowOperations(row.id, []);
+      }
       return;
     }
-    updateRowOperations(row.id, [
-      { id: catalogItem.id, code: catalogItem.code, name: catalogItem.name },
-    ]);
+    const operationShare = {
+      id: catalogItem.id,
+      code: catalogItem.code,
+      name: catalogItem.name,
+    };
+    if (hasBatchSelection) {
+      applyBatchDistribution(Array.from(selectedIds), { operation: operationShare });
+      return;
+    }
+    updateRowOperations(row.id, [operationShare]);
     queueAutoSave([row.id], { immediate: true });
+  };
+
+  const handleDistributionTypeChange = (rowId: string, type: DistributionType) => {
+    const hasBatchSelection = selectedIds.has(rowId) && selectedIds.size > 1;
+    if (hasBatchSelection) {
+      applyBatchDistribution(Array.from(selectedIds), { type });
+      return;
+    }
+    updateRowType(rowId, type);
   };
 
   const getAriaSort = (columnKey: SortKey): 'ascending' | 'descending' | 'none' => {
@@ -756,7 +787,12 @@ const buildDistributionPresetLibraryEntries = (
                       <select
                         id={`distribution-type-${row.id}`}
                         value={row.type}
-                        onChange={event => updateRowType(row.id, event.target.value as DistributionType)}
+                        onChange={event =>
+                          handleDistributionTypeChange(
+                            row.id,
+                            event.target.value as DistributionType
+                          )
+                        }
                         className="w-full min-w-[8rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                       >
                         {TYPE_OPTIONS.map(option => (

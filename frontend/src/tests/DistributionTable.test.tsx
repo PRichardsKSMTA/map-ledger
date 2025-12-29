@@ -1,11 +1,26 @@
 import { act, fireEvent, render, screen, within } from './testUtils';
 import DistributionTable from '../components/mapping/DistributionTable';
-import { useDistributionStore } from '../store/distributionStore';
+import { selectDistributionProgress, useDistributionStore } from '../store/distributionStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import type { DistributionRow, DistributionStatus } from '../types';
 
 const resetDistributionStore = () => {
-  useDistributionStore.setState({ rows: [], searchTerm: '', statusFilters: [] });
+  useDistributionStore.setState({
+    rows: [],
+    operationsCatalog: [],
+    searchTerm: '',
+    statusFilters: [],
+    currentEntityId: null,
+    currentUpdatedBy: null,
+    historyByAccount: {},
+    historyEntityId: null,
+    isAutoSaving: false,
+    autoSaveMessage: null,
+    isSavingDistributions: false,
+    saveError: null,
+    saveSuccess: null,
+    lastSavedCount: 0,
+  });
 };
 
 const resetOrganizationStore = () => {
@@ -139,6 +154,49 @@ const applyNormalizedStatusRows = () => {
   });
 };
 
+const NO_BALANCE_ROWS: DistributionRow[] = [
+  {
+    id: 'custom-row-no-balance',
+    mappingRowId: 'custom-mapping-3',
+    accountId: 'ACC-003',
+    description: 'No balance account description',
+    activity: 0,
+    type: 'direct',
+    operations: [],
+    presetId: null,
+    notes: undefined,
+    status: 'No balance',
+    isDirty: false,
+    autoSaveState: 'idle',
+    autoSaveError: null,
+  },
+  {
+    id: 'custom-row-distributed-2',
+    mappingRowId: 'custom-mapping-4',
+    accountId: 'ACC-004',
+    description: 'Another distributed account description',
+    activity: 150,
+    type: 'direct',
+    operations: [{ id: 'OP-002', code: 'OP-002', name: 'Operation 002' }],
+    presetId: null,
+    notes: undefined,
+    status: 'Distributed',
+    isDirty: false,
+    autoSaveState: 'idle',
+    autoSaveError: null,
+  },
+];
+
+const applyNoBalanceRows = () => {
+  act(() => {
+    useDistributionStore.setState({
+      rows: NO_BALANCE_ROWS,
+      searchTerm: '',
+      statusFilters: [],
+    });
+  });
+};
+
 describe('DistributionTable', () => {
   beforeEach(() => {
     resetDistributionStore();
@@ -214,6 +272,38 @@ describe('DistributionTable', () => {
     expect(await screen.findByText('Target operation')).toBeInTheDocument();
   });
 
+  test('treats zero-activity rows as distributed for completion calculations', () => {
+    resetDistributionStore();
+    act(() => {
+      useDistributionStore.setState(state => ({
+        ...state,
+        rows: [
+          {
+            id: 'row-zero',
+            mappingRowId: 'map-zero',
+            accountId: 'ZERO',
+            description: 'Zero activity row',
+            activity: 0,
+            type: 'direct',
+            operations: [],
+            presetId: null,
+            notes: undefined,
+            status: 'Undistributed',
+            isDirty: false,
+            autoSaveState: 'idle',
+            autoSaveError: null,
+          },
+        ],
+        searchTerm: '',
+        statusFilters: [],
+      }));
+    });
+
+    const progress = selectDistributionProgress(useDistributionStore.getState());
+    expect(progress.distributedRows).toBe(1);
+    expect(progress.isComplete).toBe(true);
+  });
+
   test('sorts distribution rows by activity when the column header is clicked', async () => {
     const { container } = render(<DistributionTable />);
     applyCustomDistributionRows();
@@ -250,6 +340,18 @@ describe('DistributionTable', () => {
     fireEvent.click(undistributedFilter);
     expect(screen.getByText('Undistributed account description')).toBeInTheDocument();
     expect(screen.queryByText('Distributed account description')).toBeNull();
+  });
+
+  test('filters distribution rows based on no balance status', async () => {
+    render(<DistributionTable />);
+    applyNoBalanceRows();
+    await screen.findByText('No balance account description');
+
+    const noBalanceFilter = screen.getByRole('button', { name: /^No balance$/i });
+    fireEvent.click(noBalanceFilter);
+
+    expect(screen.getByText('No balance account description')).toBeInTheDocument();
+    expect(screen.queryByText('Another distributed account description')).toBeNull();
   });
 
   test('status filter honors normalized status values before matching', async () => {

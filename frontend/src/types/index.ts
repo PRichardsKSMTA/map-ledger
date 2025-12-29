@@ -157,6 +157,7 @@ export interface ReconciliationSourceMapping {
   glAccountName: string;
   entityName?: string;
   companyName: string;
+  glMonth?: string | null;
   amount: number;
 }
 
@@ -532,7 +533,7 @@ export interface DistributionOperationShare {
   basisDatapoint?: string | null;
 }
 
-export type DistributionStatus = 'Distributed' | 'Undistributed';
+export type DistributionStatus = 'Distributed' | 'Undistributed' | 'No balance';
 
 export interface DistributionRow {
   id: string;

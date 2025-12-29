@@ -120,6 +120,34 @@ describe('mappingStore selectors', () => {
     );
   });
 
+  it('treats zero-balance GL accounts as mapped for coverage', () => {
+    const zeroBalanceAccount = buildMappingAccount({
+      id: 'acct-zero',
+      netChange: 0,
+      activity: 0,
+      mappingType: 'direct',
+      accountId: 'Z-100',
+      accountName: 'Zero Balance',
+      entityId: 'ent-1',
+      entityName: 'Entity One',
+    });
+
+    act(() => {
+      useMappingStore.setState(state => ({
+        ...state,
+        accounts: [zeroBalanceAccount],
+        activeEntityId: 'ent-1',
+        activeEntities: [{ id: 'ent-1', name: 'Entity One' }],
+        activeEntityIds: ['ent-1'],
+        activePeriod: null,
+      }));
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.totalAccounts).toBe(1);
+    expect(summary.mappedAccounts).toBe(1);
+  });
+
   it('recalculates totals when accounts are excluded', () => {
     act(() => {
       useMappingStore.getState().updateMappingType('acct-2', 'exclude');
@@ -563,6 +591,58 @@ describe('mappingStore selectors', () => {
     expect(filtered[1]).toEqual(
       expect.objectContaining({ accountId: '4000', glMonth: '2024-01-01', netChange: 150 }),
     );
+  });
+
+  it('scopes summary metrics to the active reporting period when selected', () => {
+    const mappedTarget =
+      findTargetByDescription('Revenue') ?? getChartOfAccountOptions()[0] ?? { id: '4100', value: '4100', label: '4100' };
+
+    const accounts: GLAccountMappingRow[] = [
+      buildMappingAccount({
+        id: 'acct-jan',
+        glMonth: '2024-01-01',
+        netChange: 1250,
+        activity: 1250,
+        accountName: 'January Revenue',
+        accountId: '4000',
+        status: 'Mapped',
+        manualCOAId: mappedTarget.id,
+      }),
+      buildMappingAccount({
+        id: 'acct-feb',
+        glMonth: '2024-02-01',
+        netChange: 875,
+        activity: 875,
+        accountName: 'February Revenue',
+        accountId: '4000',
+        status: 'Mapped',
+        manualCOAId: mappedTarget.id,
+      }),
+    ];
+
+    act(() => {
+      useMappingStore.setState(state => ({
+        ...state,
+        accounts,
+        activeEntityId: 'ent-1',
+        activeEntities: [{ id: 'ent-1', name: 'Entity One' }],
+        activeEntityIds: ['ent-1'],
+        activePeriod: null,
+      }));
+    });
+
+    const allSummary = selectSummaryMetrics(useMappingStore.getState());
+    expect(allSummary.totalAccounts).toBe(2);
+    expect(allSummary.grossTotal).toBe(2125);
+
+    act(() => {
+      useMappingStore.setState(state => ({ ...state, activePeriod: '2024-01-01' }));
+    });
+
+    const januarySummary = selectSummaryMetrics(useMappingStore.getState());
+    expect(januarySummary.totalAccounts).toBe(1);
+    expect(januarySummary.grossTotal).toBe(1250);
+    expect(januarySummary.mappedAccounts).toBe(1);
   });
 
   it('clears the mapping workspace when a client switch resets the import', () => {

@@ -4,6 +4,7 @@ import { useMappingStore } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 import { useDistributionStore } from '../store/distributionStore';
 import { exportOperationScoaWorkbook } from '../utils/exportScoaActivity';
+import type { GLAccountMappingRow } from '../types';
 
 jest.mock('../utils/exportScoaActivity', () => {
   const actual = jest.requireActual('../utils/exportScoaActivity');
@@ -26,6 +27,68 @@ const initialMappingSnapshot = (() => {
     activeStatuses: snapshot.activeStatuses.slice(),
   };
 })();
+
+const TEST_PERIOD = '2024-01-01';
+
+const buildMappedAccounts = (): GLAccountMappingRow[] => [
+  {
+    id: 'acct-linehaul',
+    entityId: 'entity-acme',
+    entityName: 'Acme Freight',
+    accountId: '4000',
+    accountName: 'Linehaul Revenue',
+    activity: 500000,
+    status: 'Mapped',
+    mappingType: 'direct',
+    netChange: 500000,
+    operation: 'Linehaul',
+    suggestedCOAId: '4000',
+    manualCOAId: '4000',
+    polarity: 'Credit',
+    splitDefinitions: [],
+    entities: [{ id: 'entity-acme', entity: 'Acme Freight', balance: 500000 }],
+    glMonth: TEST_PERIOD,
+  },
+  {
+    id: 'acct-ss-direct',
+    entityId: 'entity-acme',
+    entityName: 'Acme Freight',
+    accountId: '5300',
+    accountName: 'Shared Services Payroll',
+    activity: 60000,
+    status: 'Mapped',
+    mappingType: 'direct',
+    netChange: 60000,
+    operation: 'Shared Services',
+    suggestedCOAId: '5300',
+    manualCOAId: '5300',
+    polarity: 'Debit',
+    splitDefinitions: [],
+    entities: [{ id: 'entity-acme', entity: 'Acme Freight', balance: 60000 }],
+    glMonth: TEST_PERIOD,
+  },
+  {
+    id: 'acct-ss-split',
+    entityId: 'entity-acme',
+    entityName: 'Acme Freight',
+    accountId: '5200',
+    accountName: 'Payroll Taxes',
+    activity: 120000,
+    status: 'Mapped',
+    mappingType: 'direct',
+    netChange: 120000,
+    operation: 'Shared Services',
+    suggestedCOAId: '5200',
+    manualCOAId: '5200',
+    polarity: 'Debit',
+    splitDefinitions: [],
+    entities: [
+      { id: 'entity-acme', entity: 'Acme Freight', balance: 60000 },
+      { id: 'entity-acme-ops', entity: 'Acme Freight Ops', balance: 60000 },
+    ],
+    glMonth: TEST_PERIOD,
+  },
+];
 
 const initialRatioSnapshot = (() => {
   const snapshot = useRatioAllocationStore.getState();
@@ -69,13 +132,12 @@ const initialRatioSnapshot = (() => {
 
 const resetStores = () => {
   useMappingStore.setState({
-    accounts: initialMappingSnapshot.accounts.map(account => ({
-      ...account,
-      companies: account.companies.map(company => ({ ...company })),
-      splitDefinitions: account.splitDefinitions.map(split => ({ ...split })),
-    })),
+    accounts: buildMappedAccounts(),
     searchTerm: initialMappingSnapshot.searchTerm,
     activeStatuses: initialMappingSnapshot.activeStatuses.slice(),
+    activePeriod: TEST_PERIOD,
+    activeEntityId: 'entity-acme',
+    activeEntities: [{ id: 'entity-acme', name: 'Acme Freight' }],
   });
 
   useRatioAllocationStore.setState({
@@ -212,6 +274,57 @@ describe('ReviewPane', () => {
     expect(payrollRow).toBeInTheDocument();
     const allocatedCell = within(payrollRow!).getByText('$60,000');
     expect(allocatedCell).toBeInTheDocument();
+  });
+
+  test('hides rows with zero allocated activity', () => {
+    useMappingStore.setState(state => ({
+      ...state,
+      accounts: [
+        ...state.accounts,
+        {
+          id: 'acct-zero-activity',
+          entityId: 'entity-acme',
+          entityName: 'Acme Freight',
+          accountId: '5400',
+          accountName: 'Zero Activity Account',
+          activity: 0,
+          status: 'Mapped',
+          mappingType: 'direct',
+          netChange: 0,
+          operation: 'Shared Services',
+          suggestedCOAId: '5400',
+          manualCOAId: '5400',
+          polarity: 'Debit',
+          splitDefinitions: [],
+          entities: [{ id: 'entity-acme', entity: 'Acme Freight', balance: 0 }],
+          glMonth: TEST_PERIOD,
+        },
+      ],
+    }));
+
+    useDistributionStore.setState(state => ({
+      ...state,
+      rows: [
+        ...state.rows,
+        {
+          id: 'row-zero-activity',
+          mappingRowId: 'acct-zero-activity',
+          accountId: '5400',
+          description: 'Zero Activity Account',
+          activity: 0,
+          type: 'direct',
+          operations: [
+            { id: 'shared_services', code: 'Shared Services', name: 'Shared Services' },
+          ],
+          status: 'Distributed',
+        },
+      ],
+    }));
+
+    render(<ReviewPane />);
+
+    expect(screen.queryByText('Zero Activity Account')).not.toBeInTheDocument();
+    expect(screen.getByText(/\$120,000 total mapped activity/i)).toBeInTheDocument();
   });
 
   test('exports SCoA activity when export button is clicked', async () => {
