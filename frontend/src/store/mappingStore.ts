@@ -3441,7 +3441,13 @@ useRatioAllocationStore.subscribe(
       return;
     }
 
-    const mutatedAccountId = mutationChanged ? currentMutation?.accountId ?? null : null;
+    const mutationAccountIds = mutationChanged
+      ? currentMutation?.accountIds && currentMutation.accountIds.length > 0
+        ? currentMutation.accountIds
+        : currentMutation?.accountId
+          ? [currentMutation.accountId]
+          : []
+      : [];
     const { results, selectedPeriod, allocations, basisAccounts, groups, sourceAccounts } = state;
 
     useMappingStore.setState(currentState => {
@@ -3504,10 +3510,9 @@ useRatioAllocationStore.subscribe(
         return { ...account, dynamicExclusionAmount: resolvedAmount };
       });
 
-      const dirtyIds =
-        mutatedAccountId && nextAccounts.some(account => account.id === mutatedAccountId)
-          ? [mutatedAccountId]
-          : [];
+      const dirtyIds = mutationAccountIds.filter(id =>
+        nextAccounts.some(account => account.id === id),
+      );
 
       if (!changed && dirtyIds.length === 0) {
         return currentState;

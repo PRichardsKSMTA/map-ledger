@@ -36,6 +36,7 @@ const createId = (): string => {
 
 type DynamicAllocationMutation = {
   accountId: string;
+  accountIds?: string[];
   timestamp: number;
 };
 
@@ -117,6 +118,32 @@ const normalizeSourceAccountId = (value?: string | null): string | null => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
+
+const buildDynamicMutation = (
+  accountIds: string[],
+  previous?: DynamicAllocationMutation | null,
+): DynamicAllocationMutation | null => {
+  const normalized = Array.from(
+    new Set(accountIds.map(id => normalizeAccountId(id)).filter(Boolean)),
+  );
+  if (!normalized.length) {
+    return null;
+  }
+  const now = Date.now();
+  const timestamp =
+    previous && previous.timestamp >= now ? previous.timestamp + 1 : now;
+  return { accountId: normalized[0], accountIds: normalized, timestamp };
+};
+
+const getPresetAllocationSourceIds = (
+  allocations: RatioAllocation[],
+  presetId: string,
+): string[] =>
+  allocations
+    .filter(allocation =>
+      allocation.targetDatapoints.some(target => target.groupId === presetId),
+    )
+    .map(allocation => allocation.sourceAccount.id);
 
 const coerceFiniteNumber = (value?: number | null): number =>
   typeof value === 'number' && Number.isFinite(value) ? value : 0;
@@ -554,11 +581,13 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
   },
 
   updateAllocation: (id, allocation) => {
-    set(state => ({
-      allocations: state.allocations.map(item => {
+    set(state => {
+      let mutatedAccountId: string | null = null;
+      const allocations = state.allocations.map(item => {
         if (item.id !== id) {
           return item;
         }
+        mutatedAccountId = item.sourceAccount.id;
         const merged: RatioAllocation = {
           ...item,
           ...allocation,
@@ -579,7 +608,13 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
                 normalizeAccountId(rowItem.targetAccountId) === normalizeAccountId(target.datapointId),
             );
             return row
-              ? buildPresetTargetDatapoint(preset, row, state.basisAccounts, state.selectedPeriod, target)
+              ? buildPresetTargetDatapoint(
+                  preset,
+                  row,
+                  state.basisAccounts,
+                  state.selectedPeriod,
+                  target,
+                )
               : target;
           });
         }
@@ -589,14 +624,31 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           state.basisAccounts,
           state.selectedPeriod,
         );
-      }),
-    }));
+      });
+      const mutation = buildDynamicMutation(
+        mutatedAccountId ? [mutatedAccountId] : [],
+        state.lastDynamicMutation,
+      );
+      return {
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
+    });
   },
 
   deleteAllocation: id => {
-    set(state => ({
-      allocations: state.allocations.filter(allocation => allocation.id !== id),
-    }));
+    set(state => {
+      const removed = state.allocations.find(allocation => allocation.id === id);
+      const allocations = state.allocations.filter(allocation => allocation.id !== id);
+      const mutation = buildDynamicMutation(
+        removed ? [removed.sourceAccount.id] : [],
+        state.lastDynamicMutation,
+      );
+      return {
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
+    });
   },
 
   setAvailablePeriods: periods => {
@@ -1109,6 +1161,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
 
   updatePreset: (presetId, updates) => {
     set(state => {
+      const affectedAccountIds = getPresetAllocationSourceIds(state.allocations, presetId);
       const presets = state.presets.map(preset => {
         if (preset.id !== presetId) {
           return preset;
@@ -1124,12 +1177,22 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
       );
       const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
-      return { presets, groups, allocations };
+      const mutation = buildDynamicMutation(
+        affectedAccountIds,
+        state.lastDynamicMutation,
+      );
+      return {
+        presets,
+        groups,
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
     });
   },
 
   addPresetRow: (presetId, row, index) => {
     set(state => {
+      const affectedAccountIds = getPresetAllocationSourceIds(state.allocations, presetId);
       const presets = state.presets.map(preset => {
         if (preset.id !== presetId) {
           return preset;
@@ -1159,12 +1222,22 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
       );
       const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
-      return { presets, groups, allocations };
+      const mutation = buildDynamicMutation(
+        affectedAccountIds,
+        state.lastDynamicMutation,
+      );
+      return {
+        presets,
+        groups,
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
     });
   },
 
   updatePresetRow: (presetId, rowIndex, updates) => {
     set(state => {
+      const affectedAccountIds = getPresetAllocationSourceIds(state.allocations, presetId);
       const presets = state.presets.map(preset => {
         if (preset.id !== presetId) {
           return preset;
@@ -1205,12 +1278,22 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
       );
       const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
-      return { presets, groups, allocations };
+      const mutation = buildDynamicMutation(
+        affectedAccountIds,
+        state.lastDynamicMutation,
+      );
+      return {
+        presets,
+        groups,
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
     });
   },
 
   removePresetRow: (presetId, rowIndex) => {
     set(state => {
+      const affectedAccountIds = getPresetAllocationSourceIds(state.allocations, presetId);
       const presets = state.presets.map(preset => {
         if (preset.id !== presetId) {
           return preset;
@@ -1225,7 +1308,16 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         synchronizeAllocationTargets(allocation, presets, state.basisAccounts, state.selectedPeriod),
       );
       const groups = deriveGroups(presets, state.basisAccounts, state.selectedPeriod);
-      return { presets, groups, allocations };
+      const mutation = buildDynamicMutation(
+        affectedAccountIds,
+        state.lastDynamicMutation,
+      );
+      return {
+        presets,
+        groups,
+        allocations,
+        ...(mutation ? { lastDynamicMutation: mutation } : {}),
+      };
     });
   },
 
@@ -1342,11 +1434,13 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         return state;
       }
 
+      let mutatedAccountId: string | null = null;
       const allocations = state.allocations.map(allocation => {
         if (allocation.id !== allocationId) {
           return allocation;
         }
 
+        mutatedAccountId = allocation.sourceAccount.id;
         const exists = allocation.targetDatapoints.some(target => target.groupId === presetId);
         const nextTargets = exists
           ? allocation.targetDatapoints.filter(target => target.groupId !== presetId)
@@ -1368,7 +1462,17 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         );
       });
 
-      return { allocations };
+      const mutation = buildDynamicMutation(
+        mutatedAccountId ? [mutatedAccountId] : [],
+        state.lastDynamicMutation,
+      );
+      if (!mutation) {
+        return state;
+      }
+      return {
+        allocations,
+        lastDynamicMutation: mutation,
+      };
     });
   },
   toggleTargetExclusion: (allocationId, datapointId, presetId) => {
@@ -1408,16 +1512,17 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         );
       });
 
-      if (!mutatedAccountId) {
+      const mutation = buildDynamicMutation(
+        mutatedAccountId ? [mutatedAccountId] : [],
+        state.lastDynamicMutation,
+      );
+      if (!mutation) {
         return state;
       }
 
       return {
         allocations,
-        lastDynamicMutation: {
-          accountId: mutatedAccountId,
-          timestamp: Date.now(),
-        },
+        lastDynamicMutation: mutation,
       };
     });
   },
