@@ -48,6 +48,7 @@ interface DistributionState {
   updateRow: (id: string, updates: Partial<DistributionRow>) => void;
   updateRowType: (id: string, type: DistributionType) => void;
   updateRowOperations: (id: string, operations: DistributionRow['operations']) => void;
+  applyOperationsToRows: (ids: string[], operations: DistributionRow['operations']) => void;
   updateRowPreset: (id: string, presetId: string | null) => void;
   updateRowNotes: (id: string, notes: string) => void;
   setOperationsCatalog: (operations: DistributionOperationCatalogItem[]) => void;
@@ -601,6 +602,26 @@ const persistActivityForRows = async (
         ),
       }));
       queueRowsForAutoSave([id]);
+    },
+    applyOperationsToRows: (ids, operations) => {
+      if (!ids.length) {
+        return;
+      }
+      const idSet = new Set(ids);
+      set(state => ({
+        rows: state.rows.map(row =>
+          idSet.has(row.id)
+            ? applyDistributionStatus({
+                ...row,
+                operations,
+                isDirty: true,
+                autoSaveState: 'queued',
+                autoSaveError: null,
+              })
+            : row,
+        ),
+      }));
+      queueRowsForAutoSave(ids);
     },
     updateRowPreset: (id, presetId) => {
       set(state => ({

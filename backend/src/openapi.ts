@@ -60,7 +60,7 @@ const openApiSpec = {
       put: { summary: 'Replace client header mappings for specific template headers' }
     },
     '/file-records': {
-      get: { summary: 'List ingested file records for a file upload' }
+      get: { summary: 'List ingested file records for a file upload or client aggregation' }
     },
     '/file-records/ingest': {
       post: { summary: 'Ingest mapped file records for a file upload' }

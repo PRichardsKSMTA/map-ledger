@@ -433,18 +433,105 @@ const selectMostRecentNonZeroAccount = (
   return sortedByPeriod.find(account => account.netChange !== 0) ?? sortedByPeriod[0];
 };
 
+const buildAccountIdentityKey = (account: GLAccountMappingRow): string =>
+  `${account.entityId ?? ''}__${account.accountId ?? ''}`;
+
+const isUnmappedStatus = (status: MappingStatus): boolean =>
+  status === 'Unmapped' || status === 'New';
+
+const formatPeriodLabel = (period?: string | null): string | null => {
+  const normalized = normalizePeriod(period);
+  if (!normalized) {
+    return null;
+  }
+  const match = normalized.match(/^(\d{4}-\d{2})/);
+  return match ? match[1] : normalized;
+};
+
+const resolveAggregateStatus = (accounts: GLAccountMappingRow[]): MappingStatus => {
+  const statuses = new Set<MappingStatus>();
+  accounts.forEach(account => {
+    statuses.add(deriveMappingStatus(account));
+  });
+
+  if (statuses.size === 1) {
+    return statuses.values().next().value ?? 'Unmapped';
+  }
+
+  if (Array.from(statuses).some(isUnmappedStatus)) {
+    return 'Unmapped';
+  }
+
+  if (statuses.has('Mapped') && statuses.has('Excluded')) {
+    return 'Unmapped';
+  }
+
+  if (statuses.has('Mapped')) {
+    return 'Mapped';
+  }
+
+  if (statuses.has('Excluded')) {
+    return 'Excluded';
+  }
+
+  return 'Unmapped';
+};
+
+const buildUnmappedPeriodsByAccount = (
+  accounts: GLAccountMappingRow[],
+): Map<string, string[]> => {
+  const periodStatusLookup = new Map<string, Map<string, MappingStatus[]>>();
+
+  accounts.forEach(account => {
+    const periodKey = normalizePeriod(account.glMonth);
+    if (!periodKey) {
+      return;
+    }
+    const accountKey = buildAccountIdentityKey(account);
+    const periodLookup =
+      periodStatusLookup.get(accountKey) ?? new Map<string, MappingStatus[]>();
+    const statuses = periodLookup.get(periodKey) ?? [];
+    statuses.push(account.status);
+    periodLookup.set(periodKey, statuses);
+    periodStatusLookup.set(accountKey, periodLookup);
+  });
+
+  const unmappedLookup = new Map<string, string[]>();
+  periodStatusLookup.forEach((periodLookup, accountKey) => {
+    const unmappedPeriods = Array.from(periodLookup.entries())
+      .filter(([, statuses]) => statuses.some(isUnmappedStatus))
+      .map(([period]) => period)
+      .sort(comparePeriodsDescending)
+      .map(period => formatPeriodLabel(period))
+      .filter((period): period is string => Boolean(period));
+    unmappedLookup.set(accountKey, unmappedPeriods);
+  });
+
+  return unmappedLookup;
+};
+
 const buildMostRecentAccounts = (accounts: GLAccountMappingRow[]): GLAccountMappingRow[] => {
   const grouped = new Map<string, GLAccountMappingRow[]>();
 
   accounts.forEach(account => {
-    const key = `${account.entityId}__${account.accountId}`;
+    const key = buildAccountIdentityKey(account);
     const existing = grouped.get(key) ?? [];
     existing.push(account);
     grouped.set(key, existing);
   });
 
   return Array.from(grouped.values())
-    .map(selectMostRecentNonZeroAccount)
+    .map(groupedAccounts => {
+      const representative = selectMostRecentNonZeroAccount(groupedAccounts);
+      const aggregateStatus = resolveAggregateStatus(groupedAccounts);
+      if (representative.status === aggregateStatus) {
+        return representative;
+      }
+      return {
+        ...representative,
+        status: aggregateStatus,
+      };
+    })
     .sort((a, b) => {
       const periodComparison = comparePeriodsDescending(a.glMonth, b.glMonth);
       if (periodComparison !== 0) {
@@ -1297,9 +1384,26 @@ const normalizeEntitySummary = (entity: EntitySummary): EntitySummary => {
   return { ...entity, id, name };
 };
 
+const deriveEntitiesFromRows = (rows: TrialBalanceRow[]): EntitySummary[] => {
+  const lookup = new Map<string, EntitySummary>();
+  rows.forEach((row) => {
+    const rawId = row.entityId ?? null;
+    const id = rawId ? rawId.toString().trim() : '';
+    if (!id) {
+      return;
+    }
+    if (!lookup.has(id)) {
+      const name = row.entityName?.trim() || row.entity?.trim() || id;
+      lookup.set(id, { id, name });
+    }
+  });
+  return Array.from(lookup.values());
+};
+
 type FileRecordsResponse = {
   items?: FileRecord[];
   fileUploadGuid?: string;
+  clientId?: string;
   entities?: EntitySummary[];
   upload?: {
     fileName?: string | null;
@@ -1344,12 +1448,24 @@ interface MappingState {
   updatePolarity: (id: string, polarity: MappingPolarity) => void;
   updateNotes: (id: string, notes: string) => void;
   addSplitDefinition: (id: string) => void;
+  addSplitDefinitionForSelection: (ids: string[], sourceAccountId: string) => void;
   updateSplitDefinition: (
     accountId: string,
     splitId: string,
     updates: Partial<MappingSplitDefinition>
   ) => void;
+  updateSplitDefinitionForSelection: (
+    ids: string[],
+    sourceAccountId: string,
+    splitId: string,
+    updates: Partial<MappingSplitDefinition>
+  ) => void;
   removeSplitDefinition: (accountId: string, splitId: string) => void;
+  removeSplitDefinitionForSelection: (
+    ids: string[],
+    sourceAccountId: string,
+    splitId: string
+  ) => void;
   applyBatchMapping: (
     ids: string[],
     updates: {
@@ -1380,7 +1496,7 @@ interface MappingState {
     payload: { entityName: string; entityId?: string | null }
   ) => void;
   hydrateFromHistory: (
-    uploadGuid: string,
+    uploadGuid?: string | null,
     mode?: HydrationMode,
     entityIds?: string[],
   ) => Promise<void>;
@@ -1400,6 +1516,15 @@ interface MappingState {
     uploadGuid: string,
     options?: {
       clientId?: string | number | null;
+      entities?: EntitySummary[];
+      entityIds?: string[];
+      period?: string | null;
+      hydrateMode?: HydrationMode;
+    },
+  ) => Promise<void>;
+  fetchClientRecords: (
+    clientId: string,
+    options?: {
       entities?: EntitySummary[];
       entityIds?: string[];
       period?: string | null;
@@ -1508,6 +1633,11 @@ const normalizeClientId = (
   const clientIdString = typeof clientId === 'string' ? clientId : String(clientId);
   const trimmed = clientIdString.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildAggregateUploadId = (clientId?: string | number | null): string | null => {
+  const normalized = normalizeClientId(clientId);
+  return normalized ? `client-${normalized}` : null;
 };
 
 const initialAccounts: GLAccountMappingRow[] = [];
@@ -1826,14 +1956,14 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return state;
       }
 
-      // If viewing all periods, apply to all months of this account
-      // If viewing specific period, only apply to this row
       const shouldApplyToAll = state.activePeriod === null;
+      const targetAccountKey = buildAccountIdentityKey(targetAccount);
 
       const accounts = state.accounts.map(account => {
-        const isSameAccount = account.entityId === targetAccount.entityId &&
-                              account.accountId === targetAccount.accountId;
-        const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
+        const isSameAccount = buildAccountIdentityKey(account) === targetAccountKey;
+        const shouldUpdate = shouldApplyToAll
+          ? isSameAccount && account.mappingType === 'direct'
+          : account.id === id;
 
         if (!shouldUpdate) {
           return account;
@@ -2072,6 +2202,65 @@ export const useMappingStore = create<MappingState>((set, get) => {
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
+  addSplitDefinitionForSelection: (ids, sourceAccountId) =>
+    set(state => {
+      const dirtyIds: string[] = [];
+      if (!ids.length) {
+        return state;
+      }
+      const targetAccount = state.accounts.find(acc => acc.id === sourceAccountId);
+      if (!targetAccount || targetAccount.mappingType !== 'percentage') {
+        return state;
+      }
+
+      const shouldApplyToAll = state.activePeriod === null;
+      const keySet = shouldApplyToAll
+        ? new Set(
+            state.accounts
+              .filter(account => ids.includes(account.id))
+              .map(account => `${account.entityId}__${account.accountId}`),
+          )
+        : null;
+
+      const templateSplit = createBlankSplitDefinition();
+      const updatedTargetSplits = [...targetAccount.splitDefinitions, templateSplit];
+      const presetId = targetAccount.presetId ?? null;
+
+      const accounts = state.accounts.map(account => {
+        const matchesDirect = ids.includes(account.id);
+        const matchesKey = shouldApplyToAll
+          ? keySet?.has(`${account.entityId}__${account.accountId}`)
+          : false;
+
+        if (!matchesDirect && !matchesKey) {
+          return account;
+        }
+
+        const splitsToApply =
+          account.id === sourceAccountId
+            ? updatedTargetSplits
+            : cloneSplitDefinitionsForSelection(updatedTargetSplits);
+        const resolvedPresetId = presetId ?? undefined;
+
+        const updated = applyDerivedStatus({
+          ...account,
+          mappingType: 'percentage',
+          status: account.status === 'Excluded' ? 'Unmapped' : account.status,
+          presetId: resolvedPresetId,
+          splitDefinitions: splitsToApply,
+          dynamicExclusionAmount: undefined,
+        });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
+      });
+
+      updateDynamicBasisAccounts(accounts);
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      enqueueDirtyIds(dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
+    }),
   updateSplitDefinition: (accountId, splitId, updates) =>
     set(state => {
       const dirtyIds: string[] = [];
@@ -2120,6 +2309,71 @@ export const useMappingStore = create<MappingState>((set, get) => {
                 }
               : split,
           ),
+        });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
+        }
+        return updated;
+      });
+
+      updateDynamicBasisAccounts(accounts);
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      enqueueDirtyIds(dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
+    }),
+  updateSplitDefinitionForSelection: (ids, sourceAccountId, splitId, updates) =>
+    set(state => {
+      const dirtyIds: string[] = [];
+      if (!ids.length) {
+        return state;
+      }
+      const targetAccount = state.accounts.find(acc => acc.id === sourceAccountId);
+      if (!targetAccount) {
+        return state;
+      }
+
+      const shouldApplyToAll = state.activePeriod === null;
+      const keySet = shouldApplyToAll
+        ? new Set(
+            state.accounts
+              .filter(account => ids.includes(account.id))
+              .map(account => `${account.entityId}__${account.accountId}`),
+          )
+        : null;
+
+      const updatedTargetSplits = targetAccount.splitDefinitions.map(split =>
+        split.id === splitId
+          ? {
+              ...split,
+              ...updates,
+            }
+          : split,
+      );
+      const presetId = targetAccount.presetId ?? null;
+
+      const accounts = state.accounts.map(account => {
+        const matchesDirect = ids.includes(account.id);
+        const matchesKey = shouldApplyToAll
+          ? keySet?.has(`${account.entityId}__${account.accountId}`)
+          : false;
+
+        if (!matchesDirect && !matchesKey) {
+          return account;
+        }
+
+        const splitsToApply =
+          account.id === sourceAccountId
+            ? updatedTargetSplits
+            : cloneSplitDefinitionsForSelection(updatedTargetSplits);
+        const resolvedPresetId = presetId ?? undefined;
+
+        const updated = applyDerivedStatus({
+          ...account,
+          mappingType: 'percentage',
+          status: account.status === 'Excluded' ? 'Unmapped' : account.status,
+          presetId: resolvedPresetId,
+          splitDefinitions: splitsToApply,
+          dynamicExclusionAmount: undefined,
         });
         if (updated !== account) {
           dirtyIds.push(account.id);
@@ -2189,71 +2443,205 @@ export const useMappingStore = create<MappingState>((set, get) => {
         removedPresetDetailRecordIds: nextRemoved,
       };
     }),
-  applyBatchMapping: (ids, updates) =>
+  removeSplitDefinitionForSelection: (ids, sourceAccountId, splitId) =>
     set(state => {
       const dirtyIds: string[] = [];
+      if (!ids.length) {
+        return state;
+      }
+      const targetAccount = state.accounts.find(acc => acc.id === sourceAccountId);
+      if (!targetAccount) {
+        return state;
+      }
+
+      const splitToRemove = targetAccount.splitDefinitions.find(split => split.id === splitId);
+      const nextRemoved = new Set(state.removedPresetDetailRecordIds);
+      if (splitToRemove?.recordId) {
+        nextRemoved.add(splitToRemove.recordId);
+      }
+
+      const shouldApplyToAll = state.activePeriod === null;
+      const keySet = shouldApplyToAll
+        ? new Set(
+            state.accounts
+              .filter(account => ids.includes(account.id))
+              .map(account => `${account.entityId}__${account.accountId}`),
+          )
+        : null;
+
+      const updatedTargetSplits = targetAccount.splitDefinitions.filter(
+        split => split.id !== splitId,
+      );
+      const presetId = targetAccount.presetId ?? null;
+
       const accounts = state.accounts.map(account => {
-        if (!ids.includes(account.id)) {
+        const matchesDirect = ids.includes(account.id);
+        const matchesKey = shouldApplyToAll
+          ? keySet?.has(`${account.entityId}__${account.accountId}`)
+          : false;
+
+        if (!matchesDirect && !matchesKey) {
           return account;
         }
 
-        const next: GLAccountMappingRow = { ...account };
+        const splitsToApply =
+          account.id === sourceAccountId
+            ? updatedTargetSplits
+            : cloneSplitDefinitionsForSelection(updatedTargetSplits);
+        const resolvedPresetId = presetId ?? undefined;
 
-        if ('target' in updates) {
-          next.manualCOAId = updates.target || undefined;
+        const updated = applyDerivedStatus({
+          ...account,
+          mappingType: 'percentage',
+          status: account.status === 'Excluded' ? 'Unmapped' : account.status,
+          presetId: resolvedPresetId,
+          splitDefinitions: splitsToApply,
+          dynamicExclusionAmount: undefined,
+        });
+        if (updated !== account) {
+          dirtyIds.push(account.id);
         }
-        if (updates.mappingType) {
-          next.mappingType = updates.mappingType;
-          if (updates.mappingType === 'exclude') {
-            next.splitDefinitions = [];
-            next.status = 'Excluded';
-            next.manualCOAId = undefined;
-            next.presetId = undefined;
-            next.dynamicExclusionAmount = undefined;
-          } else if (updates.mappingType === 'percentage') {
-            next.splitDefinitions = ensureMinimumPercentageSplits(
-              next.splitDefinitions,
-            );
-          } else if (next.status === 'Excluded') {
-            next.status = 'Unmapped';
+        return updated;
+      });
+
+      updateDynamicBasisAccounts(accounts);
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      enqueueDirtyIds(dirtyIds);
+      return {
+        accounts,
+        dirtyMappingIds,
+        rowSaveStatuses,
+        removedPresetDetailRecordIds: nextRemoved,
+      };
+    }),
+  applyBatchMapping: (ids, updates) =>
+    set(state => {
+      const dirtyIds: string[] = [];
+      const selectedIds = new Set(ids);
+      const hasTargetUpdate = Object.prototype.hasOwnProperty.call(updates, 'target');
+      const shouldPropagateTarget = state.activePeriod === null && hasTargetUpdate;
+      const selectedKeys = shouldPropagateTarget
+        ? new Set(
+            ids
+              .map(id => state.accounts.find(account => account.id === id))
+              .filter((account): account is GLAccountMappingRow => Boolean(account))
+              .map(buildAccountIdentityKey),
+          )
+        : new Set<string>();
+      const hasOtherUpdates =
+        Boolean(updates.mappingType) ||
+        Object.prototype.hasOwnProperty.call(updates, 'presetId') ||
+        Boolean(updates.polarity) ||
+        Boolean(updates.status);
+
+      const accounts = state.accounts.map(account => {
+        const isSelected = selectedIds.has(account.id);
+        const accountKey = buildAccountIdentityKey(account);
+        const matchesKey = shouldPropagateTarget && selectedKeys.has(accountKey);
+
+        if (!isSelected && !matchesKey) {
+          return account;
+        }
+
+        let next: GLAccountMappingRow | null = null;
+        let didUpdateTarget = false;
+
+        if (hasTargetUpdate) {
+          if (shouldPropagateTarget) {
+            const canApplyTarget =
+              account.mappingType === 'direct';
+            if (canApplyTarget) {
+              const resolvedTarget = updates.target || undefined;
+              if (account.manualCOAId !== resolvedTarget) {
+                next = { ...account, manualCOAId: resolvedTarget };
+                didUpdateTarget = true;
+              }
+            }
+          } else if (isSelected) {
+            const resolvedTarget = updates.target || undefined;
+            if (account.manualCOAId !== resolvedTarget) {
+              next = { ...account, manualCOAId: resolvedTarget };
+              didUpdateTarget = true;
+            }
           }
         }
-        if ('presetId' in updates) {
-          next.presetId = updates.presetId || undefined;
+
+        if (!isSelected) {
+          if (!didUpdateTarget || !next) {
+            return account;
+          }
+          const updated = applyDerivedStatus(next);
+          if (updated !== account) {
+            dirtyIds.push(account.id);
+          }
+          return updated;
+        }
+
+        if (!hasOtherUpdates && !didUpdateTarget && !next) {
+          return account;
+        }
+
+        const updatedEntry: GLAccountMappingRow = next ?? { ...account };
+
+        if (updates.mappingType) {
+          updatedEntry.mappingType = updates.mappingType;
+          if (updates.mappingType === 'exclude') {
+            updatedEntry.splitDefinitions = [];
+            updatedEntry.status = 'Excluded';
+            updatedEntry.manualCOAId = undefined;
+            updatedEntry.presetId = undefined;
+            updatedEntry.dynamicExclusionAmount = undefined;
+          } else if (updates.mappingType === 'percentage') {
+            updatedEntry.splitDefinitions = ensureMinimumPercentageSplits(
+              updatedEntry.splitDefinitions,
+            );
+          } else if (updatedEntry.status === 'Excluded') {
+            updatedEntry.status = 'Unmapped';
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(updates, 'presetId')) {
+          updatedEntry.presetId = updates.presetId || undefined;
           if (updates.presetId && !updates.mappingType) {
-            if (next.mappingType === 'exclude') {
-              next.mappingType = 'percentage';
+            if (updatedEntry.mappingType === 'exclude') {
+              updatedEntry.mappingType = 'percentage';
             }
-            if (next.status === 'Excluded') {
-              next.status = 'Unmapped';
+            if (updatedEntry.status === 'Excluded') {
+              updatedEntry.status = 'Unmapped';
             }
           }
         }
         if (updates.polarity) {
-          next.polarity = updates.polarity;
+          updatedEntry.polarity = updates.polarity;
         }
         if (updates.status) {
-          next.status = updates.status;
+          updatedEntry.status = updates.status;
           if (updates.status === 'Excluded') {
-            next.mappingType = 'exclude';
-            next.manualCOAId = undefined;
-            next.presetId = undefined;
-            next.splitDefinitions = [];
-            next.dynamicExclusionAmount = undefined;
-          } else if (next.mappingType === 'exclude') {
-            next.mappingType = 'direct';
+            updatedEntry.mappingType = 'exclude';
+            updatedEntry.manualCOAId = undefined;
+            updatedEntry.presetId = undefined;
+            updatedEntry.splitDefinitions = [];
+            updatedEntry.dynamicExclusionAmount = undefined;
+          } else if (updatedEntry.mappingType === 'exclude') {
+            updatedEntry.mappingType = 'direct';
           }
-        } else if (updates.mappingType && updates.mappingType !== 'exclude' && next.status === 'Excluded') {
-          next.status = 'Unmapped';
+        } else if (
+          updates.mappingType &&
+          updates.mappingType !== 'exclude' &&
+          updatedEntry.status === 'Excluded'
+        ) {
+          updatedEntry.status = 'Unmapped';
         }
-        if (next.mappingType !== 'percentage' && next.mappingType !== 'dynamic') {
-          next.splitDefinitions = [];
-          next.dynamicExclusionAmount = undefined;
+        if (
+          updatedEntry.mappingType !== 'percentage' &&
+          updatedEntry.mappingType !== 'dynamic'
+        ) {
+          updatedEntry.splitDefinitions = [];
+          updatedEntry.dynamicExclusionAmount = undefined;
         }
-        if (next.mappingType !== 'dynamic') {
-          next.dynamicExclusionAmount = undefined;
+        if (updatedEntry.mappingType !== 'dynamic') {
+          updatedEntry.dynamicExclusionAmount = undefined;
         }
-        const updated = applyDerivedStatus(next);
+        const updated = applyDerivedStatus(updatedEntry);
         if (updated !== account) {
           dirtyIds.push(account.id);
         }
@@ -2833,20 +3221,6 @@ export const useMappingStore = create<MappingState>((set, get) => {
       mergedEntities[0]?.id ??
       null;
 
-    const scopedAccounts = getAccountsForEntity(
-      resolvedAccounts,
-      resolvedActiveEntityId,
-    );
-    const periodSourceAccounts =
-      scopedAccounts.length > 0 ? scopedAccounts : resolvedAccounts;
-    const availablePeriods = getPeriodsForAccounts(periodSourceAccounts);
-    const resolvedPeriod =
-      normalizedPeriod && (availablePeriods.length === 0 || availablePeriods.includes(normalizedPeriod))
-        ? normalizedPeriod
-        : availablePeriods.length === 1
-          ? availablePeriods[0] ?? null
-          : null;
-
     set({
       accounts: resolvedAccounts,
       dirtyMappingIds: new Set<string>(),
@@ -2860,7 +3234,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       activeEntityId: resolvedActiveEntityId,
       activeEntityIds: resolvedEntityIds,
       activeEntities: mergedEntities,
-      activePeriod: resolvedPeriod,
+      activePeriod: null,
     });
 
     syncDynamicAllocationState(resolvedAccounts, rows, normalizedPeriod);
@@ -2871,18 +3245,42 @@ export const useMappingStore = create<MappingState>((set, get) => {
       return;
     }
 
+    const normalizedClientId = normalizeClientId(options?.clientId ?? null);
+
+    if (normalizedClientId && get().activeClientId && get().activeClientId !== normalizedClientId) {
+      get().clearWorkspace();
+    }
+
     set({ isLoadingFromApi: true, apiError: null });
 
     try {
       const params = new URLSearchParams({ fileUploadGuid: uploadGuid });
+      if (normalizedClientId) {
+        params.set('clientId', normalizedClientId);
+      }
       const response = await fetch(`${API_BASE_URL}/file-records?${params.toString()}`);
       if (!response.ok) {
+        if (response.status === 404 && normalizedClientId) {
+          await get().fetchClientRecords(normalizedClientId, {
+            entities: options?.entities,
+            entityIds: options?.entityIds,
+            period: options?.period,
+            hydrateMode: options?.hydrateMode,
+          });
+          return;
+        }
         throw new Error(`Failed to load file records (${response.status})`);
       }
 
       const payload = (await response.json()) as FileRecordsResponse;
+      const activeClientId = get().activeClientId;
+      if (normalizedClientId && activeClientId && activeClientId !== normalizedClientId) {
+        set({ isLoadingFromApi: false });
+        return;
+      }
       const records = payload.items ?? [];
-      const entities = payload.entities ?? options?.entities ?? [];
+      const payloadEntities = payload.entities ?? null;
+      const entities = payloadEntities ?? options?.entities ?? [];
       const normalizedEntities = entities.map(normalizeEntitySummary);
       const uploadMetadata =
         payload.upload ??
@@ -2908,12 +3306,19 @@ export const useMappingStore = create<MappingState>((set, get) => {
         };
       });
 
+      const derivedEntities = deriveEntitiesFromRows(rows);
+      const resolvedEntities =
+        payloadEntities && normalizedEntities.length > 0
+          ? normalizedEntities
+          : derivedEntities.length > 0
+            ? derivedEntities
+            : normalizedEntities;
+
       const latestNormalizedPeriod = findLatestNormalizedGlMonth(rows);
       const fallbackPeriod = rows.find((row) => row.glMonth)?.glMonth ?? null;
       const preferredPeriod =
         options?.period ?? latestNormalizedPeriod ?? fallbackPeriod;
 
-      const normalizedClientId = normalizeClientId(options?.clientId ?? null);
       const normalizedEntityIds = options?.entityIds
         ?.map(id => id?.toString().trim())
         .filter((id): id is string => Boolean(id && id.length > 0));
@@ -2923,8 +3328,8 @@ export const useMappingStore = create<MappingState>((set, get) => {
         clientId: normalizedClientId,
         entityIds:
           normalizedEntityIds ??
-          (normalizedEntities.length > 0 ? normalizedEntities.map(entity => entity.id) : undefined),
-        entities: normalizedEntities,
+          (resolvedEntities.length > 0 ? resolvedEntities.map(entity => entity.id) : undefined),
+        entities: resolvedEntities,
         period: preferredPeriod,
         rows,
         uploadMetadata: uploadMetadata
@@ -2938,7 +3343,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
 
       const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';
       const hydrateEntityIds =
-        normalizedEntityIds ?? normalizedEntities.map(entity => entity.id);
+        normalizedEntityIds ?? resolvedEntities.map(entity => entity.id);
       await get().hydrateFromHistory(uploadGuid, hydrateMode, hydrateEntityIds);
 
       set({ isLoadingFromApi: false, apiError: null });
@@ -2948,6 +3353,116 @@ export const useMappingStore = create<MappingState>((set, get) => {
         isLoadingFromApi: false,
         apiError:
           error instanceof Error ? error.message : 'Failed to load file records',
+      });
+    }
+  },
+  fetchClientRecords: async (clientId, options) => {
+    const normalizedClientId = normalizeClientId(clientId);
+    if (!normalizedClientId) {
+      return;
+    }
+
+    if (get().activeClientId && get().activeClientId !== normalizedClientId) {
+      get().clearWorkspace();
+    }
+
+    set({ isLoadingFromApi: true, apiError: null });
+
+    try {
+      const params = new URLSearchParams({ clientId: normalizedClientId });
+      const response = await fetch(`${API_BASE_URL}/file-records?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to load client file records (${response.status})`);
+      }
+
+      const payload = (await response.json()) as FileRecordsResponse;
+      const activeClientId = get().activeClientId;
+      if (activeClientId && activeClientId !== normalizedClientId) {
+        set({ isLoadingFromApi: false });
+        return;
+      }
+
+      const records = payload.items ?? [];
+      const payloadEntities = payload.entities ?? null;
+      const entities = payloadEntities ?? options?.entities ?? [];
+      const normalizedEntities = entities.map(normalizeEntitySummary);
+      const latestUploadMetadata =
+        payload.upload ??
+        (payload.fileName || payload.uploadedAt
+          ? { fileName: payload.fileName, uploadedAt: payload.uploadedAt }
+          : null);
+      const aggregateUploadId = buildAggregateUploadId(normalizedClientId);
+      const uploadMetadata = aggregateUploadId
+        ? {
+            uploadId: aggregateUploadId,
+            fileName: 'All uploads',
+            uploadedAt: latestUploadMetadata?.uploadedAt ?? null,
+          }
+        : null;
+
+      logDebug('Fetched client file records', {
+        count: records.length,
+        clientId: normalizedClientId,
+      });
+
+      const entityNameLookup = new Map(normalizedEntities.map(entity => [entity.id, entity.name]));
+
+      const rows: TrialBalanceRow[] = records.map((record) => {
+        const entityId = record.entityId ? String(record.entityId).trim() : null;
+        const entityName =
+          record.entityName?.trim() ?? (entityId ? entityNameLookup.get(entityId) ?? null : null);
+        return {
+          entity: entityName ?? entityId ?? '',
+          entityId,
+          entityName,
+          accountId: record.accountId,
+          description: record.accountName,
+          netChange: record.activityAmount ?? 0,
+          glMonth: record.glMonth ?? undefined,
+        };
+      });
+
+      const derivedEntities = deriveEntitiesFromRows(rows);
+      const resolvedEntities =
+        payloadEntities && normalizedEntities.length > 0
+          ? normalizedEntities
+          : derivedEntities.length > 0
+            ? derivedEntities
+            : normalizedEntities;
+
+      const latestNormalizedPeriod = findLatestNormalizedGlMonth(rows);
+      const fallbackPeriod = rows.find((row) => row.glMonth)?.glMonth ?? null;
+      const preferredPeriod =
+        options?.period ?? latestNormalizedPeriod ?? fallbackPeriod;
+
+      const normalizedEntityIds = options?.entityIds
+        ?.map(id => id?.toString().trim())
+        .filter((id): id is string => Boolean(id && id.length > 0));
+
+      get().loadImportedAccounts({
+        uploadId: aggregateUploadId ?? normalizedClientId,
+        clientId: normalizedClientId,
+        entityIds:
+          normalizedEntityIds ??
+          (resolvedEntities.length > 0 ? resolvedEntities.map(entity => entity.id) : undefined),
+        entities: resolvedEntities,
+        period: preferredPeriod,
+        rows,
+        uploadMetadata,
+      });
+
+      const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';
+      const hydrateEntityIds =
+        normalizedEntityIds ?? resolvedEntities.map(entity => entity.id);
+      await get().hydrateFromHistory(null, hydrateMode, hydrateEntityIds);
+
+      set({ isLoadingFromApi: false, apiError: null });
+    } catch (error) {
+      logError('Unable to load client file records', error);
+      set({
+        isLoadingFromApi: false,
+        apiError:
+          error instanceof Error ? error.message : 'Failed to load client file records',
       });
     }
   },
@@ -2973,6 +3488,15 @@ const createBlankSplitDefinition = (): MappingSplitDefinition => ({
   isExclusion: false,
   recordId: null,
 });
+
+const cloneSplitDefinitionsForSelection = (
+  splits: MappingSplitDefinition[],
+): MappingSplitDefinition[] =>
+  splits.map(split => ({
+    ...split,
+    id: createId(),
+    recordId: null,
+  }));
 
 const ensureMinimumPercentageSplits = (
   splits: MappingSplitDefinition[],
@@ -3312,10 +3836,24 @@ export const selectActivePeriod = (state: MappingState): string | null => state.
 export const selectAvailableEntities = (
   state: MappingState,
 ): EntitySummary[] => {
-  if (state.activeEntities.length > 0) {
-    return state.activeEntities;
+  const baseEntities =
+    state.activeEntities.length > 0
+      ? state.activeEntities
+      : deriveEntitySummaries(state.accounts);
+
+  if (baseEntities.length === 0) {
+    return baseEntities;
   }
-  return deriveEntitySummaries(state.accounts);
+
+  const entityIdsWithAccounts = new Set<string>();
+  state.accounts.forEach((account) => {
+    const entityId = account.entityId?.trim();
+    if (entityId) {
+      entityIdsWithAccounts.add(entityId);
+    }
+  });
+
+  return baseEntities.filter((entity) => entityIdsWithAccounts.has(entity.id));
 };
 
 type EntityMappingProgress = {
@@ -3398,6 +3936,10 @@ export const selectAccountHasMultiplePeriods = (
   });
   return periods.size > 1;
 };
+
+export const selectUnmappedPeriodsByAccount = (
+  state: MappingState,
+): Map<string, string[]> => buildUnmappedPeriodsByAccount(state.accounts);
 
 export const calculateSplitPercentage = (
   account: GLAccountMappingRow,

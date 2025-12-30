@@ -70,7 +70,7 @@ export interface NewClientFileRecord {
 
 interface RawClientFileRow {
   fileUploadGuid: string;
-  clientId: string;
+  clientId: string | number;
   clientName?: string;
   insertedBy?: string;
   insertedDttm?: string | Date;
@@ -182,11 +182,13 @@ const mapClientFileRow = (row: RawClientFileRow): ClientFileRecord => {
   const insertedDttm = parseDate(row.insertedDttm);
   const normalizedStart = normalizeMonth(row.glPeriodStart);
   const normalizedEnd = normalizeMonth(row.glPeriodEnd);
+  const normalizedClientId =
+    typeof row.clientId === 'string' ? row.clientId.trim() : `${row.clientId}`.trim();
 
   return {
     id: row.fileUploadGuid,
     fileUploadGuid: row.fileUploadGuid,
-    clientId: row.clientId,
+    clientId: normalizedClientId,
     clientName: row.clientName,
     insertedBy: row.insertedBy,
     importedBy: row.insertedBy,
@@ -227,6 +229,39 @@ export const getClientFileByGuid = async (
     WHERE cf.FILE_UPLOAD_GUID = @fileUploadGuid
       AND cf.IS_DELETED = 0`,
     { fileUploadGuid }
+  );
+
+  const row = result.recordset?.[0];
+  return row ? mapClientFileRow(row) : null;
+};
+
+export const getLatestClientFile = async (
+  clientId: string,
+): Promise<ClientFileRecord | null> => {
+  const normalizedClientId = clientId.trim();
+  if (!normalizedClientId) {
+    return null;
+  }
+
+  const result = await runQuery<RawClientFileRow>(
+    `SELECT TOP 1
+      cf.FILE_UPLOAD_GUID as fileUploadGuid,
+      cf.CLIENT_ID as clientId,
+      client.CLIENT_NAME as clientName,
+      cf.INSERTED_BY as insertedBy,
+      cf.INSERTED_DTTM as insertedDttm,
+      cf.SOURCE_FILE_NAME as sourceFileName,
+      cf.FILE_STORAGE_URI as fileStorageUri,
+      cf.FILE_STATUS as fileStatus,
+      cf.GL_PERIOD_START as glPeriodStart,
+      cf.GL_PERIOD_END as glPeriodEnd,
+      cf.LAST_STEP_COMPLETED_DTTM as lastStepCompletedDttm
+    FROM ml.CLIENT_FILES cf
+    ${CLIENT_OPERATIONS_JOIN}
+    WHERE cf.CLIENT_ID = @clientId
+      AND cf.IS_DELETED = 0
+    ORDER BY COALESCE(cf.LAST_STEP_COMPLETED_DTTM, cf.INSERTED_DTTM) DESC`,
+    { clientId: normalizedClientId },
   );
 
   const row = result.recordset?.[0];

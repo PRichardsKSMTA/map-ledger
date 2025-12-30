@@ -25,6 +25,7 @@ import {
   selectSearchTerm,
   selectSplitValidationIssues,
   selectAvailablePeriods,
+  selectUnmappedPeriodsByAccount,
   useMappingStore,
 } from '../../store/mappingStore';
 import { useTemplateStore } from '../../store/templateStore';
@@ -159,6 +160,7 @@ export default function MappingTable() {
   const accounts = useMappingStore(selectFilteredAccounts);
   const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore((state) => state.activePeriod);
+  const unmappedPeriodsByAccount = useMappingStore(selectUnmappedPeriodsByAccount);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const dirtyMappingIds = useMappingStore((state) => state.dirtyMappingIds);
@@ -175,18 +177,23 @@ export default function MappingTable() {
     () => presetLibrary.filter(entry => entry.type === 'percentage'),
     [presetLibrary],
   );
-  const dynamicPresetOptions = useMemo(
-    () => presetLibrary.filter(entry => entry.type === 'dynamic'),
-    [presetLibrary],
-  );
   const addSplitDefinition = useMappingStore(
     (state) => state.addSplitDefinition
+  );
+  const addSplitDefinitionForSelection = useMappingStore(
+    (state) => state.addSplitDefinitionForSelection
   );
   const updateSplitDefinition = useMappingStore(
     (state) => state.updateSplitDefinition
   );
+  const updateSplitDefinitionForSelection = useMappingStore(
+    (state) => state.updateSplitDefinitionForSelection
+  );
   const removeSplitDefinition = useMappingStore(
     (state) => state.removeSplitDefinition
+  );
+  const removeSplitDefinitionForSelection = useMappingStore(
+    (state) => state.removeSplitDefinitionForSelection
   );
   const { selectedIds, toggleSelection, setSelection, clearSelection } =
     useMappingSelectionStore();
@@ -323,12 +330,15 @@ export default function MappingTable() {
 
   const getDisplayStatus = useMemo(() => {
     return (account: GLAccountMappingRow): MappingStatus => {
+      if (!activePeriod) {
+        return account.status;
+      }
       if (account.mappingType === 'dynamic') {
         return dynamicStatusByAccount.get(account.id) ?? 'Unmapped';
       }
       return account.status;
     };
-  }, [dynamicStatusByAccount]);
+  }, [activePeriod, dynamicStatusByAccount]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
@@ -388,7 +398,7 @@ export default function MappingTable() {
   ) => {
     const hasBatchSelection = selectedIds.has(account.id) && selectedIds.size > 1;
     if (hasBatchSelection) {
-      applyBatchMapping(Array.from(selectedIds), { target: nextValue || null });
+      applyBatchMapping(selectedIdList, { target: nextValue || null });
       return;
     }
 
@@ -407,13 +417,23 @@ export default function MappingTable() {
   const handleMappingTypeChange = (accountId: string, nextType: MappingType) => {
     const hasBatchSelection = selectedIds.has(accountId) && selectedIds.size > 1;
     if (hasBatchSelection) {
-      applyBatchMapping(Array.from(selectedIds), { mappingType: nextType });
+      applyBatchMapping(selectedIdList, { mappingType: nextType });
       return;
     }
     updateMappingType(accountId, nextType);
   };
 
   const derivedSelectedPeriod = activePeriod ?? selectedPeriod ?? null;
+  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const dynamicPresetSelectionIds = useMemo(() => {
+    if (!activeDynamicAccountId) {
+      return [];
+    }
+    if (selectedIds.has(activeDynamicAccountId) && selectedIds.size > 1) {
+      return selectedIdList;
+    }
+    return [activeDynamicAccountId];
+  }, [activeDynamicAccountId, selectedIdList, selectedIds]);
 
   const dynamicExclusionSummaries = useMemo(
     () =>
@@ -547,6 +567,7 @@ export default function MappingTable() {
               }
 
               const isSelected = selectedIds.has(account.id);
+              const hasBatchSelection = isSelected && selectedIds.size > 1;
               const isDirty = dirtyMappingIds.has(account.id);
               const targetScoa =
                 account.manualCOAId ?? account.suggestedCOAId ?? '';
@@ -562,6 +583,16 @@ export default function MappingTable() {
                     )
                   : account.splitDefinitions.length > 0 && !hasSplitIssue;
               const displayStatus = getDisplayStatus(account);
+              const accountKey = `${account.entityId ?? ''}__${account.accountId ?? ''}`;
+              const unmappedPeriods =
+                !activePeriod && displayStatus === 'Unmapped'
+                  ? (unmappedPeriodsByAccount.get(accountKey) ?? [])
+                  : [];
+              const hasUnmappedPeriods = !activePeriod && unmappedPeriods.length > 0;
+              const statusTooltip = hasUnmappedPeriods
+                ? `Unmapped periods: ${unmappedPeriods.join(', ')}`
+                : undefined;
+              const displayTargetScoa = hasUnmappedPeriods ? '' : targetScoa;
               const statusLabel = STATUS_LABELS[displayStatus];
               const StatusIcon = STATUS_ICONS[displayStatus];
               const isExpanded = expandedRows.has(account.id);
@@ -718,7 +749,7 @@ export default function MappingTable() {
                           </label>
                           <SearchableSelect
                             id={`scoa-${account.id}`}
-                            value={targetScoa}
+                            value={displayTargetScoa}
                             options={coaOptions}
                             placeholder="Search target"
                             onChange={(nextValue) =>
@@ -781,7 +812,8 @@ export default function MappingTable() {
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[displayStatus]}`}
                             role="status"
-                            aria-label={`Status ${statusLabel}`}
+                            aria-label={`Status ${statusLabel}${statusTooltip ? `. ${statusTooltip}` : ''}`}
+                            title={statusTooltip}
                           >
                             <StatusIcon className="h-3 w-3" aria-hidden="true" />
                             {statusLabel}
@@ -839,7 +871,7 @@ export default function MappingTable() {
                             colSpan={COLUMN_DEFINITIONS.length + 2}
                             panelId={`split-panel-${account.id}`}
                             onOpenBuilder={() => setActiveDynamicAccountId(account.id)}
-                            presetOptions={dynamicPresetOptions}
+                            batchAccountIds={hasBatchSelection ? selectedIdList : undefined}
                           />
                         ) : (
                         <MappingSplitRow
@@ -848,16 +880,36 @@ export default function MappingTable() {
                           presetOptions={percentagePresetOptions}
                           selectedPresetId={account.presetId ?? null}
                           onApplyPreset={(presetId) =>
-                            applyPresetToAccounts([account.id], presetId)
+                            applyPresetToAccounts(
+                              hasBatchSelection ? selectedIdList : [account.id],
+                              presetId
+                            )
                           }
                           colSpan={COLUMN_DEFINITIONS.length + 2}
                           panelId={`split-panel-${account.id}`}
-                          onAddSplit={() => addSplitDefinition(account.id)}
+                          onAddSplit={() =>
+                            hasBatchSelection
+                              ? addSplitDefinitionForSelection(selectedIdList, account.id)
+                              : addSplitDefinition(account.id)
+                          }
                           onUpdateSplit={(splitId, updates) =>
-                            updateSplitDefinition(account.id, splitId, updates)
+                            hasBatchSelection
+                              ? updateSplitDefinitionForSelection(
+                                  selectedIdList,
+                                  account.id,
+                                  splitId,
+                                  updates
+                                )
+                              : updateSplitDefinition(account.id, splitId, updates)
                           }
                           onRemoveSplit={(splitId) =>
-                            removeSplitDefinition(account.id, splitId)
+                            hasBatchSelection
+                              ? removeSplitDefinitionForSelection(
+                                  selectedIdList,
+                                  account.id,
+                                  splitId
+                                )
+                              : removeSplitDefinition(account.id, splitId)
                           }
                         />
                       )
@@ -906,6 +958,7 @@ export default function MappingTable() {
             <div className="max-h-[92vh] overflow-y-auto px-6 py-8">
               <RatioAllocationManager
                 initialSourceAccountId={activeDynamicAccountId}
+                applyToSourceAccountIds={dynamicPresetSelectionIds}
                 onDone={() => setActiveDynamicAccountId(null)}
               />
             </div>

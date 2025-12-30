@@ -7,7 +7,10 @@ import {
   useDistributionStore,
   type DistributionOperationCatalogItem,
 } from '../../store/distributionStore';
-import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
+import {
+  DEFAULT_PRESET_CONTEXT,
+  useRatioAllocationStore,
+} from '../../store/ratioAllocationStore';
 import {
   selectActiveEntityId,
   selectStandardScoaSummaries,
@@ -35,6 +38,7 @@ import type {
   MappingType,
 } from '../../types';
 import { getOperationLabel } from '../../utils/operationLabel';
+import { getBasisValue } from '../../utils/dynamicAllocation';
 import { normalizeDistributionStatus } from '../../utils/distributionStatus';
 
 interface DistributionTableProps {
@@ -217,7 +221,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType,
     updateRowOperations,
     updateRowPreset,
+    applyOperationsToRows,
     applyBatchDistribution,
+    applyPresetToRows,
     queueAutoSave,
     setSaveContext,
     setOperationsCatalog,
@@ -231,7 +237,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowType: state.updateRowType,
     updateRowOperations: state.updateRowOperations,
     updateRowPreset: state.updateRowPreset,
+    applyOperationsToRows: state.applyOperationsToRows,
     applyBatchDistribution: state.applyBatchDistribution,
+    applyPresetToRows: state.applyPresetToRows,
     queueAutoSave: state.queueAutoSave,
     setSaveContext: state.setSaveContext,
     setOperationsCatalog: state.setOperationsCatalog,
@@ -251,10 +259,44 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   } | null>(null);
 
   const { selectedIds, toggleSelection, setSelection, clearSelection } = useDistributionSelectionStore();
+  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const selectedRows = useMemo(() => {
+    if (selectedIdList.length === 0) {
+      return [];
+    }
+    const lookup = new Map(rows.map(row => [row.id, row]));
+    return selectedIdList
+      .map(id => lookup.get(id))
+      .filter((row): row is DistributionRow => Boolean(row));
+  }, [rows, selectedIdList]);
+  const selectedAccountIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedRows
+            .map(row => row.accountId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      ),
+    [selectedRows],
+  );
+  const dynamicPresetAccountIds = useMemo(() => {
+    if (!activeDynamicAccountId) {
+      return [];
+    }
+    if (selectedAccountIds.length > 1 && selectedAccountIds.includes(activeDynamicAccountId)) {
+      return selectedAccountIds;
+    }
+    return [activeDynamicAccountId];
+  }, [activeDynamicAccountId, selectedAccountIds]);
 
-  const { getActivePresetForSource } = useRatioAllocationStore(state => ({
-    getActivePresetForSource: state.getActivePresetForSource,
-  }));
+  const { getActivePresetForSource, basisAccounts, presets, selectedPeriod } =
+    useRatioAllocationStore(state => ({
+      getActivePresetForSource: state.getActivePresetForSource,
+      basisAccounts: state.basisAccounts,
+      presets: state.presets,
+      selectedPeriod: state.selectedPeriod,
+    }));
   const setDistributionPresets = useRatioAllocationStore(state => state.setContextPresets);
   const [distributionPresetLibrary, setDistributionPresetLibrary] = useState<
     MappingPresetLibraryEntry[]
@@ -263,15 +305,110 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     () => distributionPresetLibrary.filter(entry => entry.type === 'percentage'),
     [distributionPresetLibrary],
   );
+  const distributionContextPresets = useMemo(
+    () =>
+      presets.filter(
+        preset => (preset.context ?? DEFAULT_PRESET_CONTEXT) === 'distribution',
+      ),
+    [presets],
+  );
 
-const operationTargetCatalog = useMemo(
-  () =>
-    clientOperations.map(operation => ({
-      id: operation.id,
-      label: getOperationLabel(operation),
-    })),
-  [clientOperations],
-);
+  const normalizeOperationId = useCallback((value?: string | null): string => {
+    if (!value) {
+      return '';
+    }
+    return value.trim().toUpperCase();
+  }, []);
+
+  const operationLabelLookup = useMemo(() => {
+    const lookup = new Map<string, DistributionOperationCatalogItem>();
+    operationsCatalog.forEach(operation => {
+      const key = normalizeOperationId(operation.code) || normalizeOperationId(operation.id);
+      if (!key) {
+        return;
+      }
+      lookup.set(key, operation);
+    });
+    return lookup;
+  }, [normalizeOperationId, operationsCatalog]);
+
+  const buildPresetOperations = useCallback(
+    (presetId: string | null) => {
+      if (!presetId) {
+        return [];
+      }
+      const preset = distributionContextPresets.find(item => item.id === presetId);
+      if (!preset) {
+        return [];
+      }
+
+      const rowsWithBasis = preset.rows.map(presetRow => {
+        const basisAccount = basisAccounts.find(acc => acc.id === presetRow.dynamicAccountId);
+        const basisValue = basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
+        return { presetRow, basisValue };
+      });
+      const totalBasis = rowsWithBasis.reduce((sum, item) => sum + item.basisValue, 0);
+
+      return rowsWithBasis
+        .map(({ presetRow, basisValue }) => {
+          const targetId = normalizeOperationId(presetRow.targetAccountId);
+          if (!targetId) {
+            return null;
+          }
+          const catalogMatch = operationLabelLookup.get(targetId);
+          const code = targetId;
+          const allocationPct = totalBasis > 0 ? (basisValue / totalBasis) * 100 : 0;
+          return {
+            id: code,
+            code,
+            name: getOperationLabel({
+              code,
+              id: catalogMatch?.id ?? code,
+              name: catalogMatch?.name ?? code,
+            }),
+            basisDatapoint: presetRow.dynamicAccountId?.trim() || undefined,
+            allocation: allocationPct,
+          } satisfies DistributionOperationShare;
+        })
+        .filter((operation): operation is DistributionOperationShare => Boolean(operation))
+        .sort((a, b) => a.code.localeCompare(b.code));
+    },
+    [
+      basisAccounts,
+      distributionContextPresets,
+      normalizeOperationId,
+      operationLabelLookup,
+      selectedPeriod,
+    ],
+  );
+
+  const handleDynamicPresetApplied = useCallback(
+    (presetId: string, sourceAccountIds: string[]) => {
+      if (!presetId || sourceAccountIds.length === 0) {
+        return;
+      }
+      const accountIdSet = new Set(sourceAccountIds);
+      const targetRowIds = rows
+        .filter(row => accountIdSet.has(row.accountId))
+        .map(row => row.id);
+      if (targetRowIds.length === 0) {
+        return;
+      }
+      const derivedOperations = buildPresetOperations(presetId);
+      applyPresetToRows(targetRowIds, presetId);
+      applyOperationsToRows(targetRowIds, derivedOperations);
+    },
+    [applyOperationsToRows, applyPresetToRows, buildPresetOperations, rows],
+  );
+
+  const operationTargetCatalog = useMemo(
+    () =>
+      clientOperations.map(operation => ({
+        id: operation.id,
+        label: getOperationLabel(operation),
+      })),
+    [clientOperations],
+  );
 
   const resolveOperationCanonicalTargetId = useCallback((targetId?: string | null) => {
     if (!targetId) {
@@ -284,32 +421,35 @@ const operationTargetCatalog = useMemo(
     return normalized.toUpperCase();
   }, []);
 
-const sanitizeOperationsDraft = useCallback((draft: DistributionOperationShare[]): DistributionOperationShare[] => {
-  const sanitized = draft.reduce<DistributionOperationShare[]>((acc, operation) => {
-      const id = operation.id?.trim();
-      if (!id) {
+  const sanitizeOperationsDraft = useCallback(
+    (draft: DistributionOperationShare[]): DistributionOperationShare[] => {
+      const sanitized = draft.reduce<DistributionOperationShare[]>((acc, operation) => {
+        const id = operation.id?.trim();
+        if (!id) {
+          return acc;
+        }
+        const code = operation.code?.trim() || id;
+        const allocation =
+          typeof operation.allocation === 'number' && Number.isFinite(operation.allocation)
+            ? operation.allocation
+            : undefined;
+        const notes = operation.notes?.trim();
+        const basisDatapoint = operation.basisDatapoint?.trim();
+        acc.push({
+          id,
+          code,
+          name: operation.name?.trim() || code,
+          allocation,
+          notes: notes || undefined,
+          basisDatapoint: basisDatapoint || undefined,
+        });
         return acc;
-      }
-      const code = operation.code?.trim() || id;
-      const allocation =
-        typeof operation.allocation === 'number' && Number.isFinite(operation.allocation)
-          ? operation.allocation
-          : undefined;
-      const notes = operation.notes?.trim();
-      const basisDatapoint = operation.basisDatapoint?.trim();
-      acc.push({
-        id,
-        code,
-        name: operation.name?.trim() || code,
-        allocation,
-        notes: notes || undefined,
-        basisDatapoint: basisDatapoint || undefined,
-      });
-      return acc;
-    }, []);
+      }, []);
 
-  return sanitized;
-}, []);
+      return sanitized;
+    },
+    [],
+  );
 
 const mapDistributionPayloadToLibraryEntry = (
   payload: DistributionPresetPayload,
@@ -609,15 +749,30 @@ const buildDistributionPresetLibraryEntries = (
       return;
     }
 
+    const hasBatchSelection = selectedIds.has(editingRowId) && selectedIds.size > 1;
+
     lastSyncedOperationsRef.current = { rowId: editingRowId, operations: sanitized };
-    updateRowOperations(editingRowId, sanitized);
-  }, [editingRowId, operationsDraft, rows, sanitizeOperationsDraft, updateRowOperations]);
+    if (hasBatchSelection) {
+      applyOperationsToRows(selectedIdList, sanitized);
+    } else {
+      updateRowOperations(editingRowId, sanitized);
+    }
+  }, [
+    applyOperationsToRows,
+    editingRowId,
+    operationsDraft,
+    rows,
+    sanitizeOperationsDraft,
+    selectedIdList,
+    selectedIds,
+    updateRowOperations,
+  ]);
 
   const handleDirectOperationChange = (row: DistributionRow, operationId: string) => {
     const hasBatchSelection = selectedIds.has(row.id) && selectedIds.size > 1;
     if (!operationId) {
       if (hasBatchSelection) {
-        applyBatchDistribution(Array.from(selectedIds), { operation: null });
+        applyBatchDistribution(selectedIdList, { operation: null });
       } else {
         updateRowOperations(row.id, []);
       }
@@ -626,7 +781,7 @@ const buildDistributionPresetLibraryEntries = (
     const catalogItem = operationsCatalog.find(item => item.id === operationId);
     if (!catalogItem) {
       if (hasBatchSelection) {
-        applyBatchDistribution(Array.from(selectedIds), { operation: null });
+        applyBatchDistribution(selectedIdList, { operation: null });
       } else {
         updateRowOperations(row.id, []);
       }
@@ -638,7 +793,7 @@ const buildDistributionPresetLibraryEntries = (
       name: catalogItem.name,
     };
     if (hasBatchSelection) {
-      applyBatchDistribution(Array.from(selectedIds), { operation: operationShare });
+      applyBatchDistribution(selectedIdList, { operation: operationShare });
       return;
     }
     updateRowOperations(row.id, [operationShare]);
@@ -648,7 +803,7 @@ const buildDistributionPresetLibraryEntries = (
   const handleDistributionTypeChange = (rowId: string, type: DistributionType) => {
     const hasBatchSelection = selectedIds.has(rowId) && selectedIds.size > 1;
     if (hasBatchSelection) {
-      applyBatchDistribution(Array.from(selectedIds), { type });
+      applyBatchDistribution(selectedIdList, { type });
       return;
     }
     updateRowType(rowId, type);
@@ -721,6 +876,7 @@ const buildDistributionPresetLibraryEntries = (
               const operationsSummary = formatOperations(row);
               const statusBadgeClass = STATUS_BADGE_CLASSES[row.status];
               const isSelected = selectedIds.has(row.id);
+              const hasBatchSelection = isSelected && selectedIds.size > 1;
               const activePreset = row.type === 'dynamic' ? getActivePresetForSource(row.accountId) : null;
               const hasAccordion = row.type !== 'direct';
               const rowClasses = [
@@ -872,7 +1028,11 @@ const buildDistributionPresetLibraryEntries = (
                           setOperationsDraft={setOperationsDraft}
                           presetOptions={percentageDistributionPresetOptions}
                           selectedPresetId={row.presetId ?? null}
-                          onApplyPreset={presetId => updateRowPreset(row.id, presetId)}
+                          onApplyPreset={presetId =>
+                            hasBatchSelection
+                              ? applyPresetToRows(selectedIdList, presetId)
+                              : updateRowPreset(row.id, presetId)
+                          }
                           panelId={`distribution-panel-${row.id}`}
                         />
                       </td>
@@ -885,6 +1045,8 @@ const buildDistributionPresetLibraryEntries = (
                       panelId={`distribution-panel-${row.id}`}
                       onOpenBuilder={() => setActiveDynamicAccountId(row.accountId)}
                       operationsCatalog={operationsCatalog}
+                      batchRowIds={hasBatchSelection ? selectedIdList : undefined}
+                      batchAccountIds={hasBatchSelection ? selectedAccountIds : undefined}
                     />
                   )}
                 </Fragment>
@@ -927,6 +1089,8 @@ const buildDistributionPresetLibraryEntries = (
             <div className="max-h-[80vh] overflow-y-auto p-6">
               <RatioAllocationManager
                 initialSourceAccountId={activeDynamicAccountId}
+                applyToSourceAccountIds={dynamicPresetAccountIds}
+                onPresetApplied={handleDynamicPresetApplied}
                 onDone={() => setActiveDynamicAccountId(null)}
                 targetCatalog={operationTargetCatalog}
                 resolveCanonicalTargetId={resolveOperationCanonicalTargetId}

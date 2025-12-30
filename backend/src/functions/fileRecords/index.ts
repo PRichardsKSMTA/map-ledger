@@ -3,10 +3,14 @@ import { json, readJson } from '../../http';
 import {
   insertFileRecords,
   listFileRecords,
+  listLatestFileRecordsForClient,
   FileRecordInput,
   FileRecordRow,
 } from '../../repositories/fileRecordRepository';
-import { getClientFileByGuid } from '../../repositories/clientFileRepository';
+import {
+  getClientFileByGuid,
+  getLatestClientFile,
+} from '../../repositories/clientFileRepository';
 import {
   insertClientFileSheet,
   NewClientFileSheetInput,
@@ -68,6 +72,14 @@ const normalizeText = (value: unknown): string => {
     return value.toString();
   }
   return '';
+};
+
+const normalizeClientId = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 };
 
 const parseNumber = (value: unknown): number => {
@@ -711,7 +723,70 @@ export const listFileRecordsHandler = async (
 ): Promise<HttpResponseInit> => {
   try {
     const fileUploadGuid = getFirstStringValue(request.query.get('fileUploadGuid'));
+    const clientId = normalizeClientId(getFirstStringValue(request.query.get('clientId')));
     const normalizedFileUploadGuid = fileUploadGuid?.replace(/[{}]/g, '').trim();
+
+    if (clientId && !normalizedFileUploadGuid) {
+      const [itemsResult, metadataResult, clientEntitiesResult] = await Promise.allSettled([
+        listLatestFileRecordsForClient(clientId),
+        getLatestClientFile(clientId),
+        listClientEntities(clientId),
+      ]);
+
+      if (itemsResult.status === 'rejected') {
+        context.error('Failed to fetch client file records', itemsResult.reason);
+        throw itemsResult.reason;
+      }
+
+      if (metadataResult.status === 'rejected') {
+        context.warn(
+          'Failed to fetch latest client file metadata; continuing without it',
+          metadataResult.reason,
+        );
+      }
+
+      if (clientEntitiesResult.status === 'rejected') {
+        context.warn(
+          'Failed to fetch client entities; continuing without names',
+          clientEntitiesResult.reason,
+        );
+      }
+
+      const items = itemsResult.value;
+      const metadata = metadataResult.status === 'fulfilled' ? metadataResult.value : null;
+      const clientEntities =
+        clientEntitiesResult.status === 'fulfilled' ? clientEntitiesResult.value : [];
+
+      const entityNameLookup = new Map(
+        clientEntities.map((entity) => [
+          entity.entityId,
+          entity.entityDisplayName ?? entity.entityName,
+        ]),
+      );
+
+      const itemsWithEntities: FileRecordResponseRow[] = items.map((item) => ({
+        ...item,
+        entityName: item.entityId ? entityNameLookup.get(item.entityId) : undefined,
+      }));
+
+      const resolvedEntities = clientEntities.map((entity) => ({
+        id: entity.entityId,
+        name: entity.entityDisplayName ?? entity.entityName,
+        isSelected: undefined,
+      }));
+
+      return json({
+        items: itemsWithEntities,
+        clientId,
+        upload:
+          metadata && metadata.timestamp
+            ? { fileName: metadata.fileName, uploadedAt: metadata.timestamp }
+            : metadata
+              ? { fileName: metadata.fileName, uploadedAt: metadata.insertedDttm }
+              : undefined,
+        entities: resolvedEntities,
+      });
+    }
 
     const isValidGuid =
       !!normalizedFileUploadGuid &&
@@ -723,7 +798,10 @@ export const listFileRecordsHandler = async (
       context.warn('Invalid fileUploadGuid provided', {
         fileUploadGuid: normalizedFileUploadGuid ?? fileUploadGuid ?? null,
       });
-      return json({ message: 'fileUploadGuid is required' }, 400);
+      return json(
+        { message: clientId ? 'fileUploadGuid is required' : 'fileUploadGuid or clientId is required' },
+        400,
+      );
     }
 
     const formattedFileUploadGuid =
@@ -751,14 +829,19 @@ export const listFileRecordsHandler = async (
       context.warn('Failed to fetch file metadata; continuing without it', metadataResult.reason);
     }
     const metadata = metadataResult.status === 'fulfilled' ? metadataResult.value : null;
+    const metadataClientId = normalizeClientId(getFirstStringValue(metadata?.clientId));
+
+    if (clientId && (!metadataClientId || metadataClientId !== clientId)) {
+      return json({ message: 'File upload not found for the selected client' }, 404);
+    }
 
     if (fileEntitiesResult.status === 'rejected') {
       context.warn('Failed to fetch file entities; continuing without selections', fileEntitiesResult.reason);
     }
     const fileEntities = fileEntitiesResult.status === 'fulfilled' ? fileEntitiesResult.value : [];
 
-    const clientEntities = metadata?.clientId
-      ? await listClientEntities(metadata.clientId).catch((error) => {
+    const clientEntities = metadataClientId
+      ? await listClientEntities(metadataClientId).catch((error) => {
           context.warn('Failed to fetch client entities; continuing without names', error);
           return [];
         })
