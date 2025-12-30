@@ -40,6 +40,10 @@ type DynamicAllocationMutation = {
   timestamp: number;
 };
 
+type MutationOptions = {
+  suppressMutation?: boolean;
+};
+
 const getTargetNameById = (targetId: string): string => {
   const option = findChartOfAccountOption(targetId);
   return option?.label ?? targetId;
@@ -352,7 +356,11 @@ export type RatioAllocationState = {
   setBasisAccounts: (basisAccounts: DynamicBasisAccount[]) => void;
   getOrCreateAllocation: (sourceAccountId: string) => RatioAllocation;
   addAllocation: (allocation: Omit<RatioAllocation, 'id'>) => void;
-  updateAllocation: (id: string, allocation: Partial<RatioAllocation>) => void;
+  updateAllocation: (
+    id: string,
+    allocation: Partial<RatioAllocation>,
+    options?: MutationOptions,
+  ) => void;
   deleteAllocation: (id: string) => void;
   setAvailablePeriods: (periods: string[]) => void;
   setSelectedPeriod: (period: string) => void;
@@ -388,7 +396,11 @@ export type RatioAllocationState = {
     presetId: string,
     excludeRowIndex?: number,
   ) => { id: string; label: string }[];
-  toggleAllocationPresetTargets: (allocationId: string, presetId: string) => void;
+  toggleAllocationPresetTargets: (
+    allocationId: string,
+    presetId: string,
+    options?: MutationOptions,
+  ) => void;
   toggleTargetExclusion: (
     allocationId: string,
     datapointId: string,
@@ -400,7 +412,11 @@ export type RatioAllocationState = {
     targetId?: string | null;
   }) => void;
   getActivePresetForSource: (sourceAccountId: string) => DynamicAllocationPreset | null;
-  setActivePresetForSource: (sourceAccountId: string, presetId: string | null) => void;
+  setActivePresetForSource: (
+    sourceAccountId: string,
+    presetId: string | null,
+    options?: MutationOptions,
+  ) => void;
 };
 
 export const selectPresetSummaries = (
@@ -587,7 +603,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     }));
   },
 
-  updateAllocation: (id, allocation) => {
+  updateAllocation: (id, allocation, options) => {
     set(state => {
       let mutatedAccountId: string | null = null;
       const allocations = state.allocations.map(item => {
@@ -632,10 +648,12 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
           state.selectedPeriod,
         );
       });
-      const mutation = buildDynamicMutation(
-        mutatedAccountId ? [mutatedAccountId] : [],
-        state.lastDynamicMutation,
-      );
+      const mutation = options?.suppressMutation
+        ? null
+        : buildDynamicMutation(
+            mutatedAccountId ? [mutatedAccountId] : [],
+            state.lastDynamicMutation,
+          );
       return {
         allocations,
         ...(mutation ? { lastDynamicMutation: mutation } : {}),
@@ -1428,7 +1446,7 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
       .sort((a, b) => a.label.localeCompare(b.label));
   },
 
-  toggleAllocationPresetTargets: (allocationId, presetId) => {
+  toggleAllocationPresetTargets: (allocationId, presetId, options) => {
     set(state => {
       const preset = state.presets.find(item => item.id === presetId);
       if (!preset) {
@@ -1463,17 +1481,15 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         );
       });
 
-      const mutation = buildDynamicMutation(
-        mutatedAccountId ? [mutatedAccountId] : [],
-        state.lastDynamicMutation,
-      );
-      if (!mutation) {
+      if (!mutatedAccountId) {
         return state;
       }
-      return {
-        allocations,
-        lastDynamicMutation: mutation,
-      };
+      const mutation = options?.suppressMutation
+        ? null
+        : buildDynamicMutation([mutatedAccountId], state.lastDynamicMutation);
+      return mutation
+        ? { allocations, lastDynamicMutation: mutation }
+        : { allocations };
     });
   },
   toggleTargetExclusion: (allocationId, datapointId, presetId) => {
@@ -1612,27 +1628,31 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
     }
     return presets.find(p => p.id === presetId) ?? null;
   },
-  setActivePresetForSource: (sourceAccountId: string, presetId: string | null) => {
+  setActivePresetForSource: (sourceAccountId: string, presetId: string | null, options) => {
     const allocation = get().getOrCreateAllocation(sourceAccountId);
 
     if (!presetId) {
       // Clear all preset targets
-      get().updateAllocation(allocation.id, {
-        targetDatapoints: allocation.targetDatapoints.filter(t => !t.groupId),
-      });
+      get().updateAllocation(
+        allocation.id,
+        {
+          targetDatapoints: allocation.targetDatapoints.filter(t => !t.groupId),
+        },
+        options,
+      );
       return;
     }
 
     // Toggle to remove old preset if any, then toggle to add new preset
     const existingPresetId = allocation.targetDatapoints.find(t => t.groupId)?.groupId;
     if (existingPresetId && existingPresetId !== presetId) {
-      get().toggleAllocationPresetTargets(allocation.id, existingPresetId);
+      get().toggleAllocationPresetTargets(allocation.id, existingPresetId, options);
     }
 
     // Add the new preset if not already added
     const hasNewPreset = allocation.targetDatapoints.some(t => t.groupId === presetId);
     if (!hasNewPreset) {
-      get().toggleAllocationPresetTargets(allocation.id, presetId);
+      get().toggleAllocationPresetTargets(allocation.id, presetId, options);
     }
   },
 }));

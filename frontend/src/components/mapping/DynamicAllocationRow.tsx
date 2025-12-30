@@ -111,7 +111,9 @@ const DynamicAllocationRow = ({
     if (activePreset?.id === account.presetId) {
       return;
     }
-    setActivePresetForSource(account.id, account.presetId);
+    setActivePresetForSource(account.id, account.presetId, {
+      suppressMutation: true,
+    });
   }, [account.id, account.presetId, getActivePresetForSource, setActivePresetForSource]);
 
   const allocation = useMemo(

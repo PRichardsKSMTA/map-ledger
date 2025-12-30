@@ -116,6 +116,7 @@ type SavedMappingRow = {
 };
 
 export type HydrationMode = 'resume' | 'restart' | 'none';
+type HydrationScope = 'file' | 'entity' | 'both';
 
 const DRIVER_BENEFITS_DESCRIPTION =
   'DRIVER BENEFITS, PAYROLL TAXES AND BONUS COMPENSATION - COMPANY FLEET';
@@ -1499,6 +1500,7 @@ interface MappingState {
     uploadGuid?: string | null,
     mode?: HydrationMode,
     entityIds?: string[],
+    scope?: HydrationScope,
   ) => Promise<void>;
   saveMappings: (accountIds?: string[]) => Promise<number>;
   queueAutoSave: (ids: string[], options?: { immediate?: boolean }) => void;
@@ -1942,7 +1944,9 @@ export const useMappingStore = create<MappingState>((set, get) => {
           account.presetId && dynamicPresetIds.has(account.presetId)
             ? account.presetId
             : null;
-        ratioState.setActivePresetForSource(account.id, targetPresetId);
+        ratioState.setActivePresetForSource(account.id, targetPresetId, {
+          suppressMutation: true,
+        });
       });
     } catch (error) {
       logError('Unable to refresh preset library', error);
@@ -2963,23 +2967,37 @@ export const useMappingStore = create<MappingState>((set, get) => {
       enqueueDirtyIds(dirtyIds);
       return { accounts: resolved, dirtyMappingIds, rowSaveStatuses };
     }),
-  hydrateFromHistory: async (uploadGuid, mode = 'resume', entityIds = []) => {
-    if ((mode === 'none') || (!uploadGuid && entityIds.length === 0)) {
+  hydrateFromHistory: async (
+    uploadGuid,
+    mode = 'resume',
+    entityIds = [],
+    scope = 'both',
+  ) => {
+    if (mode === 'none') {
+      return;
+    }
+
+    const includeFileScope = scope === 'file' || scope === 'both';
+    const includeEntityScope = scope === 'entity' || scope === 'both';
+
+    if (!includeFileScope && !includeEntityScope) {
       return;
     }
 
     const scopes: { fileUploadGuid?: string | null; entityId?: string }[] = [];
-    if (uploadGuid) {
+    if (includeFileScope && uploadGuid) {
       scopes.push({ fileUploadGuid: uploadGuid });
     }
 
-    const uniqueEntityIds = Array.from(
-      new Set(
-        entityIds
-          .map(id => id?.trim())
-          .filter((id): id is string => Boolean(id && id.length > 0)),
-      ),
-    );
+    const uniqueEntityIds = includeEntityScope
+      ? Array.from(
+          new Set(
+            entityIds
+              .map(id => id?.trim())
+              .filter((id): id is string => Boolean(id && id.length > 0)),
+          ),
+        )
+      : [];
 
     uniqueEntityIds.forEach(entityId => scopes.push({ entityId }));
 
@@ -3344,7 +3362,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';
       const hydrateEntityIds =
         normalizedEntityIds ?? resolvedEntities.map(entity => entity.id);
-      await get().hydrateFromHistory(uploadGuid, hydrateMode, hydrateEntityIds);
+      await get().hydrateFromHistory(uploadGuid, hydrateMode, hydrateEntityIds, 'file');
 
       set({ isLoadingFromApi: false, apiError: null });
     } catch (error) {

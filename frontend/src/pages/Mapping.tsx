@@ -55,7 +55,7 @@ const resolveHydrationMode = (value: string | null): HydrationMode => {
 };
 
 export default function Mapping() {
-  const { uploadId = 'demo' } = useParams();
+  const { uploadId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const userEmail = useAuthStore(state => state.user?.email ?? null);
   const hydrateClients = useClientStore(state => state.hydrateFromAccessList);
@@ -96,6 +96,21 @@ export default function Mapping() {
     [availableEntities],
   );
   const lastActiveEntityId = useRef<string | null>(null);
+  const resolveSelectableEntityId = useCallback(
+    (preferredId?: string | null) => {
+      if (preferredId && availableEntityIds.has(preferredId)) {
+        return preferredId;
+      }
+
+      const lastKnown =
+        lastActiveEntityId.current && availableEntityIds.has(lastActiveEntityId.current)
+          ? lastActiveEntityId.current
+          : null;
+
+      return lastKnown ?? availableEntities[0]?.id ?? null;
+    },
+    [availableEntities, availableEntityIds],
+  );
   const lastClientIdRef = useRef<string | null>(null);
   const entityCompletion = useMemo<Record<string, boolean>>(() => {
     const completion: Record<string, boolean> = {};
@@ -275,13 +290,7 @@ export default function Mapping() {
       return;
     }
 
-    const fallbackEntityId =
-      normalizedEntityParam ??
-      (activeEntityId && availableEntityIds.has(activeEntityId)
-        ? activeEntityId
-        : lastActiveEntityId.current) ??
-      availableEntities[0]?.id ??
-      null;
+    const fallbackEntityId = resolveSelectableEntityId(normalizedEntityParam ?? activeEntityId);
 
     if (fallbackEntityId !== activeEntityId) {
       setActiveEntityId(fallbackEntityId);
@@ -292,11 +301,16 @@ export default function Mapping() {
     availableEntities,
     availableEntityIds,
     normalizedEntityParam,
+    resolveSelectableEntityId,
     setActiveEntityId,
   ]);
 
   useEffect(() => {
     if (!activeEntityId) {
+      return;
+    }
+
+    if (!availableEntityIds.has(activeEntityId)) {
       return;
     }
 
@@ -309,7 +323,7 @@ export default function Mapping() {
       }
       return { ...prev, [activeEntityId]: stageFromParams };
     });
-  }, [activeEntityId, searchParams]);
+  }, [activeEntityId, availableEntityIds, searchParams]);
 
   useEffect(() => {
     if (!activeEntityId) {
@@ -363,7 +377,7 @@ export default function Mapping() {
   );
 
   const handleStepChange = (step: MappingStep) => {
-    const targetEntityId = activeEntityId ?? lastActiveEntityId.current ?? availableEntities[0]?.id;
+    const targetEntityId = resolveSelectableEntityId(activeEntityId);
     if (!targetEntityId) {
       return;
     }
