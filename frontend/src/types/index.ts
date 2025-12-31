@@ -219,6 +219,14 @@ export interface ImportEntity {
   updatedBy?: string;
 }
 
+export type ImportStatus =
+  | 'uploaded'
+  | 'mapping'
+  | 'distribution'
+  | 'review'
+  | 'completed'
+  | 'failed';
+
 export interface Import {
   id: string;
   fileUploadGuid?: string;
@@ -232,8 +240,10 @@ export interface Import {
   blobUrl?: string;
   blobUri?: string;
   period: string;
+  glPeriodStart?: string;
+  glPeriodEnd?: string;
   timestamp: string;
-  status: 'completed' | 'failed';
+  status: ImportStatus;
   rowCount?: number;
   importedBy: string;
   insertedDttm?: string;

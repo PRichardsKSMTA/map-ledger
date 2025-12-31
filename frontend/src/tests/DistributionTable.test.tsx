@@ -206,6 +206,8 @@ describe('DistributionTable', () => {
   test('renders distribution rows with required columns', async () => {
     render(<DistributionTable />);
 
+    expect(screen.getByText('GL Account')).toBeInTheDocument();
+    expect(screen.getByText('GL Description')).toBeInTheDocument();
     expect(screen.getByText('Account ID')).toBeInTheDocument();
     expect(screen.getByText('Standard COA Description')).toBeInTheDocument();
     expect(
@@ -311,7 +313,7 @@ describe('DistributionTable', () => {
 
     const getVisibleAccountOrder = (): string[] =>
       Array.from(container.querySelectorAll('tbody tr'))
-        .map(row => row.querySelector('td:nth-child(3)'))
+        .map(row => row.querySelector('td:nth-child(5)'))
         .filter((cell): cell is HTMLElement => cell !== null)
         .map(cell => cell.textContent?.trim() ?? '')
         .filter(Boolean);

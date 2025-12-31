@@ -13,9 +13,11 @@ import {
 } from '../../store/ratioAllocationStore';
 import {
   selectActiveEntityId,
+  selectAccounts,
   selectStandardScoaSummaries,
   useMappingStore,
 } from '../../store/mappingStore';
+import { findChartOfAccountOption } from '../../store/chartOfAccountsStore';
 import { useOrganizationStore } from '../../store/organizationStore';
 import { useClientStore } from '../../store/clientStore';
 import { useDistributionSelectionStore } from '../../store/distributionSelectionStore';
@@ -34,6 +36,7 @@ import type {
   DistributionRow,
   DistributionStatus,
   DistributionType,
+  GLAccountMappingRow,
   MappingPresetLibraryEntry,
   MappingType,
 } from '../../types';
@@ -83,6 +86,11 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   type: 'w-44',
   operations: 'min-w-[20rem]',
   status: 'w-32',
+};
+
+const GL_COLUMN_WIDTH_CLASSES = {
+  account: 'min-w-[10rem]',
+  description: 'min-w-[16rem]',
 };
 
 const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
@@ -182,8 +190,136 @@ const getSortValue = (row: DistributionRow, key: SortKey): string | number => {
   }
 };
 
+type GlAccountSummary = {
+  id: string;
+  description: string;
+};
+
+const MAX_GL_ACCOUNTS_VISIBLE = 2;
+
+const resolveScoaTargetId = (value?: string | null): string | null => {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  const option = findChartOfAccountOption(normalized);
+  return option?.id?.trim() || normalized;
+};
+
+const getSplitAbsoluteAmount = (
+  account: GLAccountMappingRow,
+  split: GLAccountMappingRow['splitDefinitions'][number],
+): number => {
+  if (!Number.isFinite(account.netChange) || account.netChange === 0) {
+    return 0;
+  }
+
+  const netChange = Math.abs(account.netChange);
+  if (split.allocationType === 'amount') {
+    const absolute = Math.max(0, Math.abs(split.allocationValue ?? 0));
+    return Math.min(absolute, netChange);
+  }
+
+  const percentage = Math.max(0, split.allocationValue ?? 0);
+  return (netChange * percentage) / 100;
+};
+
+const buildGlAccountLookup = (
+  accounts: GLAccountMappingRow[],
+): Map<string, GlAccountSummary[]> => {
+  const lookup = new Map<string, Map<string, GlAccountSummary>>();
+
+  const addAccount = (targetId: string, account: GLAccountMappingRow) => {
+    const accountId = account.accountId?.trim();
+    if (!accountId) {
+      return;
+    }
+    const normalizedTarget = targetId.trim();
+    if (!normalizedTarget) {
+      return;
+    }
+    const description = account.accountName?.trim() || '';
+    const existing = lookup.get(normalizedTarget) ?? new Map<string, GlAccountSummary>();
+    if (!existing.has(accountId)) {
+      existing.set(accountId, { id: accountId, description });
+      lookup.set(normalizedTarget, existing);
+    }
+  };
+
+  accounts.forEach(account => {
+    if (account.mappingType === 'direct') {
+      if (account.status !== 'Mapped') {
+        return;
+      }
+      if (!Number.isFinite(account.netChange) || account.netChange === 0) {
+        return;
+      }
+      const targetId = resolveScoaTargetId(account.manualCOAId);
+      if (!targetId) {
+        return;
+      }
+      addAccount(targetId, account);
+      return;
+    }
+
+    if (account.mappingType === 'percentage') {
+      account.splitDefinitions.forEach(split => {
+        if (split.isExclusion) {
+          return;
+        }
+        const targetId = resolveScoaTargetId(split.targetId);
+        if (!targetId) {
+          return;
+        }
+        const amount = getSplitAbsoluteAmount(account, split);
+        if (!Number.isFinite(amount) || amount === 0) {
+          return;
+        }
+        addAccount(targetId, account);
+      });
+      return;
+    }
+
+    if (account.mappingType === 'dynamic') {
+      const targetId = resolveScoaTargetId(account.manualCOAId ?? account.suggestedCOAId);
+      if (!targetId) {
+        return;
+      }
+      const baseAmount = Math.abs(account.netChange);
+      const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
+      const allocatable = Math.max(0, baseAmount - excluded);
+      if (!Number.isFinite(allocatable) || allocatable === 0) {
+        return;
+      }
+      addAccount(targetId, account);
+    }
+  });
+
+  const result = new Map<string, GlAccountSummary[]>();
+  lookup.forEach((value, key) => {
+    result.set(
+      key,
+      Array.from(value.values()).sort((a, b) =>
+        a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }),
+      ),
+    );
+  });
+  return result;
+};
+
+const buildGlAccountDisplay = (accounts: GlAccountSummary[]) => {
+  const visible = accounts.slice(0, MAX_GL_ACCOUNTS_VISIBLE);
+  const remaining = Math.max(accounts.length - visible.length, 0);
+  const fullIds = accounts.map(account => account.id).join('\n');
+  const fullDescriptions = accounts
+    .map(account => account.description || 'No description')
+    .join('\n');
+  return { visible, remaining, fullIds, fullDescriptions };
+};
+
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const standardTargets = useMappingStore(selectStandardScoaSummaries);
+  const mappedAccounts = useMappingStore(selectAccounts);
   const activeEntityId = useMappingStore(selectActiveEntityId);
   const activeClientId = useClientStore(state => state.activeClientId);
   const companies = useOrganizationStore(state => state.companies);
@@ -193,6 +329,10 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     [standardTargets],
   );
   const previousSignature = useRef<string | null>(null);
+  const glAccountsByScoa = useMemo(
+    () => buildGlAccountLookup(mappedAccounts),
+    [mappedAccounts],
+  );
   const clientOperations = useMemo<DistributionOperationCatalogItem[]>(() => {
     const map = new Map<string, DistributionOperationCatalogItem>();
     companies.forEach(company => {
@@ -841,6 +981,18 @@ const buildDistributionPresetLibraryEntries = (
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
+              <th
+                scope="col"
+                className={`px-3 py-3 text-left ${GL_COLUMN_WIDTH_CLASSES.account}`}
+              >
+                GL Account
+              </th>
+              <th
+                scope="col"
+                className={`px-3 py-3 text-left ${GL_COLUMN_WIDTH_CLASSES.description}`}
+              >
+                GL Description
+              </th>
               {COLUMN_DEFINITIONS.map(column => {
                 const widthClass = COLUMN_WIDTH_CLASSES[column.key] ?? '';
                 const spacingClass = COLUMN_SPACING_CLASSES[column.key] ?? '';
@@ -879,6 +1031,10 @@ const buildDistributionPresetLibraryEntries = (
               const hasBatchSelection = isSelected && selectedIds.size > 1;
               const activePreset = row.type === 'dynamic' ? getActivePresetForSource(row.accountId) : null;
               const hasAccordion = row.type !== 'direct';
+              const glAccounts =
+                glAccountsByScoa.get(row.mappingRowId) ?? glAccountsByScoa.get(row.accountId) ?? [];
+              const glAccountDisplay = buildGlAccountDisplay(glAccounts);
+              const hasGlAccounts = glAccountDisplay.visible.length > 0;
               const rowClasses = [
                 'align-middle transition',
                 isSelected
@@ -920,6 +1076,48 @@ const buildDistributionPresetLibraryEntries = (
                         onChange={() => handleRowSelection(row.id)}
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
+                    </td>
+                    <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.account}`}>
+                      {hasGlAccounts ? (
+                        <div className="space-y-1 text-xs" title={glAccountDisplay.fullIds}>
+                          {glAccountDisplay.visible.map(account => (
+                            <div
+                              key={account.id}
+                              className="font-medium text-slate-900 dark:text-slate-100"
+                            >
+                              {account.id}
+                            </div>
+                          ))}
+                          {glAccountDisplay.remaining > 0 && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              +{glAccountDisplay.remaining} more
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">None</span>
+                      )}
+                    </td>
+                    <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.description}`}>
+                      {hasGlAccounts ? (
+                        <div
+                          className="space-y-1 text-xs text-slate-600 dark:text-slate-300"
+                          title={glAccountDisplay.fullDescriptions}
+                        >
+                          {glAccountDisplay.visible.map(account => (
+                            <div key={`${account.id}-description`}>
+                              {account.description || 'No description'}
+                            </div>
+                          ))}
+                          {glAccountDisplay.remaining > 0 && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                              +{glAccountDisplay.remaining} more
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">None</span>
+                      )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-4 ${COLUMN_WIDTH_CLASSES.accountId ?? ''}`}>
                       <div className="flex flex-col gap-1">
@@ -1020,7 +1218,7 @@ const buildDistributionPresetLibraryEntries = (
                   </tr>
                   {isExpanded && isEditing && row.type === 'percentage' && (
                     <tr id={`distribution-panel-${row.id}`}>
-                      <td colSpan={COLUMN_DEFINITIONS.length + 2} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
+                      <td colSpan={COLUMN_DEFINITIONS.length + 4} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
                         <DistributionSplitRow
                           row={row}
                           operationsCatalog={operationsCatalog}
@@ -1041,7 +1239,7 @@ const buildDistributionPresetLibraryEntries = (
                   {isExpanded && isEditing && row.type === 'dynamic' && (
                     <DistributionDynamicAllocationRow
                       row={row}
-                      colSpan={COLUMN_DEFINITIONS.length + 2}
+                      colSpan={COLUMN_DEFINITIONS.length + 4}
                       panelId={`distribution-panel-${row.id}`}
                       onOpenBuilder={() => setActiveDynamicAccountId(row.accountId)}
                       operationsCatalog={operationsCatalog}
@@ -1054,7 +1252,7 @@ const buildDistributionPresetLibraryEntries = (
             })}
             {sortedRows.length === 0 && (
               <tr>
-                <td colSpan={COLUMN_DEFINITIONS.length + 2} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
+                <td colSpan={COLUMN_DEFINITIONS.length + 4} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
                   No distribution rows match your filters.
                 </td>
               </tr>
