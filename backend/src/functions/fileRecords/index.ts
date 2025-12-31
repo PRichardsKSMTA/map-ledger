@@ -12,6 +12,10 @@ import {
   getLatestClientFile,
 } from '../../repositories/clientFileRepository';
 import {
+  listUserDefinedHeaderMappingsForFileUpload,
+  type UserDefinedHeaderMapping,
+} from '../../repositories/clientHeaderMappingRepository';
+import {
   insertClientFileSheet,
   NewClientFileSheetInput,
 } from '../../repositories/clientFileSheetRepository';
@@ -63,6 +67,17 @@ interface IngestPayload {
 type ResolvedIngestPayload = IngestPayload & { fileUploadGuid: string };
 
 type FileRecordResponseRow = FileRecordRow & { entityName?: string | null };
+type UserDefinedHeaderKey = 'userDefined1' | 'userDefined2' | 'userDefined3';
+type UserDefinedHeaderPayload = { key: UserDefinedHeaderKey; label: string };
+
+const USER_DEFINED_TEMPLATE_HEADERS: Array<{
+  key: UserDefinedHeaderKey;
+  templateHeader: string;
+}> = [
+  { key: 'userDefined1', templateHeader: 'User Defined 1' },
+  { key: 'userDefined2', templateHeader: 'User Defined 2' },
+  { key: 'userDefined3', templateHeader: 'User Defined 3' },
+];
 
 const normalizeText = (value: unknown): string => {
   if (typeof value === 'string') {
@@ -139,16 +154,93 @@ const normalizeHeader = (value: string | null | undefined): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+const normalizeHeaderKey = (value: string): string =>
+  value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+const IGNORED_ACCOUNT_ID_PATTERNS = [
+  /^account\s*(id|number)?$/i,
+  /^gl\s*id$/i,
+  /\btrial\s+balance\b/i,
+];
+
+const shouldSkipAccountId = (value: string): boolean => {
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized) {
+    return true;
+  }
+
+  return IGNORED_ACCOUNT_ID_PATTERNS.some((pattern) => pattern.test(normalized));
+};
+
 const buildHeaderLookup = (headerMap: HeaderMap): Map<string, string> => {
   const lookup = new Map<string, string>();
   Object.entries(headerMap).forEach(([templateHeader, sourceHeader]) => {
-    const normalizedTemplate = templateHeader.replace(/\s+/g, '').toLowerCase();
+    const normalizedTemplate = normalizeHeaderKey(templateHeader);
     const normalizedSource = normalizeHeader(sourceHeader);
     if (normalizedTemplate && normalizedSource) {
       lookup.set(normalizedTemplate, normalizedSource);
     }
   });
   return lookup;
+};
+
+const resolveLatestFileUploadGuid = (
+  items: FileRecordRow[],
+  fallback?: string | null,
+): string | null => {
+  if (fallback) {
+    return fallback;
+  }
+
+  let latestGuid: string | null = null;
+  let latestTimestamp = 0;
+
+  items.forEach((item) => {
+    const guid = item.fileUploadGuid?.trim();
+    if (!guid) {
+      return;
+    }
+    const candidate = item.insertedDttm ? Date.parse(item.insertedDttm) : NaN;
+    if (Number.isNaN(candidate)) {
+      if (!latestGuid) {
+        latestGuid = guid;
+      }
+      return;
+    }
+    if (candidate >= latestTimestamp) {
+      latestTimestamp = candidate;
+      latestGuid = guid;
+    }
+  });
+
+  return latestGuid;
+};
+
+const buildUserDefinedHeaders = (
+  mappings: UserDefinedHeaderMapping[],
+): UserDefinedHeaderPayload[] => {
+  if (!mappings.length) {
+    return [];
+  }
+
+  const lookup = new Map(
+    mappings.map((mapping) => [
+      mapping.templateHeader.trim(),
+      mapping.sourceHeader.trim(),
+    ]),
+  );
+
+  return USER_DEFINED_TEMPLATE_HEADERS.reduce<UserDefinedHeaderPayload[]>(
+    (acc, entry) => {
+      const label = lookup.get(entry.templateHeader);
+      if (!label) {
+        return acc;
+      }
+      acc.push({ key: entry.key, label });
+      return acc;
+    },
+    [],
+  );
 };
 
 const getValueFromRow = (
@@ -372,18 +464,25 @@ const deriveRecordsFromSheet = (
   fileName?: string,
 ): FileRecordInput[] => {
   const accountIdHeader =
-    headerLookup.get('glid') ?? headerLookup.get('accountid') ?? null;
-  const accountNameHeader =
-    headerLookup.get('accountdescription') ?? headerLookup.get('accountname') ?? null;
-  const activityHeader =
-    headerLookup.get('netchange') ||
-    headerLookup.get('activity') ||
-    headerLookup.get('amount') ||
+    headerLookup.get(normalizeHeaderKey('GL ID')) ??
+    headerLookup.get(normalizeHeaderKey('Account ID')) ??
     null;
-  const entityHeader = headerLookup.get('entity') ?? headerLookup.get('entityname') ?? null;
-  const userDefined1Header = headerLookup.get('userdefined1') ?? null;
-  const userDefined2Header = headerLookup.get('userdefined2') ?? null;
-  const userDefined3Header = headerLookup.get('userdefined3') ?? null;
+  const accountNameHeader =
+    headerLookup.get(normalizeHeaderKey('Account Description')) ??
+    headerLookup.get(normalizeHeaderKey('Account Name')) ??
+    null;
+  const activityHeader =
+    headerLookup.get(normalizeHeaderKey('Net Change')) ||
+    headerLookup.get(normalizeHeaderKey('Activity')) ||
+    headerLookup.get(normalizeHeaderKey('Amount')) ||
+    null;
+  const entityHeader =
+    headerLookup.get(normalizeHeaderKey('Entity')) ??
+    headerLookup.get(normalizeHeaderKey('Entity Name')) ??
+    null;
+  const userDefined1Header = headerLookup.get(normalizeHeaderKey('User Defined 1')) ?? null;
+  const userDefined2Header = headerLookup.get(normalizeHeaderKey('User Defined 2')) ?? null;
+  const userDefined3Header = headerLookup.get(normalizeHeaderKey('User Defined 3')) ?? null;
 
   const firstRowIndex =
     typeof sheet.firstDataRowIndex === 'number' && Number.isFinite(sheet.firstDataRowIndex)
@@ -399,7 +498,7 @@ const deriveRecordsFromSheet = (
     .map((row, index) => {
       const accountId = normalizeText(getValueFromRow(row, accountIdHeader));
       const accountName = normalizeText(getValueFromRow(row, accountNameHeader));
-      if (!accountId || !accountName) {
+      if (!accountId || !accountName || shouldSkipAccountId(accountId)) {
         return null;
       }
 
@@ -775,9 +874,30 @@ export const listFileRecordsHandler = async (
         isSelected: undefined,
       }));
 
+      const latestFileUploadGuid = resolveLatestFileUploadGuid(
+        items,
+        metadata?.fileUploadGuid ?? null,
+      );
+      let userDefinedHeaders: UserDefinedHeaderPayload[] = [];
+
+      if (latestFileUploadGuid) {
+        try {
+          const mappings = await listUserDefinedHeaderMappingsForFileUpload(
+            latestFileUploadGuid,
+          );
+          userDefinedHeaders = buildUserDefinedHeaders(mappings);
+        } catch (error) {
+          context.warn(
+            'Failed to fetch user defined header mappings; continuing without them',
+            error,
+          );
+        }
+      }
+
       return json({
         items: itemsWithEntities,
         clientId,
+        userDefinedHeaders,
         upload:
           metadata && metadata.timestamp
             ? { fileName: metadata.fileName, uploadedAt: metadata.timestamp }
@@ -871,9 +991,23 @@ export const listFileRecordsHandler = async (
             isSelected: undefined,
           }));
 
+    let userDefinedHeaders: UserDefinedHeaderPayload[] = [];
+    try {
+      const mappings = await listUserDefinedHeaderMappingsForFileUpload(
+        formattedFileUploadGuid,
+      );
+      userDefinedHeaders = buildUserDefinedHeaders(mappings);
+    } catch (error) {
+      context.warn(
+        'Failed to fetch user defined header mappings; continuing without them',
+        error,
+      );
+    }
+
     return json({
       items: itemsWithEntities,
       fileUploadGuid: formattedFileUploadGuid,
+      userDefinedHeaders,
       upload:
         metadata && metadata.timestamp
           ? { fileName: metadata.fileName, uploadedAt: metadata.timestamp }

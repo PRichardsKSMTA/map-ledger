@@ -133,6 +133,8 @@ const HEADER_BUTTON_ALIGNMENT: Partial<Record<SortKey, string>> = {
 };
 
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 export default function MappingTable() {
   const {
@@ -163,6 +165,7 @@ export default function MappingTable() {
   const unmappedPeriodsByAccount = useMappingStore(selectUnmappedPeriodsByAccount);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
+  const activeStatusKey = activeStatuses.join('|');
   const dirtyMappingIds = useMappingStore((state) => state.dirtyMappingIds);
   const rowSaveStatuses = useMappingStore((state) => state.rowSaveStatuses);
   const updateTarget = useMappingStore((state) => state.updateTarget);
@@ -210,6 +213,8 @@ export default function MappingTable() {
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(
     null
   );
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
 
   const latestPeriod = useMemo(() => {
     if (availablePeriods.length === 0) {
@@ -300,6 +305,10 @@ export default function MappingTable() {
     );
   }, [accounts]);
 
+  useEffect(() => {
+    setPageIndex(0);
+  }, [activeStatusKey, pageSize, searchTerm, sortConfig?.direction, sortConfig?.key]);
+
   const dynamicStatusByAccount = useMemo(() => {
     if (allocations.length === 0) {
       return new Map<string, MappingStatus>();
@@ -385,6 +394,26 @@ export default function MappingTable() {
     return [...filteredAccounts].sort(safeCompare);
   }, [filteredAccounts, sortConfig, getDisplayStatus]);
 
+  const totalAccounts = sortedAccounts.length;
+  const totalPages = totalAccounts > 0 ? Math.ceil(totalAccounts / pageSize) : 0;
+  const safePageIndex = totalPages > 0 ? Math.min(pageIndex, totalPages - 1) : 0;
+  const pageStart = totalPages > 0 ? safePageIndex * pageSize : 0;
+  const pageEnd = totalPages > 0 ? Math.min(pageStart + pageSize, totalAccounts) : 0;
+  const pagedAccounts = useMemo(
+    () => sortedAccounts.slice(pageStart, pageEnd),
+    [sortedAccounts, pageStart, pageEnd]
+  );
+  const pageLabelStart = totalAccounts === 0 ? 0 : pageStart + 1;
+  const pageLabelEnd = totalAccounts === 0 ? 0 : pageEnd;
+  const currentPage = totalPages === 0 ? 0 : safePageIndex + 1;
+  const lastPageIndex = Math.max(totalPages - 1, 0);
+
+  useEffect(() => {
+    if (pageIndex !== safePageIndex) {
+      setPageIndex(safePageIndex);
+    }
+  }, [pageIndex, safePageIndex]);
+
   const shouldAutoMapNextAccount = (account: GLAccountMappingRow) =>
     account.mappingType === 'direct' &&
     !account.manualCOAId?.trim() &&
@@ -393,12 +422,15 @@ export default function MappingTable() {
 
   const handleTargetChange = (
     account: GLAccountMappingRow,
-    index: number,
+    sortedIndex: number,
     nextValue: string
   ) => {
     const hasBatchSelection = selectedIds.has(account.id) && selectedIds.size > 1;
     if (hasBatchSelection) {
       applyBatchMapping(selectedIdList, { target: nextValue || null });
+      if (nextValue) {
+        clearSelection();
+      }
       return;
     }
 
@@ -408,7 +440,7 @@ export default function MappingTable() {
       return;
     }
 
-    const nextAccount = sortedAccounts[index + 1];
+    const nextAccount = sortedAccounts[sortedIndex + 1];
     if (nextAccount && shouldAutoMapNextAccount(nextAccount)) {
       updateTarget(nextAccount.id, nextValue);
     }
@@ -550,7 +582,8 @@ export default function MappingTable() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
-            {sortedAccounts.map((account, index) => {
+            {pagedAccounts.map((account, index) => {
+              const absoluteIndex = pageStart + index;
               const normalizedAccountPeriod = account.glMonth?.trim() ?? null;
               const periodKey = normalizedAccountPeriod ?? 'unspecified';
               const isCurrentPeriod =
@@ -619,7 +652,7 @@ export default function MappingTable() {
               const rowSaveError =
                 rowSaveStatus?.status === 'error' ? rowSaveStatus.message : undefined;
 
-              const rowKey = `${account.id}-${account.entityId}-${account.glMonth ?? 'no-period'}-${index}`;
+              const rowKey = `${account.id}-${account.entityId}-${account.glMonth ?? 'no-period'}-${absoluteIndex}`;
 
               return (
                 <Fragment key={rowKey}>
@@ -753,7 +786,7 @@ export default function MappingTable() {
                             options={coaOptions}
                             placeholder="Search target"
                             onChange={(nextValue) =>
-                              handleTargetChange(account, index, nextValue)
+                              handleTargetChange(account, absoluteIndex, nextValue)
                             }
                             noOptionsMessage="No matching accounts"
                             className="w-full"
@@ -879,12 +912,13 @@ export default function MappingTable() {
                           targetOptions={coaOptions}
                           presetOptions={percentagePresetOptions}
                           selectedPresetId={account.presetId ?? null}
-                          onApplyPreset={(presetId) =>
-                            applyPresetToAccounts(
-                              hasBatchSelection ? selectedIdList : [account.id],
-                              presetId
-                            )
-                          }
+                          onApplyPreset={(presetId) => {
+                            if (hasBatchSelection) {
+                              applyPresetToAccounts(selectedIdList, presetId);
+                              return;
+                            }
+                            applyPresetToAccounts([account.id], presetId);
+                          }}
                           colSpan={COLUMN_DEFINITIONS.length + 2}
                           panelId={`split-panel-${account.id}`}
                           onAddSplit={() =>
@@ -930,6 +964,73 @@ export default function MappingTable() {
           </tbody>
         </table>
       </div>
+      {totalAccounts > 0 && (
+        <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            Showing {pageLabelStart.toLocaleString()}-{pageLabelEnd.toLocaleString()} of{' '}
+            {totalAccounts.toLocaleString()} accounts
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="mapping-page-size"
+                className="text-sm text-slate-600 dark:text-slate-300"
+              >
+                Rows per page
+              </label>
+              <select
+                id="mapping-page-size"
+                value={pageSize}
+                onChange={(event) => setPageSize(Number(event.target.value))}
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPageIndex(0)}
+                disabled={safePageIndex === 0}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                First
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex((prev) => Math.max(prev - 1, 0))}
+                disabled={safePageIndex === 0}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPageIndex((prev) => Math.min(prev + 1, lastPageIndex))}
+                disabled={safePageIndex >= lastPageIndex}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Next
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex(lastPageIndex)}
+                disabled={safePageIndex >= lastPageIndex}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {activeDynamicAccountId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
           <div

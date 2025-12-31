@@ -22,7 +22,17 @@ const COST_TYPE_COLUMN = 'COST_TYPE';
 const RECORD_ID_COLUMN = 'RECORD_ID';
 const SAMPLE_ROW_COUNT = 5;
 
-interface ParsedExcel {
+const isZipBuffer = (buffer: Buffer): boolean =>
+  buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+
+const isCfbBuffer = (buffer: Buffer): boolean =>
+  buffer.length >= 4 &&
+  buffer[0] === 0xd0 &&
+  buffer[1] === 0xcf &&
+  buffer[2] === 0x11 &&
+  buffer[3] === 0xe0;
+
+interface ParsedSpreadsheet {
   headers: { original: string; normalized: string }[];
   normalizedHeaders: string[];
   rows: Record<string, string | null>[];
@@ -112,11 +122,15 @@ const normalizeCellValue = (value: unknown): string | null => {
   return `${value}`.trim() || null;
 };
 
-const parseExcelBuffer = (buffer: Buffer): ParsedExcel => {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+const readCsvWorkbook = (buffer: Buffer): XLSX.WorkBook => {
+  const text = buffer.toString('utf8').replace(/^\uFEFF/, '');
+  return XLSX.read(text, { type: 'string', raw: false });
+};
+
+const parseWorkbook = (workbook: XLSX.WorkBook): ParsedSpreadsheet => {
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    throw new Error('Excel file is missing worksheets.');
+    throw new Error('Spreadsheet file is missing worksheets.');
   }
 
   const worksheet = workbook.Sheets[sheetName];
@@ -127,7 +141,7 @@ const parseExcelBuffer = (buffer: Buffer): ParsedExcel => {
   }) as unknown[][];
 
   if (rawRows.length === 0) {
-    throw new Error('Excel file is empty.');
+    throw new Error('Spreadsheet file is empty.');
   }
 
   const rawHeaders = rawRows[0].map((value) => `${value ?? ''}`);
@@ -151,6 +165,25 @@ const parseExcelBuffer = (buffer: Buffer): ParsedExcel => {
   );
 
   return { headers, normalizedHeaders, rows };
+};
+
+const parseSpreadsheetBuffer = (buffer: Buffer): ParsedSpreadsheet => {
+  const isBinaryWorkbook = isZipBuffer(buffer) || isCfbBuffer(buffer);
+
+  if (isBinaryWorkbook) {
+    try {
+      const workbook = XLSX.read(buffer, { type: 'buffer', raw: false });
+      return parseWorkbook(workbook);
+    } catch (error) {
+      try {
+        return parseWorkbook(readCsvWorkbook(buffer));
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  return parseWorkbook(readCsvWorkbook(buffer));
 };
 
 const readRequestBuffer = async (request: HttpRequest): Promise<Buffer | null> => {
@@ -307,7 +340,7 @@ const buildPreviewResponse = (
   industry: string,
   tableName: string,
   tableExists: boolean,
-  parsed: ParsedExcel,
+  parsed: ParsedSpreadsheet,
   selectedColumns: string[],
   rows: Record<string, string | null>[],
   differences: {
@@ -432,7 +465,7 @@ const parseRequest = async (
 };
 
 const buildRowPayloads = (
-  parsed: ParsedExcel,
+  parsed: ParsedSpreadsheet,
   selectedColumns: string[],
 ): Record<string, string | null>[] => {
   const rows: Record<string, string | null>[] = [];
@@ -465,14 +498,14 @@ export async function coaManagerImportHandler(
   }
 
   if (!fileBuffer) {
-    return json({ message: 'Excel file is required' }, 400);
+    return json({ message: 'Spreadsheet file is required' }, 400);
   }
 
-  let parsed: ParsedExcel;
+  let parsed: ParsedSpreadsheet;
   try {
-    parsed = parseExcelBuffer(fileBuffer);
+    parsed = parseSpreadsheetBuffer(fileBuffer);
   } catch (error) {
-    return json({ message: 'Unable to parse Excel file', detail: String(error) }, 400);
+    return json({ message: 'Unable to parse spreadsheet file', detail: String(error) }, 400);
   }
 
   const availableColumns = parsed.normalizedHeaders.filter(

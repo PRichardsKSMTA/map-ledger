@@ -34,7 +34,7 @@ const openApiSpec = {
       patch: { summary: 'Batch update cost types for COA records' }
     },
     '/coa-manager/import': {
-      post: { summary: 'Import chart of accounts for an industry' }
+      post: { summary: 'Import chart of accounts for an industry (CSV or Excel)' }
     },
     '/user-clients': {
       get: { summary: 'List clients available to the current user' }

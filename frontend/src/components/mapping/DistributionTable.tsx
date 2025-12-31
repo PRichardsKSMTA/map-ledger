@@ -39,6 +39,7 @@ import type {
   GLAccountMappingRow,
   MappingPresetLibraryEntry,
   MappingType,
+  UserDefinedHeaderKey,
 } from '../../types';
 import { getOperationLabel } from '../../utils/operationLabel';
 import { getBasisValue } from '../../utils/dynamicAllocation';
@@ -67,17 +68,36 @@ const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
   { value: 'dynamic', label: 'Dynamic' },
 ];
 
-type SortKey = 'accountId' | 'description' | 'activity' | 'type' | 'operations' | 'status';
+type SortKey =
+  | 'glAccount'
+  | 'glDescription'
+  | 'accountId'
+  | 'description'
+  | 'activity'
+  | 'type'
+  | 'operations'
+  | 'status';
 type SortDirection = 'asc' | 'desc';
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string; align?: 'right' }[] = [
-  { key: 'accountId', label: 'Account ID' },
-  { key: 'description', label: 'Standard COA Description' },
+  { key: 'accountId', label: 'SCoA ID' },
+  { key: 'description', label: 'SCoA Description' },
   { key: 'activity', label: 'Activity', align: 'right' },
   { key: 'type', label: 'Distribution Type' },
   { key: 'operations', label: 'Target Operation' },
   { key: 'status', label: 'Status', align: 'right' },
 ];
+
+const DESCRIPTION_COLUMN_INDEX = COLUMN_DEFINITIONS.findIndex(
+  column => column.key === 'description',
+);
+const COLUMNS_BEFORE_USER_DEFINED = COLUMN_DEFINITIONS.slice(
+  0,
+  DESCRIPTION_COLUMN_INDEX + 1,
+);
+const COLUMNS_AFTER_USER_DEFINED = COLUMN_DEFINITIONS.slice(
+  DESCRIPTION_COLUMN_INDEX + 1,
+);
 
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   accountId: 'w-32',
@@ -92,6 +112,8 @@ const GL_COLUMN_WIDTH_CLASSES = {
   account: 'min-w-[10rem]',
   description: 'min-w-[16rem]',
 };
+
+const USER_DEFINED_COLUMN_WIDTH_CLASS = 'min-w-[12rem]';
 
 const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
   activity: 'pr-10',
@@ -171,25 +193,6 @@ const operationsAreEqual = (
   });
 };
 
-const getSortValue = (row: DistributionRow, key: SortKey): string | number => {
-  switch (key) {
-    case 'accountId':
-      return row.accountId;
-    case 'description':
-      return row.description;
-    case 'activity':
-      return row.activity;
-    case 'type':
-      return row.type;
-    case 'operations':
-      return formatOperations(row);
-    case 'status':
-      return row.status;
-    default:
-      return '';
-  }
-};
-
 type GlAccountSummary = {
   id: string;
   description: string;
@@ -224,6 +227,58 @@ const getSplitAbsoluteAmount = (
   return (netChange * percentage) / 100;
 };
 
+const forEachMappedScoaTarget = (
+  account: GLAccountMappingRow,
+  callback: (targetId: string) => void,
+) => {
+  if (account.mappingType === 'direct') {
+    if (account.status !== 'Mapped') {
+      return;
+    }
+    if (!Number.isFinite(account.netChange) || account.netChange === 0) {
+      return;
+    }
+    const targetId = resolveScoaTargetId(account.manualCOAId);
+    if (!targetId) {
+      return;
+    }
+    callback(targetId);
+    return;
+  }
+
+  if (account.mappingType === 'percentage') {
+    account.splitDefinitions.forEach(split => {
+      if (split.isExclusion) {
+        return;
+      }
+      const targetId = resolveScoaTargetId(split.targetId);
+      if (!targetId) {
+        return;
+      }
+      const amount = getSplitAbsoluteAmount(account, split);
+      if (!Number.isFinite(amount) || amount === 0) {
+        return;
+      }
+      callback(targetId);
+    });
+    return;
+  }
+
+  if (account.mappingType === 'dynamic') {
+    const targetId = resolveScoaTargetId(account.manualCOAId ?? account.suggestedCOAId);
+    if (!targetId) {
+      return;
+    }
+    const baseAmount = Math.abs(account.netChange);
+    const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
+    const allocatable = Math.max(0, baseAmount - excluded);
+    if (!Number.isFinite(allocatable) || allocatable === 0) {
+      return;
+    }
+    callback(targetId);
+  }
+};
+
 const buildGlAccountLookup = (
   accounts: GLAccountMappingRow[],
 ): Map<string, GlAccountSummary[]> => {
@@ -247,52 +302,7 @@ const buildGlAccountLookup = (
   };
 
   accounts.forEach(account => {
-    if (account.mappingType === 'direct') {
-      if (account.status !== 'Mapped') {
-        return;
-      }
-      if (!Number.isFinite(account.netChange) || account.netChange === 0) {
-        return;
-      }
-      const targetId = resolveScoaTargetId(account.manualCOAId);
-      if (!targetId) {
-        return;
-      }
-      addAccount(targetId, account);
-      return;
-    }
-
-    if (account.mappingType === 'percentage') {
-      account.splitDefinitions.forEach(split => {
-        if (split.isExclusion) {
-          return;
-        }
-        const targetId = resolveScoaTargetId(split.targetId);
-        if (!targetId) {
-          return;
-        }
-        const amount = getSplitAbsoluteAmount(account, split);
-        if (!Number.isFinite(amount) || amount === 0) {
-          return;
-        }
-        addAccount(targetId, account);
-      });
-      return;
-    }
-
-    if (account.mappingType === 'dynamic') {
-      const targetId = resolveScoaTargetId(account.manualCOAId ?? account.suggestedCOAId);
-      if (!targetId) {
-        return;
-      }
-      const baseAmount = Math.abs(account.netChange);
-      const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
-      const allocatable = Math.max(0, baseAmount - excluded);
-      if (!Number.isFinite(allocatable) || allocatable === 0) {
-        return;
-      }
-      addAccount(targetId, account);
-    }
+    forEachMappedScoaTarget(account, targetId => addAccount(targetId, account));
   });
 
   const result = new Map<string, GlAccountSummary[]>();
@@ -317,9 +327,50 @@ const buildGlAccountDisplay = (accounts: GlAccountSummary[]) => {
   return { visible, remaining, fullIds, fullDescriptions };
 };
 
+const buildValueDisplay = (values: string[]) => {
+  const visible = values.slice(0, MAX_GL_ACCOUNTS_VISIBLE);
+  const remaining = Math.max(values.length - visible.length, 0);
+  const fullList = values.join('\n');
+  return { visible, remaining, fullList };
+};
+
+const buildUserDefinedValueLookup = (
+  accounts: GLAccountMappingRow[],
+  key: UserDefinedHeaderKey,
+): Map<string, string[]> => {
+  const lookup = new Map<string, Set<string>>();
+
+  accounts.forEach(account => {
+    const rawValue = account[key];
+    const normalizedValue =
+      typeof rawValue === 'string' ? rawValue.trim() : rawValue ? String(rawValue).trim() : '';
+    if (!normalizedValue) {
+      return;
+    }
+
+    forEachMappedScoaTarget(account, targetId => {
+      const existing = lookup.get(targetId) ?? new Set<string>();
+      existing.add(normalizedValue);
+      lookup.set(targetId, existing);
+    });
+  });
+
+  const result = new Map<string, string[]>();
+  lookup.forEach((value, targetId) => {
+    result.set(
+      targetId,
+      Array.from(value.values()).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      ),
+    );
+  });
+  return result;
+};
+
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const standardTargets = useMappingStore(selectStandardScoaSummaries);
   const mappedAccounts = useMappingStore(selectAccounts);
+  const userDefinedHeaders = useMappingStore(state => state.userDefinedHeaders);
   const activeEntityId = useMappingStore(selectActiveEntityId);
   const activeClientId = useClientStore(state => state.activeClientId);
   const companies = useOrganizationStore(state => state.companies);
@@ -333,6 +384,14 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     () => buildGlAccountLookup(mappedAccounts),
     [mappedAccounts],
   );
+  const userDefinedValueLookups = useMemo(() => {
+    const lookups = new Map<UserDefinedHeaderKey, Map<string, string[]>>();
+    userDefinedHeaders.forEach(header => {
+      lookups.set(header.key, buildUserDefinedValueLookup(mappedAccounts, header.key));
+    });
+    return lookups;
+  }, [mappedAccounts, userDefinedHeaders]);
+  const totalColumnSpan = COLUMN_DEFINITIONS.length + 4 + userDefinedHeaders.length;
   const clientOperations = useMemo<DistributionOperationCatalogItem[]>(() => {
     const map = new Map<string, DistributionOperationCatalogItem>();
     companies.forEach(company => {
@@ -538,7 +597,12 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
       applyPresetToRows(targetRowIds, presetId);
       applyOperationsToRows(targetRowIds, derivedOperations);
     },
-    [applyOperationsToRows, applyPresetToRows, buildPresetOperations, rows],
+    [
+      applyOperationsToRows,
+      applyPresetToRows,
+      buildPresetOperations,
+      rows,
+    ],
   );
 
   const operationTargetCatalog = useMemo(
@@ -785,20 +849,53 @@ const buildDistributionPresetLibraryEntries = (
     });
   }, [rows, searchTerm, normalizedStatusFilters]);
 
+  const getRowSortValue = useCallback(
+    (row: DistributionRow, key: SortKey): string | number => {
+      const resolveGlAccounts = () =>
+        glAccountsByScoa.get(row.mappingRowId) ?? glAccountsByScoa.get(row.accountId) ?? [];
+
+      switch (key) {
+        case 'glAccount':
+          return resolveGlAccounts()
+            .map(account => account.id)
+            .join(' ');
+        case 'glDescription':
+          return resolveGlAccounts()
+            .map(account => account.description)
+            .join(' ');
+        case 'accountId':
+          return row.accountId;
+        case 'description':
+          return row.description;
+        case 'activity':
+          return row.activity;
+        case 'type':
+          return row.type;
+        case 'operations':
+          return formatOperations(row);
+        case 'status':
+          return row.status;
+        default:
+          return '';
+      }
+    },
+    [glAccountsByScoa],
+  );
+
   const sortedRows = useMemo(() => {
     if (!sortConfig) {
       return filteredRows;
     }
     const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
     return [...filteredRows].sort((a, b) => {
-      const valueA = getSortValue(a, sortConfig.key);
-      const valueB = getSortValue(b, sortConfig.key);
+      const valueA = getRowSortValue(a, sortConfig.key);
+      const valueB = getRowSortValue(b, sortConfig.key);
       if (typeof valueA === 'number' && typeof valueB === 'number') {
         return (valueA - valueB) * multiplier;
       }
       return valueA.toString().localeCompare(valueB.toString()) * multiplier;
     });
-  }, [filteredRows, sortConfig]);
+  }, [filteredRows, getRowSortValue, sortConfig]);
 
   useEffect(() => {
     if (!selectAllRef.current) {
@@ -934,6 +1031,7 @@ const buildDistributionPresetLibraryEntries = (
     };
     if (hasBatchSelection) {
       applyBatchDistribution(selectedIdList, { operation: operationShare });
+      clearSelection();
       return;
     }
     updateRowOperations(row.id, [operationShare]);
@@ -954,6 +1052,38 @@ const buildDistributionPresetLibraryEntries = (
       return 'none';
     }
     return sortConfig.direction === 'asc' ? 'ascending' : 'descending';
+  };
+
+  const renderSortableHeader = (column: {
+    key: SortKey;
+    label: string;
+    align?: 'right';
+    className?: string;
+  }) => {
+    const widthClass = column.className ?? COLUMN_WIDTH_CLASSES[column.key] ?? '';
+    const spacingClass = COLUMN_SPACING_CLASSES[column.key] ?? '';
+    const buttonAlignmentClass = column.align === 'right' ? 'justify-end text-right' : '';
+    return (
+      <th
+        key={column.key}
+        scope="col"
+        aria-sort={getAriaSort(column.key)}
+        onClick={() => handleSort(column.key)}
+        className={`cursor-pointer px-3 py-3 ${widthClass} ${spacingClass} ${column.align === 'right' ? 'text-right' : ''}`}
+      >
+        <button
+          type="button"
+          onClick={(event: MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            handleSort(column.key);
+          }}
+          className={`flex w-full items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${buttonAlignmentClass}`}
+        >
+          {column.label}
+          <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </th>
+    );
   };
 
   return (
@@ -981,44 +1111,27 @@ const buildDistributionPresetLibraryEntries = (
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              <th
-                scope="col"
-                className={`px-3 py-3 text-left ${GL_COLUMN_WIDTH_CLASSES.account}`}
-              >
-                GL Account
-              </th>
-              <th
-                scope="col"
-                className={`px-3 py-3 text-left ${GL_COLUMN_WIDTH_CLASSES.description}`}
-              >
-                GL Description
-              </th>
-              {COLUMN_DEFINITIONS.map(column => {
-                const widthClass = COLUMN_WIDTH_CLASSES[column.key] ?? '';
-                const spacingClass = COLUMN_SPACING_CLASSES[column.key] ?? '';
-                const buttonAlignmentClass = column.align === 'right' ? 'justify-end text-right' : '';
-                return (
-              <th
-                key={column.key}
-                scope="col"
-                aria-sort={getAriaSort(column.key)}
-                onClick={() => handleSort(column.key)}
-                className={`cursor-pointer px-3 py-3 ${widthClass} ${spacingClass} ${column.align === 'right' ? 'text-right' : ''}`}
-              >
-                <button
-                  type="button"
-                  onClick={(event: MouseEvent<HTMLButtonElement>) => {
-                    event.stopPropagation();
-                    handleSort(column.key);
-                  }}
-                  className={`flex w-full items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${buttonAlignmentClass}`}
-                >
-                      {column.label}
-                      <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </th>
-                );
+              {renderSortableHeader({
+                key: 'glAccount',
+                label: 'GL Account',
+                className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.account}`,
               })}
+              {renderSortableHeader({
+                key: 'glDescription',
+                label: 'GL Description',
+                className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.description}`,
+              })}
+              {COLUMNS_BEFORE_USER_DEFINED.map(renderSortableHeader)}
+              {userDefinedHeaders.map(header => (
+                <th
+                  key={header.key}
+                  scope="col"
+                  className={`px-3 py-3 text-left normal-case ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
+                >
+                  {header.label}
+                </th>
+              ))}
+              {COLUMNS_AFTER_USER_DEFINED.map(renderSortableHeader)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white text-sm dark:divide-slate-700 dark:bg-slate-900">
@@ -1035,6 +1148,17 @@ const buildDistributionPresetLibraryEntries = (
                 glAccountsByScoa.get(row.mappingRowId) ?? glAccountsByScoa.get(row.accountId) ?? [];
               const glAccountDisplay = buildGlAccountDisplay(glAccounts);
               const hasGlAccounts = glAccountDisplay.visible.length > 0;
+              const userDefinedValues = userDefinedHeaders.map(header => {
+                const lookup = userDefinedValueLookups.get(header.key);
+                const values =
+                  lookup?.get(row.mappingRowId) ?? lookup?.get(row.accountId) ?? [];
+                return {
+                  key: header.key,
+                  label: header.label,
+                  values,
+                  display: buildValueDisplay(values),
+                };
+              });
               const rowClasses = [
                 'align-middle transition',
                 isSelected
@@ -1095,7 +1219,7 @@ const buildDistributionPresetLibraryEntries = (
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">None</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
                       )}
                     </td>
                     <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.description}`}>
@@ -1116,7 +1240,7 @@ const buildDistributionPresetLibraryEntries = (
                           )}
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">None</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
                       )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-4 ${COLUMN_WIDTH_CLASSES.accountId ?? ''}`}>
@@ -1129,6 +1253,30 @@ const buildDistributionPresetLibraryEntries = (
                         <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{row.description}</span>
                       </div>
                     </td>
+                    {userDefinedValues.map(entry => (
+                      <td
+                        key={`${row.id}-${entry.key}`}
+                        className={`px-3 py-4 align-top ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
+                      >
+                        {entry.values.length > 0 ? (
+                          <div
+                            className="space-y-1 text-xs text-slate-600 dark:text-slate-300"
+                            title={entry.display.fullList}
+                          >
+                            {entry.display.visible.map((value, valueIndex) => (
+                              <div key={`${entry.key}-${valueIndex}`}>{value}</div>
+                            ))}
+                            {entry.display.remaining > 0 && (
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                +{entry.display.remaining} more
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                        )}
+                      </td>
+                    ))}
                     <td
                       className={`pl-3 py-4 text-right font-medium tabular-nums text-slate-600 dark:text-slate-300 ${COLUMN_WIDTH_CLASSES.activity ?? ''} ${COLUMN_SPACING_CLASSES.activity ?? ''}`}
                     >
@@ -1218,7 +1366,7 @@ const buildDistributionPresetLibraryEntries = (
                   </tr>
                   {isExpanded && isEditing && row.type === 'percentage' && (
                     <tr id={`distribution-panel-${row.id}`}>
-                      <td colSpan={COLUMN_DEFINITIONS.length + 4} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
+                      <td colSpan={totalColumnSpan} className="bg-slate-50 px-4 py-6 dark:bg-slate-800/40">
                         <DistributionSplitRow
                           row={row}
                           operationsCatalog={operationsCatalog}
@@ -1226,11 +1374,13 @@ const buildDistributionPresetLibraryEntries = (
                           setOperationsDraft={setOperationsDraft}
                           presetOptions={percentageDistributionPresetOptions}
                           selectedPresetId={row.presetId ?? null}
-                          onApplyPreset={presetId =>
-                            hasBatchSelection
-                              ? applyPresetToRows(selectedIdList, presetId)
-                              : updateRowPreset(row.id, presetId)
-                          }
+                          onApplyPreset={presetId => {
+                            if (hasBatchSelection) {
+                              applyPresetToRows(selectedIdList, presetId);
+                              return;
+                            }
+                            updateRowPreset(row.id, presetId);
+                          }}
                           panelId={`distribution-panel-${row.id}`}
                         />
                       </td>
@@ -1239,7 +1389,7 @@ const buildDistributionPresetLibraryEntries = (
                   {isExpanded && isEditing && row.type === 'dynamic' && (
                     <DistributionDynamicAllocationRow
                       row={row}
-                      colSpan={COLUMN_DEFINITIONS.length + 4}
+                      colSpan={totalColumnSpan}
                       panelId={`distribution-panel-${row.id}`}
                       onOpenBuilder={() => setActiveDynamicAccountId(row.accountId)}
                       operationsCatalog={operationsCatalog}
@@ -1252,7 +1402,7 @@ const buildDistributionPresetLibraryEntries = (
             })}
             {sortedRows.length === 0 && (
               <tr>
-                <td colSpan={COLUMN_DEFINITIONS.length + 4} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
+                <td colSpan={totalColumnSpan} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
                   No distribution rows match your filters.
                 </td>
               </tr>

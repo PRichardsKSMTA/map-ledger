@@ -60,6 +60,24 @@ const normalizeMonthKey = (glMonth?: string): string => {
 
 const ACCOUNT_PREFIX_PATTERN = /^(\d{2,3})[-_.\s]+(.+)$/;
 const PREFIX_COVERAGE_THRESHOLD = 0.6;
+const IGNORED_ACCOUNT_ID_PATTERNS = [
+  /^account\s*(id|number)?$/i,
+  /^gl\s*id$/i,
+  /\btrial\s+balance\b/i,
+];
+const MAX_DETECTED_ACCOUNTS = 50;
+
+const shouldSkipAccountId = (value: string): boolean => {
+  const normalized = value
+    .trim()
+    .replace(/[^a-z0-9\s]/gi, ' ')
+    .replace(/\s+/g, ' ');
+  if (!normalized) {
+    return true;
+  }
+
+  return IGNORED_ACCOUNT_ID_PATTERNS.some((pattern) => pattern.test(normalized));
+};
 
 const extractAccountPrefix = (
   value: string,
@@ -332,6 +350,18 @@ const normalizeEntityLabel = (entity: ClientEntity | null): string => {
     return '';
   }
   return entity.displayName ?? entity.name;
+};
+
+const formatDetectedAccountSummary = (accountIds?: string[]): string => {
+  if (!accountIds || accountIds.length === 0) {
+    return 'Multiple accounts';
+  }
+
+  const visibleAccounts = accountIds.slice(0, MAX_DETECTED_ACCOUNTS);
+  const hasMoreAccounts = accountIds.length > visibleAccounts.length;
+  const summary = visibleAccounts.join(', ');
+
+  return hasMoreAccounts ? `${summary}, ...` : summary;
 };
 
 const filterRowsByGlMonth = (
@@ -1151,7 +1181,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
               ? descriptionValue.toString().trim()
               : '';
 
-          if (!accountId || !description) {
+          if (!accountId || !description || shouldSkipAccountId(accountId)) {
             return null;
           }
 
@@ -1420,7 +1450,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                 {resolvedAssignments.map((assignment) => {
                   const summary = entitySlotSummaries.find((slot) => slot.slot === assignment.slot);
                   const glMonthSummary = summary?.glMonths.join(', ') || 'Unspecified month';
-                  const accountSummary = summary?.accountIds.join(', ') || 'Multiple accounts';
+                  const accountSummary = formatDetectedAccountSummary(summary?.accountIds);
                   const usedEntityIds = allowDuplicateAssignments
                     ? new Set<string>()
                     : new Set(

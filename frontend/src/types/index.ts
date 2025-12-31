@@ -197,6 +197,9 @@ export interface TrialBalanceRow {
   description: string;
   netChange: number;
   glMonth?: string;
+  userDefined1?: string | null;
+  userDefined2?: string | null;
+  userDefined3?: string | null;
   [key: string]: unknown;
 }
 
@@ -261,10 +264,20 @@ export interface FileRecord {
   accountId: string;
   accountName: string;
   activityAmount: number;
+  userDefined1?: string | null;
+  userDefined2?: string | null;
+  userDefined3?: string | null;
   entityName?: string;
   glMonth?: string;
   sourceSheet?: string;
   sourceRowNumber?: number;
+}
+
+export type UserDefinedHeaderKey = 'userDefined1' | 'userDefined2' | 'userDefined3';
+
+export interface UserDefinedHeader {
+  key: UserDefinedHeaderKey;
+  label: string;
 }
 
 export interface SyncedAccount {
@@ -609,6 +622,9 @@ export interface GLAccountMappingRow {
   dynamicExclusionAmount?: number;
   glMonth?: string; // GL month in YYYY-MM-01 format
   requiresEntityAssignment?: boolean;
+  userDefined1?: string | null;
+  userDefined2?: string | null;
+  userDefined3?: string | null;
 }
 
 export interface MappingSaveInput {

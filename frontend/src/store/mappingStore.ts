@@ -20,6 +20,7 @@ import type {
   ReconciliationSubcategoryGroup,
   StandardScoaSummary,
   TrialBalanceRow,
+  UserDefinedHeader,
 } from '../types';
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 import { slugify } from '../utils/slugify';
@@ -43,6 +44,7 @@ const env = ((globalThis as unknown as { importMetaEnv?: Partial<ImportMetaEnv> 
 const API_BASE_URL = env.VITE_API_BASE_URL ?? '/api';
 const AUTO_SAVE_DEBOUNCE_MS = 1200;
 const AUTO_SAVE_BACKOFF_MS = 2500;
+const AUTO_SAVE_BATCH_SIZE = 200; // Match the backend per-request mapping save limit.
 const autoSaveQueue = new Set<string>();
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let autoSaveDelay = AUTO_SAVE_DEBOUNCE_MS;
@@ -1406,6 +1408,7 @@ type FileRecordsResponse = {
   fileUploadGuid?: string;
   clientId?: string;
   entities?: EntitySummary[];
+  userDefinedHeaders?: UserDefinedHeader[];
   upload?: {
     fileName?: string | null;
     uploadedAt?: string | null;
@@ -1426,6 +1429,7 @@ interface MappingState {
   activeEntityIds: string[];
   activeEntities: EntitySummary[];
   activePeriod: string | null;
+  userDefinedHeaders: UserDefinedHeader[];
   isLoadingFromApi: boolean;
   apiError: string | null;
   isSavingMappings: boolean;
@@ -1513,6 +1517,7 @@ interface MappingState {
     period?: string | null;
     rows: TrialBalanceRow[];
     uploadMetadata?: UploadMetadata | null;
+    userDefinedHeaders?: UserDefinedHeader[];
   }) => Promise<void>;
   fetchFileRecords: (
     uploadGuid: string,
@@ -1623,6 +1628,18 @@ const markRowsErrored = (
     ids.map(id => ({ id, status: 'error', message })),
   );
 
+const chunkIds = (ids: string[], batchSize: number): string[][] => {
+  if (ids.length <= batchSize) {
+    return [ids];
+  }
+
+  const batches: string[][] = [];
+  for (let index = 0; index < ids.length; index += batchSize) {
+    batches.push(ids.slice(index, index + batchSize));
+  }
+  return batches;
+};
+
 const mappingStatuses: MappingStatus[] = ['New', 'Unmapped', 'Mapped', 'Excluded'];
 
 const normalizeClientId = (
@@ -1712,19 +1729,30 @@ export const useMappingStore = create<MappingState>((set, get) => {
     autoSaveTimer = null;
 
     try {
-      for (const id of queuedIds) {
-        if (!get().dirtyMappingIds.has(id)) {
-          autoSaveQueue.delete(id);
+      const batches = chunkIds(queuedIds, AUTO_SAVE_BATCH_SIZE);
+      for (const batch of batches) {
+        const currentDirty = get().dirtyMappingIds;
+        const idsToSave = batch.filter(id => currentDirty.has(id));
+
+        batch.forEach(id => {
+          if (!currentDirty.has(id)) {
+            autoSaveQueue.delete(id);
+          }
+        });
+
+        if (!idsToSave.length) {
           continue;
         }
 
-        await get().saveMappings([id]);
+        await get().saveMappings(idsToSave);
 
         const { dirtyMappingIds, saveError } = get();
 
-        if (!dirtyMappingIds.has(id)) {
-          autoSaveQueue.delete(id);
-        }
+        idsToSave.forEach(id => {
+          if (!dirtyMappingIds.has(id)) {
+            autoSaveQueue.delete(id);
+          }
+        });
 
         if (saveError) {
           autoSaveDelay = AUTO_SAVE_BACKOFF_MS;
@@ -1812,6 +1840,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
   activeEntityIds: initialEntities.map(entity => entity.id),
   activeEntities: initialEntities,
   activePeriod: null,
+  userDefinedHeaders: [],
   isLoadingFromApi: false,
   apiError: null,
   isSavingMappings: false,
@@ -1899,6 +1928,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       activeEntityIds: initialEntities.map(entity => entity.id),
       activeEntities: initialEntities,
       activePeriod: null,
+      userDefinedHeaders: [],
       isLoadingFromApi: false,
       apiError: null,
       isSavingMappings: false,
@@ -3204,6 +3234,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
     period,
     rows,
     uploadMetadata,
+    userDefinedHeaders,
   }) => {
     const normalizedClientId = normalizeClientId(clientId);
     const normalizedPeriod = period && period.trim().length > 0 ? period : null;
@@ -3253,6 +3284,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       activeEntityIds: resolvedEntityIds,
       activeEntities: mergedEntities,
       activePeriod: null,
+      userDefinedHeaders: userDefinedHeaders ?? [],
     });
 
     syncDynamicAllocationState(resolvedAccounts, rows, normalizedPeriod);
@@ -3321,6 +3353,9 @@ export const useMappingStore = create<MappingState>((set, get) => {
           description: record.accountName,
           netChange: record.activityAmount ?? 0,
           glMonth: record.glMonth ?? undefined,
+          userDefined1: record.userDefined1 ?? null,
+          userDefined2: record.userDefined2 ?? null,
+          userDefined3: record.userDefined3 ?? null,
         };
       });
 
@@ -3357,6 +3392,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
               uploadedAt: uploadMetadata.uploadedAt ?? null,
             }
           : undefined,
+        userDefinedHeaders: payload.userDefinedHeaders ?? [],
       });
 
       const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';
@@ -3437,6 +3473,9 @@ export const useMappingStore = create<MappingState>((set, get) => {
           description: record.accountName,
           netChange: record.activityAmount ?? 0,
           glMonth: record.glMonth ?? undefined,
+          userDefined1: record.userDefined1 ?? null,
+          userDefined2: record.userDefined2 ?? null,
+          userDefined3: record.userDefined3 ?? null,
         };
       });
 
@@ -3467,6 +3506,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         period: preferredPeriod,
         rows,
         uploadMetadata,
+        userDefinedHeaders: payload.userDefinedHeaders ?? [],
       });
 
       const hydrateMode: HydrationMode = options?.hydrateMode ?? 'resume';

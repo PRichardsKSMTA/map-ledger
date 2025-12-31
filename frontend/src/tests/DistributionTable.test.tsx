@@ -208,8 +208,8 @@ describe('DistributionTable', () => {
 
     expect(screen.getByText('GL Account')).toBeInTheDocument();
     expect(screen.getByText('GL Description')).toBeInTheDocument();
-    expect(screen.getByText('Account ID')).toBeInTheDocument();
-    expect(screen.getByText('Standard COA Description')).toBeInTheDocument();
+    expect(screen.getByText('SCoA ID')).toBeInTheDocument();
+    expect(screen.getByText('SCoA Description')).toBeInTheDocument();
     expect(
       await screen.findByText('FREIGHT REVENUE LINEHAUL - COMPANY FLEET'),
     ).toBeInTheDocument();
