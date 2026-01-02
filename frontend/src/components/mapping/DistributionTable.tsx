@@ -14,10 +14,9 @@ import {
 import {
   selectActiveEntityId,
   selectAccounts,
-  selectStandardScoaSummaries,
+  selectDistributionTargets,
   useMappingStore,
 } from '../../store/mappingStore';
-import { findChartOfAccountOption } from '../../store/chartOfAccountsStore';
 import { useOrganizationStore } from '../../store/organizationStore';
 import { useClientStore } from '../../store/clientStore';
 import { useDistributionSelectionStore } from '../../store/distributionSelectionStore';
@@ -36,10 +35,7 @@ import type {
   DistributionRow,
   DistributionStatus,
   DistributionType,
-  GLAccountMappingRow,
   MappingPresetLibraryEntry,
-  MappingType,
-  UserDefinedHeaderKey,
 } from '../../types';
 import { getOperationLabel } from '../../utils/operationLabel';
 import { getBasisValue } from '../../utils/dynamicAllocation';
@@ -121,6 +117,9 @@ const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
   operations: 'pr-6',
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+
 const STATUS_ICONS: Record<DistributionStatus, LucideIcon> = {
   Distributed: Check,
   Undistributed: HelpCircle,
@@ -193,182 +192,17 @@ const operationsAreEqual = (
   });
 };
 
-type GlAccountSummary = {
-  id: string;
-  description: string;
-};
-
-const MAX_GL_ACCOUNTS_VISIBLE = 2;
-
-const resolveScoaTargetId = (value?: string | null): string | null => {
-  const normalized = value?.trim();
-  if (!normalized) {
-    return null;
+const resolveUserDefinedValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '-';
   }
-  const option = findChartOfAccountOption(normalized);
-  return option?.id?.trim() || normalized;
-};
-
-const getSplitAbsoluteAmount = (
-  account: GLAccountMappingRow,
-  split: GLAccountMappingRow['splitDefinitions'][number],
-): number => {
-  if (!Number.isFinite(account.netChange) || account.netChange === 0) {
-    return 0;
-  }
-
-  const netChange = Math.abs(account.netChange);
-  if (split.allocationType === 'amount') {
-    const absolute = Math.max(0, Math.abs(split.allocationValue ?? 0));
-    return Math.min(absolute, netChange);
-  }
-
-  const percentage = Math.max(0, split.allocationValue ?? 0);
-  return (netChange * percentage) / 100;
-};
-
-const forEachMappedScoaTarget = (
-  account: GLAccountMappingRow,
-  callback: (targetId: string) => void,
-) => {
-  if (account.mappingType === 'direct') {
-    if (account.status !== 'Mapped') {
-      return;
-    }
-    if (!Number.isFinite(account.netChange) || account.netChange === 0) {
-      return;
-    }
-    const targetId = resolveScoaTargetId(account.manualCOAId);
-    if (!targetId) {
-      return;
-    }
-    callback(targetId);
-    return;
-  }
-
-  if (account.mappingType === 'percentage') {
-    account.splitDefinitions.forEach(split => {
-      if (split.isExclusion) {
-        return;
-      }
-      const targetId = resolveScoaTargetId(split.targetId);
-      if (!targetId) {
-        return;
-      }
-      const amount = getSplitAbsoluteAmount(account, split);
-      if (!Number.isFinite(amount) || amount === 0) {
-        return;
-      }
-      callback(targetId);
-    });
-    return;
-  }
-
-  if (account.mappingType === 'dynamic') {
-    const targetId = resolveScoaTargetId(account.manualCOAId ?? account.suggestedCOAId);
-    if (!targetId) {
-      return;
-    }
-    const baseAmount = Math.abs(account.netChange);
-    const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
-    const allocatable = Math.max(0, baseAmount - excluded);
-    if (!Number.isFinite(allocatable) || allocatable === 0) {
-      return;
-    }
-    callback(targetId);
-  }
-};
-
-const buildGlAccountLookup = (
-  accounts: GLAccountMappingRow[],
-): Map<string, GlAccountSummary[]> => {
-  const lookup = new Map<string, Map<string, GlAccountSummary>>();
-
-  const addAccount = (targetId: string, account: GLAccountMappingRow) => {
-    const accountId = account.accountId?.trim();
-    if (!accountId) {
-      return;
-    }
-    const normalizedTarget = targetId.trim();
-    if (!normalizedTarget) {
-      return;
-    }
-    const description = account.accountName?.trim() || '';
-    const existing = lookup.get(normalizedTarget) ?? new Map<string, GlAccountSummary>();
-    if (!existing.has(accountId)) {
-      existing.set(accountId, { id: accountId, description });
-      lookup.set(normalizedTarget, existing);
-    }
-  };
-
-  accounts.forEach(account => {
-    forEachMappedScoaTarget(account, targetId => addAccount(targetId, account));
-  });
-
-  const result = new Map<string, GlAccountSummary[]>();
-  lookup.forEach((value, key) => {
-    result.set(
-      key,
-      Array.from(value.values()).sort((a, b) =>
-        a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' }),
-      ),
-    );
-  });
-  return result;
-};
-
-const buildGlAccountDisplay = (accounts: GlAccountSummary[]) => {
-  const visible = accounts.slice(0, MAX_GL_ACCOUNTS_VISIBLE);
-  const remaining = Math.max(accounts.length - visible.length, 0);
-  const fullIds = accounts.map(account => account.id).join('\n');
-  const fullDescriptions = accounts
-    .map(account => account.description || 'No description')
-    .join('\n');
-  return { visible, remaining, fullIds, fullDescriptions };
-};
-
-const buildValueDisplay = (values: string[]) => {
-  const visible = values.slice(0, MAX_GL_ACCOUNTS_VISIBLE);
-  const remaining = Math.max(values.length - visible.length, 0);
-  const fullList = values.join('\n');
-  return { visible, remaining, fullList };
-};
-
-const buildUserDefinedValueLookup = (
-  accounts: GLAccountMappingRow[],
-  key: UserDefinedHeaderKey,
-): Map<string, string[]> => {
-  const lookup = new Map<string, Set<string>>();
-
-  accounts.forEach(account => {
-    const rawValue = account[key];
-    const normalizedValue =
-      typeof rawValue === 'string' ? rawValue.trim() : rawValue ? String(rawValue).trim() : '';
-    if (!normalizedValue) {
-      return;
-    }
-
-    forEachMappedScoaTarget(account, targetId => {
-      const existing = lookup.get(targetId) ?? new Set<string>();
-      existing.add(normalizedValue);
-      lookup.set(targetId, existing);
-    });
-  });
-
-  const result = new Map<string, string[]>();
-  lookup.forEach((value, targetId) => {
-    result.set(
-      targetId,
-      Array.from(value.values()).sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
-      ),
-    );
-  });
-  return result;
+  const normalized =
+    typeof value === 'string' ? value.trim() : String(value).trim();
+  return normalized.length > 0 ? normalized : '-';
 };
 
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
-  const standardTargets = useMappingStore(selectStandardScoaSummaries);
+  const distributionTargets = useMappingStore(selectDistributionTargets);
   const mappedAccounts = useMappingStore(selectAccounts);
   const userDefinedHeaders = useMappingStore(state => state.userDefinedHeaders);
   const activeEntityId = useMappingStore(selectActiveEntityId);
@@ -376,21 +210,14 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const companies = useOrganizationStore(state => state.companies);
   const currentEmail = useOrganizationStore(state => state.currentEmail);
   const summarySignature = useMemo(
-    () => standardTargets.map(target => `${target.id}:${target.mappedAmount}`).join('|'),
-    [standardTargets],
+    () => distributionTargets.map(target => `${target.id}:${target.mappedAmount}`).join('|'),
+    [distributionTargets],
   );
   const previousSignature = useRef<string | null>(null);
-  const glAccountsByScoa = useMemo(
-    () => buildGlAccountLookup(mappedAccounts),
+  const mappingRowLookup = useMemo(
+    () => new Map(mappedAccounts.map(account => [account.id, account])),
     [mappedAccounts],
   );
-  const userDefinedValueLookups = useMemo(() => {
-    const lookups = new Map<UserDefinedHeaderKey, Map<string, string[]>>();
-    userDefinedHeaders.forEach(header => {
-      lookups.set(header.key, buildUserDefinedValueLookup(mappedAccounts, header.key));
-    });
-    return lookups;
-  }, [mappedAccounts, userDefinedHeaders]);
   const totalColumnSpan = COLUMN_DEFINITIONS.length + 4 + userDefinedHeaders.length;
   const clientOperations = useMemo<DistributionOperationCatalogItem[]>(() => {
     const map = new Map<string, DistributionOperationCatalogItem>();
@@ -450,6 +277,8 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const [operationsDraft, setOperationsDraft] = useState<DistributionOperationDraft[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(null);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const previousTypesRef = useRef<Map<string, DistributionType>>(new Map());
   const lastSyncedOperationsRef = useRef<{
@@ -692,8 +521,8 @@ const buildDistributionPresetLibraryEntries = (
       return;
     }
     previousSignature.current = summarySignature;
-    syncRowsFromStandardTargets(standardTargets);
-  }, [standardTargets, summarySignature, syncRowsFromStandardTargets]);
+    syncRowsFromStandardTargets(distributionTargets);
+  }, [distributionTargets, summarySignature, syncRowsFromStandardTargets]);
 
   useEffect(() => {
     setOperationsCatalog(clientOperations);
@@ -832,14 +661,28 @@ const buildDistributionPresetLibraryEntries = (
     () => statusFilters.map(normalizeDistributionStatus),
     [statusFilters],
   );
+  const statusSignature = normalizedStatusFilters.join('|');
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
     const activeStatuses = new Set(normalizedStatusFilters);
     return rows.filter(row => {
+      const mappingRow = mappingRowLookup.get(row.mappingRowId);
+      const userDefinedValues = userDefinedHeaders
+        .map(header => resolveUserDefinedValue(mappingRow?.[header.key]))
+        .filter(value => value !== '-');
       const matchesSearch =
         !normalizedQuery ||
-        [row.accountId, row.description, formatCurrency(row.activity)]
+        [
+          row.accountId,
+          row.description,
+          formatCurrency(row.activity),
+          mappingRow?.accountId,
+          mappingRow?.accountName,
+          mappingRow?.entityName,
+          ...userDefinedValues,
+        ]
+          .filter(Boolean)
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery);
@@ -847,22 +690,17 @@ const buildDistributionPresetLibraryEntries = (
       const matchesStatus = activeStatuses.size === 0 || activeStatuses.has(rowStatus);
       return matchesSearch && matchesStatus;
     });
-  }, [rows, searchTerm, normalizedStatusFilters]);
+  }, [mappingRowLookup, normalizedStatusFilters, rows, searchTerm, userDefinedHeaders]);
 
   const getRowSortValue = useCallback(
     (row: DistributionRow, key: SortKey): string | number => {
-      const resolveGlAccounts = () =>
-        glAccountsByScoa.get(row.mappingRowId) ?? glAccountsByScoa.get(row.accountId) ?? [];
+      const mappingRow = mappingRowLookup.get(row.mappingRowId);
 
       switch (key) {
         case 'glAccount':
-          return resolveGlAccounts()
-            .map(account => account.id)
-            .join(' ');
+          return mappingRow?.accountId ?? '';
         case 'glDescription':
-          return resolveGlAccounts()
-            .map(account => account.description)
-            .join(' ');
+          return mappingRow?.accountName ?? '';
         case 'accountId':
           return row.accountId;
         case 'description':
@@ -879,7 +717,7 @@ const buildDistributionPresetLibraryEntries = (
           return '';
       }
     },
-    [glAccountsByScoa],
+    [mappingRowLookup],
   );
 
   const sortedRows = useMemo(() => {
@@ -896,6 +734,30 @@ const buildDistributionPresetLibraryEntries = (
       return valueA.toString().localeCompare(valueB.toString()) * multiplier;
     });
   }, [filteredRows, getRowSortValue, sortConfig]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [pageSize, searchTerm, sortConfig?.direction, sortConfig?.key, statusSignature]);
+
+  const totalRows = sortedRows.length;
+  const totalPages = totalRows > 0 ? Math.ceil(totalRows / pageSize) : 0;
+  const safePageIndex = totalPages > 0 ? Math.min(pageIndex, totalPages - 1) : 0;
+  const pageStart = totalPages > 0 ? safePageIndex * pageSize : 0;
+  const pageEnd = totalPages > 0 ? Math.min(pageStart + pageSize, totalRows) : 0;
+  const pagedRows = useMemo(
+    () => sortedRows.slice(pageStart, pageEnd),
+    [pageEnd, pageStart, sortedRows],
+  );
+  const pageLabelStart = totalRows === 0 ? 0 : pageStart + 1;
+  const pageLabelEnd = totalRows === 0 ? 0 : pageEnd;
+  const currentPage = totalPages === 0 ? 0 : safePageIndex + 1;
+  const lastPageIndex = Math.max(totalPages - 1, 0);
+
+  useEffect(() => {
+    if (pageIndex !== safePageIndex) {
+      setPageIndex(safePageIndex);
+    }
+  }, [pageIndex, safePageIndex]);
 
   useEffect(() => {
     if (!selectAllRef.current) {
@@ -1135,7 +997,7 @@ const buildDistributionPresetLibraryEntries = (
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white text-sm dark:divide-slate-700 dark:bg-slate-900">
-            {sortedRows.map((row, index) => {
+            {pagedRows.map(row => {
               const isExpanded = expandedRows.has(row.id);
               const isEditing = editingRowId === row.id;
               const operationsSummary = formatOperations(row);
@@ -1144,21 +1006,15 @@ const buildDistributionPresetLibraryEntries = (
               const hasBatchSelection = isSelected && selectedIds.size > 1;
               const activePreset = row.type === 'dynamic' ? getActivePresetForSource(row.accountId) : null;
               const hasAccordion = row.type !== 'direct';
-              const glAccounts =
-                glAccountsByScoa.get(row.mappingRowId) ?? glAccountsByScoa.get(row.accountId) ?? [];
-              const glAccountDisplay = buildGlAccountDisplay(glAccounts);
-              const hasGlAccounts = glAccountDisplay.visible.length > 0;
-              const userDefinedValues = userDefinedHeaders.map(header => {
-                const lookup = userDefinedValueLookups.get(header.key);
-                const values =
-                  lookup?.get(row.mappingRowId) ?? lookup?.get(row.accountId) ?? [];
-                return {
-                  key: header.key,
-                  label: header.label,
-                  values,
-                  display: buildValueDisplay(values),
-                };
-              });
+              const mappingRow = mappingRowLookup.get(row.mappingRowId);
+              const glAccountId = mappingRow?.accountId ?? '';
+              const glAccountName = mappingRow?.accountName ?? '';
+              const hasGlAccount = Boolean(glAccountId || glAccountName);
+              const userDefinedValues = userDefinedHeaders.map(header => ({
+                key: header.key,
+                label: header.label,
+                value: resolveUserDefinedValue(mappingRow?.[header.key]),
+              }));
               const rowClasses = [
                 'align-middle transition',
                 isSelected
@@ -1171,7 +1027,7 @@ const buildDistributionPresetLibraryEntries = (
                 .filter(Boolean)
                 .join(' ');
               return (
-                <Fragment key={`${row.id}-${index}`}>
+                <Fragment key={row.id}>
                   <tr className={rowClasses}>
                     <td className="px-3 py-4 text-center align-middle">
                       {row.type !== 'direct' ? (
@@ -1202,42 +1058,18 @@ const buildDistributionPresetLibraryEntries = (
                       />
                     </td>
                     <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.account}`}>
-                      {hasGlAccounts ? (
-                        <div className="space-y-1 text-xs" title={glAccountDisplay.fullIds}>
-                          {glAccountDisplay.visible.map(account => (
-                            <div
-                              key={account.id}
-                              className="font-medium text-slate-900 dark:text-slate-100"
-                            >
-                              {account.id}
-                            </div>
-                          ))}
-                          {glAccountDisplay.remaining > 0 && (
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              +{glAccountDisplay.remaining} more
-                            </div>
-                          )}
+                      {hasGlAccount ? (
+                        <div className="text-xs font-medium text-slate-900 dark:text-slate-100">
+                          {glAccountId || '-'}
                         </div>
                       ) : (
                         <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
                       )}
                     </td>
                     <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.description}`}>
-                      {hasGlAccounts ? (
-                        <div
-                          className="space-y-1 text-xs text-slate-600 dark:text-slate-300"
-                          title={glAccountDisplay.fullDescriptions}
-                        >
-                          {glAccountDisplay.visible.map(account => (
-                            <div key={`${account.id}-description`}>
-                              {account.description || 'No description'}
-                            </div>
-                          ))}
-                          {glAccountDisplay.remaining > 0 && (
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              +{glAccountDisplay.remaining} more
-                            </div>
-                          )}
+                      {hasGlAccount ? (
+                        <div className="text-xs text-slate-600 dark:text-slate-300">
+                          {glAccountName || 'No description'}
                         </div>
                       ) : (
                         <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
@@ -1258,23 +1090,15 @@ const buildDistributionPresetLibraryEntries = (
                         key={`${row.id}-${entry.key}`}
                         className={`px-3 py-4 align-top ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
                       >
-                        {entry.values.length > 0 ? (
-                          <div
-                            className="space-y-1 text-xs text-slate-600 dark:text-slate-300"
-                            title={entry.display.fullList}
-                          >
-                            {entry.display.visible.map((value, valueIndex) => (
-                              <div key={`${entry.key}-${valueIndex}`}>{value}</div>
-                            ))}
-                            {entry.display.remaining > 0 && (
-                              <div className="text-xs text-slate-500 dark:text-slate-400">
-                                +{entry.display.remaining} more
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
-                        )}
+                        <span
+                          className={`text-xs ${
+                            entry.value === '-'
+                              ? 'text-slate-400 dark:text-slate-500'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
+                          {entry.value}
+                        </span>
                       </td>
                     ))}
                     <td
@@ -1400,7 +1224,7 @@ const buildDistributionPresetLibraryEntries = (
                 </Fragment>
               );
             })}
-            {sortedRows.length === 0 && (
+            {totalRows === 0 && (
               <tr>
                 <td colSpan={totalColumnSpan} className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-300">
                   No distribution rows match your filters.
@@ -1410,6 +1234,74 @@ const buildDistributionPresetLibraryEntries = (
           </tbody>
         </table>
       </div>
+
+      {totalRows > 0 && (
+        <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            Showing {pageLabelStart.toLocaleString()}-{pageLabelEnd.toLocaleString()} of{' '}
+            {totalRows.toLocaleString()} distribution rows
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="distribution-page-size"
+                className="text-sm text-slate-600 dark:text-slate-300"
+              >
+                Rows per page
+              </label>
+              <select
+                id="distribution-page-size"
+                value={pageSize}
+                onChange={event => setPageSize(Number(event.target.value))}
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                {PAGE_SIZE_OPTIONS.map(size => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPageIndex(0)}
+                disabled={safePageIndex === 0}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                First
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex(prev => Math.max(prev - 1, 0))}
+                disabled={safePageIndex === 0}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Previous
+              </button>
+              <span className="text-sm text-slate-600 dark:text-slate-300">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPageIndex(prev => Math.min(prev + 1, lastPageIndex))}
+                disabled={safePageIndex >= lastPageIndex}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Next
+              </button>
+              <button
+                type="button"
+                onClick={() => setPageIndex(lastPageIndex)}
+                disabled={safePageIndex >= lastPageIndex}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeDynamicAccountId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">

@@ -152,6 +152,14 @@ export interface StandardScoaSummary {
   mappedAmount: number;
 }
 
+export interface DistributionSourceSummary {
+  id: string;
+  mappingRowId: string;
+  accountId: string;
+  description: string;
+  mappedAmount: number;
+}
+
 export interface ReconciliationSourceMapping {
   glAccountId: string;
   glAccountName: string;

@@ -18,6 +18,7 @@ import type {
   EntityReconciliationGroup,
   ReconciliationSourceMapping,
   ReconciliationSubcategoryGroup,
+  DistributionSourceSummary,
   StandardScoaSummary,
   TrialBalanceRow,
   UserDefinedHeader,
@@ -28,6 +29,7 @@ import { normalizeGlMonth } from '../utils/extractDateFromText';
 import { getSourceValue } from '../utils/dynamicAllocation';
 import { computeDynamicExclusionSummaries } from '../utils/dynamicExclusions';
 import { trackMappingSaveAttempt } from '../utils/telemetry';
+import { createDistributionRowId } from '../utils/distributionRowId';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 import { useOrganizationStore } from './organizationStore';
 import {
@@ -854,6 +856,99 @@ export const buildStandardScoaSummaries = (
     label: option.label,
     mappedAmount: accumulator.get(option.id)?.value ?? 0,
   }));
+};
+
+const resolveDistributionTarget = (
+  targetId: string,
+  fallbackLabel?: string | null,
+): { id: string; label: string } | null => {
+  const normalized = targetId.trim();
+  if (!normalized) {
+    return null;
+  }
+  const option = findChartOfAccountTarget(normalized);
+  const label = option?.label ?? fallbackLabel?.trim() ?? normalized;
+  return { id: option?.id ?? normalized, label };
+};
+
+export const buildDistributionSourceSummaries = (
+  accounts: GLAccountMappingRow[],
+): DistributionSourceSummary[] => {
+  const summaries: DistributionSourceSummary[] = [];
+
+  const addEntry = (
+    mappingRowId: string,
+    target: { id: string; label: string },
+    amount: number,
+    suffix?: string,
+  ) => {
+    if (!Number.isFinite(amount) || amount === 0) {
+      return;
+    }
+    summaries.push({
+      id: createDistributionRowId(mappingRowId, target.id, suffix),
+      mappingRowId,
+      accountId: target.id,
+      description: target.label,
+      mappedAmount: amount,
+    });
+  };
+
+  accounts.forEach(account => {
+    if (account.mappingType === 'direct') {
+      if (account.status !== 'Mapped') {
+        return;
+      }
+      const targetId = account.manualCOAId?.trim();
+      if (!targetId) {
+        return;
+      }
+      const target = resolveDistributionTarget(targetId);
+      if (!target) {
+        return;
+      }
+      addEntry(account.id, target, account.netChange);
+      return;
+    }
+
+    if (account.mappingType === 'percentage') {
+      account.splitDefinitions.forEach((split, index) => {
+        if (split.isExclusion) {
+          return;
+        }
+        const targetId = split.targetId?.trim();
+        if (!targetId) {
+          return;
+        }
+        const target = resolveDistributionTarget(targetId, split.targetName);
+        if (!target) {
+          return;
+        }
+        const amount = getSplitSignedAmount(account, split);
+        const splitSuffix = split.id?.trim() || `split-${index + 1}`;
+        addEntry(account.id, target, amount, splitSuffix);
+      });
+      return;
+    }
+
+    if (account.mappingType === 'dynamic') {
+      const targetId = account.manualCOAId?.trim() ?? account.suggestedCOAId?.trim();
+      if (!targetId) {
+        return;
+      }
+      const target = resolveDistributionTarget(targetId);
+      if (!target) {
+        return;
+      }
+      const baseAmount = Math.abs(account.netChange);
+      const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
+      const allocatable = Math.max(0, baseAmount - excluded);
+      const signedAmount = getSignedAmountForAccount(account, allocatable);
+      addEntry(account.id, target, signedAmount);
+    }
+  });
+
+  return summaries;
 };
 
 const updateDynamicBasisAccounts = (accounts: GLAccountMappingRow[]) => {
@@ -3960,6 +4055,11 @@ export const selectFilteredAccounts = (state: MappingState): GLAccountMappingRow
 export const selectStandardScoaSummaries = (
   state: MappingState,
 ): StandardScoaSummary[] => buildStandardScoaSummaries(selectPeriodScopedAccounts(state));
+
+export const selectDistributionTargets = (
+  state: MappingState,
+): DistributionSourceSummary[] =>
+  buildDistributionSourceSummaries(selectPeriodScopedAccounts(state));
 
 export const selectReconciliationGroups = (
   state: MappingState,

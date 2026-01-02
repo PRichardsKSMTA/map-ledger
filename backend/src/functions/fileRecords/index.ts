@@ -13,6 +13,7 @@ import {
 } from '../../repositories/clientFileRepository';
 import {
   listUserDefinedHeaderMappingsForFileUpload,
+  listClientHeaderMappings,
   type UserDefinedHeaderMapping,
 } from '../../repositories/clientHeaderMappingRepository';
 import {
@@ -223,12 +224,15 @@ const buildUserDefinedHeaders = (
     return [];
   }
 
-  const lookup = new Map(
-    mappings.map((mapping) => [
-      mapping.templateHeader.trim(),
-      mapping.sourceHeader.trim(),
-    ]),
-  );
+  const lookup = new Map<string, string>();
+  mappings.forEach((mapping) => {
+    const templateHeader = normalizeHeader(mapping.templateHeader);
+    const sourceHeader = normalizeHeader(mapping.sourceHeader);
+    if (!templateHeader || !sourceHeader) {
+      return;
+    }
+    lookup.set(templateHeader, sourceHeader);
+  });
 
   return USER_DEFINED_TEMPLATE_HEADERS.reduce<UserDefinedHeaderPayload[]>(
     (acc, entry) => {
@@ -241,6 +245,46 @@ const buildUserDefinedHeaders = (
     },
     [],
   );
+};
+
+const resolveUserDefinedHeaders = async (
+  context: InvocationContext,
+  options: { fileUploadGuid?: string | null; clientId?: string | null },
+): Promise<UserDefinedHeaderPayload[]> => {
+  const fileUploadGuid = normalizeHeader(options.fileUploadGuid ?? null);
+  const clientId = normalizeClientId(options.clientId ?? null);
+  let userDefinedHeaders: UserDefinedHeaderPayload[] = [];
+
+  if (fileUploadGuid) {
+    try {
+      const mappings = await listUserDefinedHeaderMappingsForFileUpload(fileUploadGuid);
+      userDefinedHeaders = buildUserDefinedHeaders(mappings);
+    } catch (error) {
+      context.warn(
+        'Failed to fetch user defined header mappings; continuing without file scope',
+        error,
+      );
+    }
+  }
+
+  if (userDefinedHeaders.length === 0 && clientId) {
+    try {
+      const mappings = await listClientHeaderMappings(clientId);
+      userDefinedHeaders = buildUserDefinedHeaders(
+        mappings.map((mapping) => ({
+          templateHeader: mapping.templateHeader,
+          sourceHeader: mapping.sourceHeader ?? '',
+        })),
+      );
+    } catch (error) {
+      context.warn(
+        'Failed to fetch client header mappings; continuing without them',
+        error,
+      );
+    }
+  }
+
+  return userDefinedHeaders;
 };
 
 const getValueFromRow = (
@@ -878,21 +922,10 @@ export const listFileRecordsHandler = async (
         items,
         metadata?.fileUploadGuid ?? null,
       );
-      let userDefinedHeaders: UserDefinedHeaderPayload[] = [];
-
-      if (latestFileUploadGuid) {
-        try {
-          const mappings = await listUserDefinedHeaderMappingsForFileUpload(
-            latestFileUploadGuid,
-          );
-          userDefinedHeaders = buildUserDefinedHeaders(mappings);
-        } catch (error) {
-          context.warn(
-            'Failed to fetch user defined header mappings; continuing without them',
-            error,
-          );
-        }
-      }
+      const userDefinedHeaders = await resolveUserDefinedHeaders(context, {
+        fileUploadGuid: latestFileUploadGuid,
+        clientId,
+      });
 
       return json({
         items: itemsWithEntities,
@@ -991,18 +1024,10 @@ export const listFileRecordsHandler = async (
             isSelected: undefined,
           }));
 
-    let userDefinedHeaders: UserDefinedHeaderPayload[] = [];
-    try {
-      const mappings = await listUserDefinedHeaderMappingsForFileUpload(
-        formattedFileUploadGuid,
-      );
-      userDefinedHeaders = buildUserDefinedHeaders(mappings);
-    } catch (error) {
-      context.warn(
-        'Failed to fetch user defined header mappings; continuing without them',
-        error,
-      );
-    }
+    const userDefinedHeaders = await resolveUserDefinedHeaders(context, {
+      fileUploadGuid: formattedFileUploadGuid,
+      clientId: metadataClientId ?? clientId ?? null,
+    });
 
     return json({
       items: itemsWithEntities,
