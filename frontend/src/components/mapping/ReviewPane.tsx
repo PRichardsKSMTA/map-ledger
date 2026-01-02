@@ -599,7 +599,7 @@ const ReviewPane = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+                    <table className="min-w-full table-compact divide-y divide-slate-200 text-sm dark:divide-slate-700">
                       <thead className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         <tr>
                           <th className="w-8 px-2 py-2" aria-label="Expand row" />

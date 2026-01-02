@@ -1,5 +1,5 @@
 import { ChangeEvent, Fragment, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUpDown, Check, ChevronRight, HelpCircle, Loader2, Minus, X } from 'lucide-react';
+import { ArrowUpDown, Check, ChevronRight, Filter, HelpCircle, Loader2, Minus, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import RatioAllocationManager from './RatioAllocationManager';
 import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
@@ -64,9 +64,12 @@ const TYPE_OPTIONS: { value: DistributionType; label: string }[] = [
   { value: 'dynamic', label: 'Dynamic' },
 ];
 
+type GlSegmentKey = `glSegment${number}`;
+
 type SortKey =
   | 'glAccount'
   | 'glDescription'
+  | GlSegmentKey
   | 'accountId'
   | 'description'
   | 'activity'
@@ -74,6 +77,8 @@ type SortKey =
   | 'operations'
   | 'status';
 type SortDirection = 'asc' | 'desc';
+
+type SegmentFilterState = Array<string[] | null>;
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string; align?: 'right' }[] = [
   { key: 'accountId', label: 'SCoA ID' },
@@ -96,25 +101,27 @@ const COLUMNS_AFTER_USER_DEFINED = COLUMN_DEFINITIONS.slice(
 );
 
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
-  accountId: 'w-32',
-  description: 'min-w-[18rem]',
-  activity: 'min-w-[11rem]',
-  type: 'w-44',
-  operations: 'min-w-[20rem]',
-  status: 'w-32',
+  accountId: 'w-24',
+  description: 'min-w-[12rem]',
+  activity: 'min-w-[8rem]',
+  type: 'w-32',
+  operations: 'min-w-[14rem]',
+  status: 'w-24',
 };
 
 const GL_COLUMN_WIDTH_CLASSES = {
-  account: 'min-w-[10rem]',
-  description: 'min-w-[16rem]',
+  account: 'min-w-[7rem]',
+  description: 'min-w-[10rem]',
 };
 
-const USER_DEFINED_COLUMN_WIDTH_CLASS = 'min-w-[12rem]';
+const GL_SEGMENT_WIDTH_CLASS = 'min-w-[4rem]';
+
+const USER_DEFINED_COLUMN_WIDTH_CLASS = 'min-w-[8rem]';
 
 const COLUMN_SPACING_CLASSES: Partial<Record<SortKey, string>> = {
-  activity: 'pr-10',
-  type: 'pr-10',
-  operations: 'pr-6',
+  activity: 'pr-4',
+  type: 'pr-4',
+  operations: 'pr-2',
 };
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -201,6 +208,62 @@ const resolveUserDefinedValue = (value: unknown): string => {
   return normalized.length > 0 ? normalized : '-';
 };
 
+const splitGlAccountSegments = (value?: string | null): string[] => {
+  if (!value) {
+    return [];
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return [];
+  }
+  return normalized
+    .split(/[.-]/)
+    .map(part => part.trim())
+    .filter(Boolean);
+};
+
+const buildGlSegmentKey = (index: number): GlSegmentKey =>
+  `glSegment${index + 1}` as GlSegmentKey;
+
+const resolveGlSegmentIndex = (key: SortKey): number | null => {
+  if (!key.startsWith('glSegment')) {
+    return null;
+  }
+  const indexValue = Number(key.slice('glSegment'.length));
+  if (!Number.isFinite(indexValue) || indexValue < 1) {
+    return null;
+  }
+  return indexValue - 1;
+};
+
+const areSegmentFiltersEqual = (
+  current: SegmentFilterState,
+  next: SegmentFilterState,
+): boolean => {
+  if (current.length !== next.length) {
+    return false;
+  }
+  for (let index = 0; index < current.length; index += 1) {
+    const currentValue = current[index];
+    const nextValue = next[index];
+    if (currentValue === null || nextValue === null) {
+      if (currentValue !== nextValue) {
+        return false;
+      }
+      continue;
+    }
+    if (currentValue.length !== nextValue.length) {
+      return false;
+    }
+    for (let valueIndex = 0; valueIndex < currentValue.length; valueIndex += 1) {
+      if (currentValue[valueIndex] !== nextValue[valueIndex]) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const distributionTargets = useMappingStore(selectDistributionTargets);
   const mappedAccounts = useMappingStore(selectAccounts);
@@ -218,7 +281,6 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     () => new Map(mappedAccounts.map(account => [account.id, account])),
     [mappedAccounts],
   );
-  const totalColumnSpan = COLUMN_DEFINITIONS.length + 4 + userDefinedHeaders.length;
   const clientOperations = useMemo<DistributionOperationCatalogItem[]>(() => {
     const map = new Map<string, DistributionOperationCatalogItem>();
     companies.forEach(company => {
@@ -276,10 +338,17 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [operationsDraft, setOperationsDraft] = useState<DistributionOperationDraft[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>(null);
+  // null means all segment values are selected (no filter).
+  const [segmentFilters, setSegmentFilters] = useState<SegmentFilterState>(() => []);
+  const [openSegmentFilter, setOpenSegmentFilter] = useState<number | null>(null);
+  const [showSegmentColumns, setShowSegmentColumns] = useState(false);
+  const [showUserDefinedColumns, setShowUserDefinedColumns] = useState(true);
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const segmentFilterMenuRef = useRef<HTMLDivElement | null>(null);
+  const segmentSelectAllRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const previousTypesRef = useRef<Map<string, DistributionType>>(new Map());
   const lastSyncedOperationsRef = useRef<{
     rowId: string;
@@ -663,7 +732,188 @@ const buildDistributionPresetLibraryEntries = (
   );
   const statusSignature = normalizedStatusFilters.join('|');
 
-  const filteredRows = useMemo(() => {
+  const maxGlSegmentCount = useMemo(() => {
+    let maxCount = 0;
+    rows.forEach(row => {
+      const mappingRow = mappingRowLookup.get(row.mappingRowId);
+      const segments = splitGlAccountSegments(mappingRow?.accountId);
+      if (segments.length > maxCount) {
+        maxCount = segments.length;
+      }
+    });
+    return maxCount;
+  }, [mappingRowLookup, rows]);
+
+  const segmentColumnCount = maxGlSegmentCount > 1 ? maxGlSegmentCount : 0;
+
+  const glSegmentColumns = useMemo(
+    () =>
+      Array.from({ length: segmentColumnCount }, (_, index) => ({
+        key: buildGlSegmentKey(index),
+        label: `GL Segment ${index + 1}`,
+        index,
+      })),
+    [segmentColumnCount],
+  );
+
+  const hasSegmentColumns = glSegmentColumns.length > 0;
+  const visibleSegmentColumns = showSegmentColumns ? glSegmentColumns : [];
+  const visibleUserDefinedHeaders = showUserDefinedColumns ? userDefinedHeaders : [];
+  const showSegmentToggleLabel = showSegmentColumns ? 'Show GL Account' : 'Split GL Account';
+  const showUserDefinedToggleLabel = showUserDefinedColumns
+    ? 'Hide user defined columns'
+    : 'Show user defined columns';
+
+  const totalColumnSpan =
+    COLUMN_DEFINITIONS.length +
+    (showSegmentColumns ? 3 + visibleSegmentColumns.length : 4) +
+    visibleUserDefinedHeaders.length;
+
+  const getGlSegmentsForRow = useCallback(
+    (row: DistributionRow, count: number = segmentColumnCount): string[] => {
+      if (count <= 0) {
+        return [];
+      }
+      const mappingRow = mappingRowLookup.get(row.mappingRowId);
+      const segments = splitGlAccountSegments(mappingRow?.accountId);
+      return Array.from({ length: count }, (_, index) => segments[index] ?? '-');
+    },
+    [mappingRowLookup, segmentColumnCount],
+  );
+
+  const segmentOptions = useMemo(() => {
+    if (segmentColumnCount === 0) {
+      return [];
+    }
+
+    const segmentSets = Array.from(
+      { length: segmentColumnCount },
+      () => new Set<string>(),
+    );
+
+    rows.forEach(row => {
+      const mappingRow = mappingRowLookup.get(row.mappingRowId);
+      const segments = splitGlAccountSegments(mappingRow?.accountId);
+      for (let index = 0; index < segmentColumnCount; index += 1) {
+        const segment = segments[index] ?? '-';
+        if (segment) {
+          segmentSets[index]?.add(segment);
+        }
+      }
+    });
+
+    const sortSegments = (values: Set<string>) =>
+      Array.from(values).sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      );
+
+    return segmentSets.map(sortSegments);
+  }, [mappingRowLookup, rows, segmentColumnCount]);
+
+  useEffect(() => {
+    setSegmentFilters(previous => {
+      const next = Array.from({ length: segmentColumnCount }, (_, index) => {
+        const selected = previous[index] ?? null;
+        if (selected === null) {
+          return null;
+        }
+        const options = segmentOptions[index] ?? [];
+        const filtered = selected.filter(value => options.includes(value));
+        if (filtered.length === options.length) {
+          return null;
+        }
+        return filtered;
+      });
+
+      return areSegmentFiltersEqual(previous, next) ? previous : next;
+    });
+  }, [segmentColumnCount, segmentOptions]);
+
+  useEffect(() => {
+    if (!hasSegmentColumns && showSegmentColumns) {
+      setShowSegmentColumns(false);
+    }
+  }, [hasSegmentColumns, showSegmentColumns]);
+
+  useEffect(() => {
+    if (!showSegmentColumns && openSegmentFilter !== null) {
+      setOpenSegmentFilter(null);
+    }
+  }, [openSegmentFilter, showSegmentColumns]);
+
+  useEffect(() => {
+    if (!showSegmentColumns && sortConfig) {
+      const segmentIndex = resolveGlSegmentIndex(sortConfig.key);
+      if (segmentIndex !== null) {
+        setSortConfig({ key: 'glAccount', direction: sortConfig.direction });
+      }
+    }
+  }, [showSegmentColumns, sortConfig]);
+
+  useEffect(() => {
+    if (openSegmentFilter === null) {
+      return;
+    }
+    if (openSegmentFilter >= segmentColumnCount) {
+      setOpenSegmentFilter(null);
+    }
+  }, [openSegmentFilter, segmentColumnCount]);
+
+  useEffect(() => {
+    segmentOptions.forEach((options, index) => {
+      const input = segmentSelectAllRefs.current[index];
+      if (!input) {
+        return;
+      }
+      const selected = segmentFilters[index] ?? null;
+      if (selected === null) {
+        input.indeterminate = false;
+        return;
+      }
+      input.indeterminate = selected.length > 0 && selected.length < options.length;
+    });
+  }, [segmentFilters, segmentOptions]);
+
+  useEffect(() => {
+    if (openSegmentFilter === null) {
+      return;
+    }
+
+    const handleClickOutside = (event: Event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) {
+        return;
+      }
+      if (segmentFilterMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (target.closest('[data-segment-filter-button]')) {
+        return;
+      }
+      setOpenSegmentFilter(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenSegmentFilter(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openSegmentFilter]);
+
+  const hasSegmentFilters = useMemo(
+    () => showSegmentColumns && segmentFilters.some(filter => filter !== null),
+    [segmentFilters, showSegmentColumns],
+  );
+
+  const baseFilteredRows = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
     const activeStatuses = new Set(normalizedStatusFilters);
     return rows.filter(row => {
@@ -692,9 +942,32 @@ const buildDistributionPresetLibraryEntries = (
     });
   }, [mappingRowLookup, normalizedStatusFilters, rows, searchTerm, userDefinedHeaders]);
 
+  const filteredRows = useMemo(() => {
+    if (!hasSegmentFilters) {
+      return baseFilteredRows;
+    }
+
+    return baseFilteredRows.filter(row => {
+      const segments = getGlSegmentsForRow(row);
+      return segments.every((segment, index) => {
+        const selected = segmentFilters[index] ?? null;
+        if (selected === null) {
+          return true;
+        }
+        return selected.includes(segment);
+      });
+    });
+  }, [baseFilteredRows, getGlSegmentsForRow, hasSegmentFilters, segmentFilters]);
+
   const getRowSortValue = useCallback(
     (row: DistributionRow, key: SortKey): string | number => {
       const mappingRow = mappingRowLookup.get(row.mappingRowId);
+      const segmentIndex = resolveGlSegmentIndex(key);
+      if (segmentIndex !== null) {
+        const glSegments = getGlSegmentsForRow(row);
+        const segment = glSegments[segmentIndex] ?? '-';
+        return segment === '-' ? '' : segment;
+      }
 
       switch (key) {
         case 'glAccount':
@@ -717,7 +990,7 @@ const buildDistributionPresetLibraryEntries = (
           return '';
       }
     },
-    [mappingRowLookup],
+    [getGlSegmentsForRow, mappingRowLookup],
   );
 
   const sortedRows = useMemo(() => {
@@ -735,9 +1008,26 @@ const buildDistributionPresetLibraryEntries = (
     });
   }, [filteredRows, getRowSortValue, sortConfig]);
 
+  const segmentFilterSignature = useMemo(
+    () =>
+      showSegmentColumns
+        ? segmentFilters
+            .map(selected => (selected === null ? 'all' : selected.join(',')))
+            .join('|')
+        : 'hidden',
+    [segmentFilters, showSegmentColumns],
+  );
+
   useEffect(() => {
     setPageIndex(0);
-  }, [pageSize, searchTerm, sortConfig?.direction, sortConfig?.key, statusSignature]);
+  }, [
+    pageSize,
+    searchTerm,
+    sortConfig?.direction,
+    sortConfig?.key,
+    statusSignature,
+    segmentFilterSignature,
+  ]);
 
   const totalRows = sortedRows.length;
   const totalPages = totalRows > 0 ? Math.ceil(totalRows / pageSize) : 0;
@@ -777,6 +1067,35 @@ const buildDistributionPresetLibraryEntries = (
         return { key, direction: nextDirection };
       }
       return { key, direction: 'asc' };
+    });
+  };
+
+  const handleSegmentSelectAllChange = (index: number, checked: boolean) => {
+    setSegmentFilters(previous => {
+      const next = [...previous];
+      next[index] = checked ? null : [];
+      return next;
+    });
+  };
+
+  const handleSegmentValueToggle = (index: number, value: string, checked: boolean) => {
+    setSegmentFilters(previous => {
+      const options = segmentOptions[index] ?? [];
+      const current = previous[index] ?? null;
+      const baseSelection = current === null ? options : current;
+      const nextSelection = checked
+        ? Array.from(new Set([...baseSelection, value]))
+        : baseSelection.filter(option => option !== value);
+
+      if (nextSelection.length === options.length) {
+        const next = [...previous];
+        next[index] = null;
+        return next;
+      }
+
+      const next = [...previous];
+      next[index] = nextSelection;
+      return next;
     });
   };
 
@@ -948,22 +1267,177 @@ const buildDistributionPresetLibraryEntries = (
     );
   };
 
+  const renderSegmentHeader = (column: {
+    key: GlSegmentKey;
+    label: string;
+    index: number;
+  }) => {
+    const widthClass = GL_SEGMENT_WIDTH_CLASS;
+    const isOpen = openSegmentFilter === column.index;
+    const options = segmentOptions[column.index] ?? [];
+    const selected = segmentFilters[column.index] ?? null;
+    const isFilterActive = selected !== null;
+    const sortLabel = `Sort ${column.label}`;
+
+    return (
+      <th
+        key={column.key}
+        scope="col"
+        aria-sort={getAriaSort(column.key)}
+        onClick={() => handleSort(column.key)}
+        className={`cursor-pointer px-3 py-3 normal-case ${widthClass}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              handleSort(column.key);
+            }}
+            aria-label={sortLabel}
+            title={column.label}
+            className="group flex w-full flex-col items-start gap-0.5 text-left leading-tight text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+          >
+            <span className="text-sm font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+              GL Seg
+            </span>
+            <span className="flex items-center gap-1 text-sm font-semibold">
+              {column.index + 1}
+              <ArrowUpDown
+                className="h-4 w-4 text-slate-400 transition group-hover:text-blue-600 dark:group-hover:text-blue-300"
+                aria-hidden="true"
+              />
+            </span>
+          </button>
+          <div className="relative flex items-center">
+            <button
+              type="button"
+              data-segment-filter-button={column.index}
+              aria-label={`Filter ${column.label}`}
+              aria-expanded={isOpen}
+              aria-controls={`segment-filter-${column.key}`}
+              onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                event.stopPropagation();
+                setOpenSegmentFilter(previous =>
+                  previous === column.index ? null : column.index,
+                );
+              }}
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                isFilterActive
+                  ? 'text-blue-600 hover:text-blue-700 dark:text-blue-300'
+                  : 'text-slate-400 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              <Filter className="h-4 w-4" aria-hidden="true" />
+            </button>
+            {isOpen && (
+              <div
+                ref={segmentFilterMenuRef}
+                id={`segment-filter-${column.key}`}
+                role="dialog"
+                aria-label={`${column.label} filters`}
+                onClick={event => event.stopPropagation()}
+                className="absolute right-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              >
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                  Filter values
+                </div>
+                {options.length > 0 ? (
+                  <div className="space-y-2 px-3 pt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      <input
+                        ref={element => {
+                          segmentSelectAllRefs.current[column.index] = element;
+                        }}
+                        type="checkbox"
+                        checked={selected === null}
+                        onChange={event =>
+                          handleSegmentSelectAllChange(column.index, event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Select all
+                    </label>
+                    <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                      {options.map(option => {
+                        const isChecked = selected === null || selected.includes(option);
+                        return (
+                          <label
+                            key={option}
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={event =>
+                                handleSegmentValueToggle(
+                                  column.index,
+                                  option,
+                                  event.target.checked,
+                                )
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            {option}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No segment values.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <DistributionToolbar />
 
-      <div className="overflow-x-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {hasSegmentColumns && (
+            <button
+              type="button"
+              onClick={() => setShowSegmentColumns(previous => !previous)}
+              aria-pressed={showSegmentColumns}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
+            >
+              {showSegmentToggleLabel}
+            </button>
+          )}
+          {userDefinedHeaders.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowUserDefinedColumns(previous => !previous)}
+              aria-pressed={showUserDefinedColumns}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
+            >
+              {showUserDefinedToggleLabel}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto min-h-[26rem]">
         <table
-          className="divide-y divide-slate-200 dark:divide-slate-700"
+          className="table-compact divide-y divide-slate-200 dark:divide-slate-700"
           role="table"
           style={{ minWidth: '100%' }}
         >
-          <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <thead className="bg-slate-50 text-left text-sm font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
-              <th scope="col" className="w-10 px-3 py-3">
+              <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Toggle distribution operations</span>
               </th>
-              <th scope="col" className="w-12 px-3 py-3">
+              <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Select all rows</span>
                 <input
                   ref={selectAllRef}
@@ -973,18 +1447,20 @@ const buildDistributionPresetLibraryEntries = (
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              {renderSortableHeader({
-                key: 'glAccount',
-                label: 'GL Account',
-                className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.account}`,
-              })}
+              {showSegmentColumns
+                ? visibleSegmentColumns.map(renderSegmentHeader)
+                : renderSortableHeader({
+                    key: 'glAccount',
+                    label: 'GL Account',
+                    className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.account}`,
+                  })}
               {renderSortableHeader({
                 key: 'glDescription',
                 label: 'GL Description',
                 className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.description}`,
               })}
               {COLUMNS_BEFORE_USER_DEFINED.map(renderSortableHeader)}
-              {userDefinedHeaders.map(header => (
+              {visibleUserDefinedHeaders.map(header => (
                 <th
                   key={header.key}
                   scope="col"
@@ -1010,7 +1486,8 @@ const buildDistributionPresetLibraryEntries = (
               const glAccountId = mappingRow?.accountId ?? '';
               const glAccountName = mappingRow?.accountName ?? '';
               const hasGlAccount = Boolean(glAccountId || glAccountName);
-              const userDefinedValues = userDefinedHeaders.map(header => ({
+              const glSegments = showSegmentColumns ? getGlSegmentsForRow(row) : [];
+              const userDefinedValues = visibleUserDefinedHeaders.map(header => ({
                 key: header.key,
                 label: header.label,
                 value: resolveUserDefinedValue(mappingRow?.[header.key]),
@@ -1029,7 +1506,7 @@ const buildDistributionPresetLibraryEntries = (
               return (
                 <Fragment key={row.id}>
                   <tr className={rowClasses}>
-                    <td className="px-3 py-4 text-center align-middle">
+                    <td className="table-cell-tight align-middle">
                       {row.type !== 'direct' ? (
                         <button
                           type="button"
@@ -1048,7 +1525,7 @@ const buildDistributionPresetLibraryEntries = (
                         <span className="inline-flex h-6 w-6 items-center justify-center" aria-hidden="true" />
                       )}
                     </td>
-                    <td className="px-3 py-4 align-middle">
+                    <td className="table-cell-tight align-middle">
                       <input
                         type="checkbox"
                         aria-label={`Select distribution row for account ${row.accountId}`}
@@ -1057,22 +1534,44 @@ const buildDistributionPresetLibraryEntries = (
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.account}`}>
-                      {hasGlAccount ? (
-                        <div className="text-xs font-medium text-slate-900 dark:text-slate-100">
-                          {glAccountId || '-'}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
-                      )}
-                    </td>
+                    {!showSegmentColumns && (
+                      <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.account}`}>
+                        {hasGlAccount ? (
+                          <div className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                            {glAccountId || '-'}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-400 dark:text-slate-500">-</span>
+                        )}
+                      </td>
+                    )}
+                    {showSegmentColumns &&
+                      visibleSegmentColumns.map(column => {
+                        const segment = glSegments[column.index] ?? '-';
+                        return (
+                          <td
+                            key={`${row.id}-${column.key}`}
+                            className={`px-3 py-4 align-top ${GL_SEGMENT_WIDTH_CLASS}`}
+                          >
+                            <span
+                              className={`text-sm ${
+                                segment === '-'
+                                  ? 'text-slate-400 dark:text-slate-500'
+                                  : 'font-medium text-slate-700 dark:text-slate-200'
+                              }`}
+                            >
+                              {segment}
+                            </span>
+                          </td>
+                        );
+                      })}
                     <td className={`px-3 py-4 align-top ${GL_COLUMN_WIDTH_CLASSES.description}`}>
                       {hasGlAccount ? (
-                        <div className="text-xs text-slate-600 dark:text-slate-300">
+                        <div className="text-sm text-slate-600 dark:text-slate-300">
                           {glAccountName || 'No description'}
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 dark:text-slate-500">-</span>
+                        <span className="text-sm text-slate-400 dark:text-slate-500">-</span>
                       )}
                     </td>
                     <td className={`whitespace-nowrap px-3 py-4 ${COLUMN_WIDTH_CLASSES.accountId ?? ''}`}>
@@ -1091,7 +1590,7 @@ const buildDistributionPresetLibraryEntries = (
                         className={`px-3 py-4 align-top ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
                       >
                         <span
-                          className={`text-xs ${
+                          className={`text-sm ${
                             entry.value === '-'
                               ? 'text-slate-400 dark:text-slate-500'
                               : 'text-slate-600 dark:text-slate-300'
@@ -1119,7 +1618,7 @@ const buildDistributionPresetLibraryEntries = (
                             event.target.value as DistributionType
                           )
                         }
-                        className="w-full min-w-[8rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        className="w-full min-w-[6rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                       >
                         {TYPE_OPTIONS.map(option => (
                           <option key={option.value} value={option.value}>
@@ -1135,7 +1634,7 @@ const buildDistributionPresetLibraryEntries = (
                             aria-label="Select target operation"
                             value={row.operations[0]?.id ?? ''}
                             onChange={event => handleDirectOperationChange(row, event.target.value)}
-                            className="w-full min-w-[12rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                            className="w-full min-w-[10rem] rounded-md border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
                           >
                             <option value="">Select operation</option>
                             {operationsCatalog.map(option => (
@@ -1151,7 +1650,7 @@ const buildDistributionPresetLibraryEntries = (
                         <div className="space-y-2">
                           <p className="text-sm text-slate-700 dark:text-slate-200">{operationsSummary}</p>
                           {row.type === 'dynamic' && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-sm font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
                               {activePreset ? `Preset: ${activePreset.name}` : 'No preset selected'}
                             </span>
                           )}
@@ -1172,14 +1671,14 @@ const buildDistributionPresetLibraryEntries = (
                                 />
                               )}
                               <span
-                                className={`inline-flex min-w-[7rem] items-center justify-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClass}`}
+                                className={`inline-flex min-w-[6rem] items-center justify-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${statusBadgeClass}`}
                               >
                                 <StatusIcon className="h-3.5 w-3.5" aria-hidden="true" />
                                 {statusLabel(row.status)}
                               </span>
                             </div>
                             {row.autoSaveError && (
-                              <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300" role="alert">
+                              <span className="text-sm font-medium text-rose-700 dark:text-rose-300" role="alert">
                                 {row.autoSaveError}
                               </span>
                             )}

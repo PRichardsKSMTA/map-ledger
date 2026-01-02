@@ -341,7 +341,7 @@ export default function ImportHistory({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
+        <table className="min-w-full table-compact divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               {sortableFields.map((field) => {

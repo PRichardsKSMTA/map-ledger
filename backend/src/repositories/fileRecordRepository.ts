@@ -187,25 +187,26 @@ export const listFileRecords = async (fileUploadGuid?: string): Promise<FileReco
   }
 
   const params: Record<string, unknown> = { fileUploadGuid };
-  const whereClause = 'WHERE FILE_UPLOAD_GUID = @fileUploadGuid';
+  const whereClause = 'WHERE fr.FILE_UPLOAD_GUID = @fileUploadGuid AND cf.IS_DELETED = 0';
 
   const result = await runQuery<RawFileRecordRow>(
     `SELECT
-      FILE_UPLOAD_GUID as file_upload_guid,
-      RECORD_ID as record_id,
-      SOURCE_SHEET_NAME as source_sheet_name,
-      ENTITY_ID as entity_id,
-      ACCOUNT_ID as account_id,
-      ACCOUNT_NAME as account_name,
-      OPENING_BALANCE as opening_balance,
-      CLOSING_BALANCE as closing_balance,
-      ACTIVITY_AMOUNT as activity_amount,
-      GL_MONTH as gl_month,
-      USER_DEFINED1 as user_defined1,
-      USER_DEFINED2 as user_defined2,
-      USER_DEFINED3 as user_defined3,
-      INSERTED_DTTM as inserted_dttm
-    FROM ${TABLE_NAME}
+      fr.FILE_UPLOAD_GUID as file_upload_guid,
+      fr.RECORD_ID as record_id,
+      fr.SOURCE_SHEET_NAME as source_sheet_name,
+      fr.ENTITY_ID as entity_id,
+      fr.ACCOUNT_ID as account_id,
+      fr.ACCOUNT_NAME as account_name,
+      fr.OPENING_BALANCE as opening_balance,
+      fr.CLOSING_BALANCE as closing_balance,
+      fr.ACTIVITY_AMOUNT as activity_amount,
+      fr.GL_MONTH as gl_month,
+      fr.USER_DEFINED1 as user_defined1,
+      fr.USER_DEFINED2 as user_defined2,
+      fr.USER_DEFINED3 as user_defined3,
+      fr.INSERTED_DTTM as inserted_dttm
+    FROM ${TABLE_NAME} fr
+    INNER JOIN ml.CLIENT_FILES cf ON cf.FILE_UPLOAD_GUID = fr.FILE_UPLOAD_GUID
     ${whereClause}
     ORDER BY SOURCE_SHEET_NAME ASC, RECORD_ID ASC`,
     params,

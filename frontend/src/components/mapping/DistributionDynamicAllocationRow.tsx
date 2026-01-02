@@ -710,7 +710,7 @@ const operationsMatch = useCallback(
                 </div>
               </div>
               <div className="overflow-hidden rounded-lg border border-slate-200 shadow-sm dark:border-slate-700">
-                <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                <table className="min-w-full table-compact divide-y divide-slate-200 dark:divide-slate-700">
                   <thead className="bg-slate-50 dark:bg-slate-900">
                     <tr>
                       <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">

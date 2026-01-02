@@ -542,7 +542,7 @@ const RatioAllocationBuilder = ({
                 />
               </div>
               <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full border-separate border-spacing-y-2">
+                <table className="min-w-full table-compact border-separate border-spacing-y-2">
                   <thead className="bg-slate-100 dark:bg-slate-800/40">
                     <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                       <th id={newPresetBasisHeaderId} scope="col" className="px-3 py-2">
@@ -753,7 +753,7 @@ const RatioAllocationBuilder = ({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="overflow-visible rounded-lg border border-slate-200 dark:border-slate-700">
-                      <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+                      <table className="min-w-full table-compact divide-y divide-slate-200 dark:divide-slate-700">
                         <thead className="bg-slate-50 dark:bg-slate-900">
                           <tr>
                             <th

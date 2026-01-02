@@ -33,6 +33,12 @@ const openApiSpec = {
     '/coa-manager/industry/{industry}/cost-type/batch': {
       patch: { summary: 'Batch update cost types for COA records' }
     },
+    '/coa-manager/industry/{industry}/is-financial': {
+      patch: { summary: 'Update financial flag for a single COA record' }
+    },
+    '/coa-manager/industry/{industry}/is-financial/batch': {
+      patch: { summary: 'Batch update financial flags for COA records' }
+    },
     '/coa-manager/import': {
       post: { summary: 'Import chart of accounts for an industry (CSV or Excel)' }
     },

@@ -9,6 +9,7 @@ import {
   dropColumns,
   dropIndustryTable,
   ensureCostTypeColumn,
+  ensureIsFinancialColumn,
   getIndustryTableState,
   IndustryNotFoundError,
   insertRows,
@@ -19,8 +20,20 @@ import {
 import { getFirstStringValue } from '../../utils/requestParsers';
 
 const COST_TYPE_COLUMN = 'COST_TYPE';
+const IS_FINANCIAL_COLUMN = 'IS_FINANCIAL';
 const RECORD_ID_COLUMN = 'RECORD_ID';
 const SAMPLE_ROW_COUNT = 5;
+const TRIAL_BALANCE_HEADER_ROW_SEARCH_LIMIT = 25;
+const TRIAL_BALANCE_HEADERS = [
+  'ACCOUNT',
+  'DESCRIPTION',
+  'BEGINNING BALANCE',
+  'DEBIT',
+  'CREDIT',
+  'NET CHANGE',
+  'ENDING BALANCE',
+];
+const TRIAL_BALANCE_REQUIRED_HEADERS = ['ACCOUNT', 'DESCRIPTION'];
 
 const isZipBuffer = (buffer: Buffer): boolean =>
   buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
@@ -80,6 +93,42 @@ const normalizeHeader = (value: string, fallbackIndex: number, existing: Set<str
   return candidate;
 };
 
+const normalizeHeaderCandidate = (value: unknown): string =>
+  `${value ?? ''}`.trim().toUpperCase().replace(/\s+/g, ' ');
+
+const matchesTrialBalanceHeader = (candidate: string, header: string): boolean =>
+  candidate === header || candidate.includes(header);
+
+const isTrialBalanceHeaderRow = (row: unknown[]): boolean => {
+  const normalized = row.map(normalizeHeaderCandidate).filter((value) => value.length > 0);
+  if (normalized.length === 0) {
+    return false;
+  }
+
+  const hasRequiredHeaders = TRIAL_BALANCE_REQUIRED_HEADERS.every((header) =>
+    normalized.some((candidate) => matchesTrialBalanceHeader(candidate, header)),
+  );
+  if (!hasRequiredHeaders) {
+    return false;
+  }
+
+  const matchCount = TRIAL_BALANCE_HEADERS.filter((header) =>
+    normalized.some((candidate) => matchesTrialBalanceHeader(candidate, header)),
+  ).length;
+
+  return matchCount >= 5;
+};
+
+const findTrialBalanceHeaderRowIndex = (rawRows: unknown[][]): number | null => {
+  const limit = Math.min(rawRows.length, TRIAL_BALANCE_HEADER_ROW_SEARCH_LIMIT);
+  for (let index = 0; index < limit; index += 1) {
+    if (isTrialBalanceHeaderRow(rawRows[index])) {
+      return index;
+    }
+  }
+  return null;
+};
+
 const normalizeCostTypeValue = (value: string | null): string | null => {
   if (value === null) {
     return null;
@@ -96,6 +145,43 @@ const normalizeCostTypeValue = (value: string | null): string | null => {
   }
   if (normalized.includes('variable') || normalized === 'var' || normalized.startsWith('var')) {
     return 'Variable';
+  }
+
+  return null;
+};
+
+const normalizeIsFinancialValue = (value: string | null): string | null => {
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (
+    normalized === 'true' ||
+    normalized === '1' ||
+    normalized === 'yes' ||
+    normalized === 'y' ||
+    normalized.includes('financial') ||
+    normalized === 'fin' ||
+    normalized.startsWith('fin')
+  ) {
+    return '1';
+  }
+  if (
+    normalized === 'false' ||
+    normalized === '0' ||
+    normalized === 'no' ||
+    normalized === 'n' ||
+    normalized.includes('operational') ||
+    normalized === 'ops' ||
+    normalized.startsWith('oper')
+  ) {
+    return '0';
   }
 
   return null;
@@ -144,7 +230,8 @@ const parseWorkbook = (workbook: XLSX.WorkBook): ParsedSpreadsheet => {
     throw new Error('Spreadsheet file is empty.');
   }
 
-  const rawHeaders = rawRows[0].map((value) => `${value ?? ''}`);
+  const headerRowIndex = findTrialBalanceHeaderRowIndex(rawRows) ?? 0;
+  const rawHeaders = rawRows[headerRowIndex].map((value) => `${value ?? ''}`);
   const existing = new Set<string>();
   const headers = rawHeaders.map((header, index) => ({
     original: header,
@@ -152,7 +239,7 @@ const parseWorkbook = (workbook: XLSX.WorkBook): ParsedSpreadsheet => {
   }));
 
   const normalizedHeaders = headers.map((header) => header.normalized);
-  const dataRows = rawRows.slice(1).map((row) => {
+  const dataRows = rawRows.slice(headerRowIndex + 1).map((row) => {
     const record: Record<string, string | null> = {};
     normalizedHeaders.forEach((header, index) => {
       record[header] = normalizeCellValue(row[index]);
@@ -478,6 +565,8 @@ const buildRowPayloads = (
 
     const rawCostType = row[COST_TYPE_COLUMN] ?? null;
     payload[COST_TYPE_COLUMN] = normalizeCostTypeValue(rawCostType);
+    const rawIsFinancial = row[IS_FINANCIAL_COLUMN] ?? null;
+    payload[IS_FINANCIAL_COLUMN] = normalizeIsFinancialValue(rawIsFinancial);
 
     rows.push(payload);
   });
@@ -509,7 +598,10 @@ export async function coaManagerImportHandler(
   }
 
   const availableColumns = parsed.normalizedHeaders.filter(
-    (column) => column !== RECORD_ID_COLUMN && column !== COST_TYPE_COLUMN,
+    (column) =>
+      column !== RECORD_ID_COLUMN &&
+      column !== COST_TYPE_COLUMN &&
+      column !== IS_FINANCIAL_COLUMN,
   );
 
   const normalizedSelections = normalizeColumnSelections(options.selectedColumns, availableColumns);
@@ -519,7 +611,7 @@ export async function coaManagerImportHandler(
     return json({ message: 'No columns detected in the uploaded file.' }, 400);
   }
 
-  const tableColumns = [...selectedColumns, COST_TYPE_COLUMN];
+  const tableColumns = [...selectedColumns, COST_TYPE_COLUMN, IS_FINANCIAL_COLUMN];
   const rows = buildRowPayloads(parsed, selectedColumns);
 
   const keyColumns = normalizeColumnSelections(
@@ -540,10 +632,15 @@ export async function coaManagerImportHandler(
     const newColumns = tableColumns.filter(
       (column) => !existingColumns.includes(column.toUpperCase()),
     );
+    const enforcedColumns = [COST_TYPE_COLUMN, IS_FINANCIAL_COLUMN];
+    const unmanagedNewColumns = newColumns.filter(
+      (column) => !enforcedColumns.includes(column),
+    );
     const removedColumns = existingColumns.filter(
       (column) =>
         column !== RECORD_ID_COLUMN &&
         column !== COST_TYPE_COLUMN &&
+        column !== IS_FINANCIAL_COLUMN &&
         !incomingColumns.includes(column.toUpperCase()),
     );
 
@@ -606,7 +703,7 @@ export async function coaManagerImportHandler(
       });
     }
 
-    if (newColumns.length > 0 && !options.allowAddColumns) {
+    if (unmanagedNewColumns.length > 0 && !options.allowAddColumns) {
       return json(
         {
           message: 'New columns detected. Set allowAddColumns to true to add them.',
@@ -627,8 +724,8 @@ export async function coaManagerImportHandler(
       );
     }
 
-    if (newColumns.length > 0) {
-      await addColumns(tableState.tableName, newColumns);
+    if (unmanagedNewColumns.length > 0) {
+      await addColumns(tableState.tableName, unmanagedNewColumns);
     }
 
     if (removedColumns.length > 0 && options.dropMissingColumns) {
@@ -636,6 +733,7 @@ export async function coaManagerImportHandler(
     }
 
     await ensureCostTypeColumn(tableState.tableName);
+    await ensureIsFinancialColumn(tableState.tableName);
 
     const removedRows = await detectMissingRows(tableState.tableName, resolvedKeyColumns, rows);
 

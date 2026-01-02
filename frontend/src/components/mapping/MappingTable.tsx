@@ -544,12 +544,12 @@ export default function MappingTable() {
       <MappingToolbar />
       <div className="overflow-x-auto">
         <table
-          className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700"
+          className="min-w-full table-compact divide-y divide-slate-200 text-sm dark:divide-slate-700"
           role="table"
         >
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
-              <th scope="col" className="w-12 px-3 py-3">
+              <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Select all rows</span>
                 <input
                   ref={selectAllRef}
@@ -559,7 +559,7 @@ export default function MappingTable() {
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
               </th>
-              <th scope="col" className="w-10 px-3 py-3">
+              <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Toggle split details</span>
               </th>
               {COLUMN_DEFINITIONS.map((column) => (
@@ -674,7 +674,7 @@ export default function MappingTable() {
                     }
                     data-dirty={isDirty ? 'true' : undefined}
                   >
-                    <td className="px-3 py-4">
+                    <td className="table-cell-tight">
                       <input
                         type="checkbox"
                         aria-label={`Select account ${account.accountId}`}
@@ -683,7 +683,7 @@ export default function MappingTable() {
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                     </td>
-                    <td className="px-3 py-4">
+                    <td className="table-cell-tight">
                       {requiresSplit ? (
                         <button
                           type="button"
