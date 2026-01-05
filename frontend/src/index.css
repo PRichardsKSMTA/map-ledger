@@ -16,6 +16,13 @@
   .dark body {
     @apply bg-slate-950 text-slate-100;
   }
+
+  table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: inherit;
+  }
 }
 
 /* Retool-inspired custom styles */

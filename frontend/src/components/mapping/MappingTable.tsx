@@ -19,6 +19,7 @@ import {
 import MappingToolbar from './MappingToolbar';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
 import {
+  calculateSplitPercentage,
   getAccountExcludedAmount,
   selectFilteredAccounts,
   selectActiveStatuses,
@@ -104,6 +105,13 @@ const MAPPING_TYPE_OPTIONS: { value: MappingType; label: string }[] = (
 ).map(([value, label]) => ({ value, label }));
 
 const formatNetChange = (value: number) => formatCurrencyAmount(value);
+const formatSplitSummaryPercentage = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return '0';
+  }
+  const rounded = Math.round(value * 100) / 100;
+  return rounded.toFixed(2).replace(/\.00$/, '');
+};
 
 const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'accountId', label: 'Account ID' },
@@ -144,6 +152,7 @@ export default function MappingTable() {
     basisAccounts,
     groups,
     results,
+    getActivePresetForSource,
   } = useRatioAllocationStore(
     (state) => ({
       allocations: state.allocations,
@@ -152,6 +161,7 @@ export default function MappingTable() {
       basisAccounts: state.basisAccounts,
       groups: state.groups,
       results: state.results,
+      getActivePresetForSource: state.getActivePresetForSource,
     })
   );
   const datapoints = useTemplateStore((state) => state.datapoints);
@@ -178,6 +188,10 @@ export default function MappingTable() {
   const presetLibrary = useMappingStore(state => state.presetLibrary);
   const percentagePresetOptions = useMemo(
     () => presetLibrary.filter(entry => entry.type === 'percentage'),
+    [presetLibrary],
+  );
+  const presetNameLookup = useMemo(
+    () => new Map(presetLibrary.map(entry => [entry.id, entry.name])),
     [presetLibrary],
   );
   const addSplitDefinition = useMappingStore(
@@ -259,56 +273,6 @@ export default function MappingTable() {
     }
   }, [accounts, selectedIds, setSelection]);
 
-  useEffect(() => {
-    const previousMappingTypes = previousMappingTypesRef.current;
-    const currentIds = new Set(accounts.map((account) => account.id));
-
-    setExpandedRows((previous) => {
-      let changed = false;
-      const next = new Set(previous);
-
-      previous.forEach((id) => {
-        if (!currentIds.has(id)) {
-          next.delete(id);
-          changed = true;
-        }
-      });
-
-      accounts.forEach((account) => {
-        const requiresSplit =
-          account.mappingType === 'percentage' ||
-          account.mappingType === 'dynamic';
-        const previousType = previousMappingTypes.get(account.id);
-        const previouslyRequired =
-          previousType === 'percentage' || previousType === 'dynamic';
-
-        if (requiresSplit && !previouslyRequired && !next.has(account.id)) {
-          next.add(account.id);
-          changed = true;
-        }
-
-        if (!requiresSplit && previouslyRequired && next.has(account.id)) {
-          next.delete(account.id);
-          changed = true;
-        }
-      });
-
-      if (!changed) {
-        return previous;
-      }
-
-      return next;
-    });
-
-    previousMappingTypesRef.current = new Map(
-      accounts.map((account) => [account.id, account.mappingType])
-    );
-  }, [accounts]);
-
-  useEffect(() => {
-    setPageIndex(0);
-  }, [activeStatusKey, pageSize, searchTerm, sortConfig?.direction, sortConfig?.key]);
-
   const dynamicStatusByAccount = useMemo(() => {
     if (allocations.length === 0) {
       return new Map<string, MappingStatus>();
@@ -348,6 +312,66 @@ export default function MappingTable() {
       return account.status;
     };
   }, [activePeriod, dynamicStatusByAccount]);
+
+  useEffect(() => {
+    const previousMappingTypes = previousMappingTypesRef.current;
+    const currentIds = new Set(accounts.map((account) => account.id));
+
+    setExpandedRows((previous) => {
+      let changed = false;
+      const next = new Set(previous);
+
+      previous.forEach((id) => {
+        if (!currentIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      });
+
+      accounts.forEach((account) => {
+        const requiresSplit =
+          account.mappingType === 'percentage' ||
+          account.mappingType === 'dynamic';
+        const previousType = previousMappingTypes.get(account.id);
+        const previouslyRequired =
+          previousType === 'percentage' || previousType === 'dynamic';
+        const displayStatus = getDisplayStatus(account);
+        const hasPendingIssues =
+          (account.mappingType === 'dynamic' && dynamicIssueIds.has(account.id)) ||
+          (account.mappingType === 'percentage' && splitIssueIds.has(account.id));
+        const isCompleted = displayStatus === 'Mapped' && !hasPendingIssues;
+
+        if (
+          requiresSplit &&
+          !previouslyRequired &&
+          !isCompleted &&
+          !next.has(account.id)
+        ) {
+          next.add(account.id);
+          changed = true;
+        }
+
+        if (!requiresSplit && previouslyRequired && next.has(account.id)) {
+          next.delete(account.id);
+          changed = true;
+        }
+      });
+
+      if (!changed) {
+        return previous;
+      }
+
+      return next;
+    });
+
+    previousMappingTypesRef.current = new Map(
+      accounts.map((account) => [account.id, account.mappingType])
+    );
+  }, [accounts, dynamicIssueIds, getDisplayStatus, splitIssueIds]);
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [activeStatusKey, pageSize, searchTerm, sortConfig?.direction, sortConfig?.key]);
 
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
@@ -479,6 +503,22 @@ export default function MappingTable() {
       }),
     [accounts, allocations, basisAccounts, derivedSelectedPeriod, groups, results]
   );
+  const allocationLookup = useMemo(
+    () => new Map(allocations.map((allocation) => [allocation.sourceAccount.id, allocation])),
+    [allocations],
+  );
+  const targetLabelLookup = useMemo(
+    () => new Map(coaOptions.map((option) => [option.id, option.label])),
+    [coaOptions],
+  );
+  const resolveTargetLabel = (targetId?: string | null, fallback?: string | null) => {
+    const normalized = typeof targetId === 'string' ? targetId.trim() : '';
+    if (normalized) {
+      return targetLabelLookup.get(normalized) ?? fallback?.trim() ?? normalized;
+    }
+    const trimmedFallback = fallback?.trim();
+    return trimmedFallback ?? '';
+  };
 
   useEffect(() => {
     if (!selectAllRef.current) return;
@@ -611,11 +651,35 @@ export default function MappingTable() {
                 account.mappingType === 'dynamic';
               const hasSplitIssue = splitIssueIds.has(account.id);
               const hasDynamicIssue = dynamicIssueIds.has(account.id);
+              const allocation = allocationLookup.get(account.id);
+              const dynamicTargets = allocation?.targetDatapoints?.length
+                ? Array.from(
+                    new Set(
+                      allocation.targetDatapoints
+                        .filter((target) => !target.isExclusion)
+                        .map((target) =>
+                          resolveTargetLabel(target.datapointId, target.name)
+                        )
+                        .filter(Boolean)
+                    )
+                  )
+                : Array.from(
+                    new Set(
+                      account.splitDefinitions
+                        .filter(
+                          (split) =>
+                            split.allocationType === 'dynamic' && !split.isExclusion
+                        )
+                        .map((split) =>
+                          resolveTargetLabel(split.targetId, split.targetName)
+                        )
+                        .filter(Boolean)
+                    )
+                  );
+              const hasDynamicTargets = dynamicTargets.length > 0;
               const hasAllocation =
                 account.mappingType === 'dynamic'
-                  ? allocations.some(
-                      (allocation) => allocation.sourceAccount.id === account.id
-                    )
+                  ? hasDynamicTargets
                   : account.splitDefinitions.length > 0 && !hasSplitIssue;
               const displayStatus = getDisplayStatus(account);
               const accountKey = `${account.entityId ?? ''}__${account.accountId ?? ''}`;
@@ -644,6 +708,32 @@ export default function MappingTable() {
                 account.mappingType === 'dynamic'
                   ? dynamicExclusion?.percentage
                   : undefined;
+              const percentageSummary = account.splitDefinitions
+                .filter((split) => !split.isExclusion)
+                .map((split) => {
+                  const label = resolveTargetLabel(split.targetId, split.targetName);
+                  if (!label) {
+                    return null;
+                  }
+                  const percentage = calculateSplitPercentage(account, split);
+                  return `${label} (${formatSplitSummaryPercentage(percentage)}%)`;
+                })
+                .filter((entry): entry is string => Boolean(entry))
+                .join(', ');
+              const splitSummary =
+                account.mappingType === 'percentage' ? percentageSummary : dynamicTargets.join(', ');
+              const summaryText = splitSummary || 'No targets assigned';
+              const summaryTone =
+                splitSummary.length > 0
+                  ? 'text-slate-700 dark:text-slate-200'
+                  : 'text-slate-500 dark:text-slate-400';
+              const activePreset =
+                account.mappingType === 'dynamic'
+                  ? getActivePresetForSource(account.id) ??
+                    (account.presetId
+                      ? { name: presetNameLookup.get(account.presetId) ?? null }
+                      : null)
+                  : null;
               const adjustedActivity = account.netChange - excludedAmount;
               const showOriginalActivity = Math.abs(excludedAmount) > 0.005;
               const hasDynamicExclusionOverride =
@@ -767,13 +857,16 @@ export default function MappingTable() {
                       className={`px-3 py-4 ${COLUMN_WIDTH_CLASSES.targetScoa ?? ''}`}
                     >
                       {requiresSplit ? (
-                        <span className="text-slate-500 dark:text-slate-400">
-                          <span aria-hidden="true">—</span>
-                          <span className="sr-only">
-                            Target SCoA selections are managed within allocation
-                            details for percentage and dynamic mappings.
-                          </span>
-                        </span>
+                        <div className="space-y-2">
+                          <p className={`text-sm ${summaryTone}`}>{summaryText}</p>
+                          {account.mappingType === 'dynamic' && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-sm font-medium text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200">
+                              {activePreset?.name
+                                ? `Preset: ${activePreset.name}`
+                                : 'No preset selected'}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <>
                           <label

@@ -10,6 +10,7 @@ import {
   dropIndustryTable,
   ensureCostTypeColumn,
   ensureIsFinancialColumn,
+  ensureIsSurveyColumn,
   getIndustryTableState,
   IndustryNotFoundError,
   insertRows,
@@ -21,6 +22,7 @@ import { getFirstStringValue } from '../../utils/requestParsers';
 
 const COST_TYPE_COLUMN = 'COST_TYPE';
 const IS_FINANCIAL_COLUMN = 'IS_FINANCIAL';
+const IS_SURVEY_COLUMN = 'IS_SURVEY';
 const RECORD_ID_COLUMN = 'RECORD_ID';
 const SAMPLE_ROW_COUNT = 5;
 const TRIAL_BALANCE_HEADER_ROW_SEARCH_LIMIT = 25;
@@ -181,6 +183,27 @@ const normalizeIsFinancialValue = (value: string | null): string | null => {
     normalized === 'ops' ||
     normalized.startsWith('oper')
   ) {
+    return '0';
+  }
+
+  return null;
+};
+
+const normalizeIsSurveyValue = (value: string | null): string | null => {
+  if (value === null) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(normalized)) {
+    return '1';
+  }
+  if (['false', '0', 'no', 'n'].includes(normalized)) {
     return '0';
   }
 
@@ -567,6 +590,8 @@ const buildRowPayloads = (
     payload[COST_TYPE_COLUMN] = normalizeCostTypeValue(rawCostType);
     const rawIsFinancial = row[IS_FINANCIAL_COLUMN] ?? null;
     payload[IS_FINANCIAL_COLUMN] = normalizeIsFinancialValue(rawIsFinancial);
+    const rawIsSurvey = row[IS_SURVEY_COLUMN] ?? null;
+    payload[IS_SURVEY_COLUMN] = normalizeIsSurveyValue(rawIsSurvey);
 
     rows.push(payload);
   });
@@ -601,7 +626,8 @@ export async function coaManagerImportHandler(
     (column) =>
       column !== RECORD_ID_COLUMN &&
       column !== COST_TYPE_COLUMN &&
-      column !== IS_FINANCIAL_COLUMN,
+      column !== IS_FINANCIAL_COLUMN &&
+      column !== IS_SURVEY_COLUMN,
   );
 
   const normalizedSelections = normalizeColumnSelections(options.selectedColumns, availableColumns);
@@ -611,7 +637,12 @@ export async function coaManagerImportHandler(
     return json({ message: 'No columns detected in the uploaded file.' }, 400);
   }
 
-  const tableColumns = [...selectedColumns, COST_TYPE_COLUMN, IS_FINANCIAL_COLUMN];
+  const tableColumns = [
+    ...selectedColumns,
+    COST_TYPE_COLUMN,
+    IS_FINANCIAL_COLUMN,
+    IS_SURVEY_COLUMN,
+  ];
   const rows = buildRowPayloads(parsed, selectedColumns);
 
   const keyColumns = normalizeColumnSelections(
@@ -632,7 +663,7 @@ export async function coaManagerImportHandler(
     const newColumns = tableColumns.filter(
       (column) => !existingColumns.includes(column.toUpperCase()),
     );
-    const enforcedColumns = [COST_TYPE_COLUMN, IS_FINANCIAL_COLUMN];
+    const enforcedColumns = [COST_TYPE_COLUMN, IS_FINANCIAL_COLUMN, IS_SURVEY_COLUMN];
     const unmanagedNewColumns = newColumns.filter(
       (column) => !enforcedColumns.includes(column),
     );
@@ -641,6 +672,7 @@ export async function coaManagerImportHandler(
         column !== RECORD_ID_COLUMN &&
         column !== COST_TYPE_COLUMN &&
         column !== IS_FINANCIAL_COLUMN &&
+        column !== IS_SURVEY_COLUMN &&
         !incomingColumns.includes(column.toUpperCase()),
     );
 
@@ -734,6 +766,7 @@ export async function coaManagerImportHandler(
 
     await ensureCostTypeColumn(tableState.tableName);
     await ensureIsFinancialColumn(tableState.tableName);
+    await ensureIsSurveyColumn(tableState.tableName);
 
     const removedRows = await detectMissingRows(tableState.tableName, resolvedKeyColumns, rows);
 

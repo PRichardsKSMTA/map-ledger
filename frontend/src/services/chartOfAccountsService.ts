@@ -22,6 +22,49 @@ export interface ChartOfAccountCacheEntry {
   accounts: ChartOfAccount[];
 }
 
+const coerceBoolean = (value: unknown): boolean | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) {
+      return true;
+    }
+    if (value === 0) {
+      return false;
+    }
+    return null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (
+      normalized === 'true' ||
+      normalized === '1' ||
+      normalized === 'yes' ||
+      normalized === 'y' ||
+      normalized.includes('financial')
+    ) {
+      return true;
+    }
+    if (
+      normalized === 'false' ||
+      normalized === '0' ||
+      normalized === 'no' ||
+      normalized === 'n' ||
+      normalized.includes('operational')
+    ) {
+      return false;
+    }
+  }
+  return null;
+};
+
 const normalizeAccount = (account: Record<string, unknown>): ChartOfAccount => {
   const getValue = (keys: string[]): string | null => {
     for (const key of keys) {
@@ -39,6 +82,16 @@ const normalizeAccount = (account: Record<string, unknown>): ChartOfAccount => {
     return null;
   };
 
+  const getBoolean = (keys: string[]): boolean | null => {
+    for (const key of keys) {
+      if (!Object.prototype.hasOwnProperty.call(account, key)) {
+        continue;
+      }
+      return coerceBoolean(account[key]);
+    }
+    return null;
+  };
+
   return {
     accountNumber: getValue(['accountNumber', 'ACCOUNT_NUMBER']) ?? '',
     coreAccount: getValue(['coreAccount', 'CORE_ACCOUNT']),
@@ -48,6 +101,8 @@ const normalizeAccount = (account: Record<string, unknown>): ChartOfAccount => {
     category: getValue(['category', 'CATEGORY']),
     subCategory: getValue(['subCategory', 'SUB_CATEGORY']),
     description: getValue(['description', 'DESCRIPTION']),
+    isFinancial: getBoolean(['isFinancial', 'IS_FINANCIAL', 'financialFlag']),
+    isSurvey: getBoolean(['isSurvey', 'IS_SURVEY', 'surveyFlag']),
   };
 };
 

@@ -199,6 +199,60 @@ const buildDistributionKey = (
 const isMeaningfulDescription = (value?: string | null): boolean =>
   typeof value === 'string' && value.trim().length > 1;
 
+const resolvePreferredValue = (incoming: string, existing?: string | null): string => {
+  const incomingTrim = normalizeText(incoming) ?? '';
+  const existingTrim = normalizeText(existing ?? null) ?? '';
+
+  if (!existingTrim) {
+    return incomingTrim || incoming;
+  }
+  if (!incomingTrim) {
+    return existingTrim;
+  }
+  return incomingTrim.length >= existingTrim.length ? incomingTrim : existingTrim;
+};
+
+const resolvePresetDescription = (
+  incoming: string | null,
+  existing: string | null | undefined,
+  entityAccountId: string,
+  scoaAccountId: string,
+): string | null => {
+  const incomingTrim = normalizeText(incoming) ?? '';
+  const existingTrim = normalizeText(existing ?? null) ?? '';
+
+  if (incomingTrim.length > 1 || existingTrim.length > 1) {
+    return incomingTrim.length >= existingTrim.length
+      ? incomingTrim
+      : existingTrim;
+  }
+
+  if (entityAccountId && scoaAccountId) {
+    return `${entityAccountId} - ${scoaAccountId}`;
+  }
+
+  return incomingTrim || existingTrim || null;
+};
+
+const shouldUpdateDescription = (
+  existing: string | null | undefined,
+  next: string | null,
+): boolean => {
+  if (!next) {
+    return false;
+  }
+  const existingTrim = normalizeText(existing ?? null) ?? '';
+  const nextTrim = normalizeText(next) ?? '';
+
+  if (!existingTrim) {
+    return true;
+  }
+  if (existingTrim.length <= 1 && nextTrim.length > 1) {
+    return true;
+  }
+  return nextTrim.length > existingTrim.length;
+};
+
 const isCanonicalPresetType = (value?: string | null): boolean => {
   if (!value) {
     return false;
@@ -325,26 +379,49 @@ const ensurePreset = async (
     (presetGuid && presetGuid !== targetPresetGuid ? presetMetadata.get(presetGuid) : undefined);
 
   if (existingPreset) {
+    const resolvedEntityAccountId = resolvePreferredValue(
+      entityAccountId,
+      existingPreset.entityAccountId,
+    );
+    const resolvedScoaAccountId = resolvePreferredValue(
+      scoaAccountId,
+      existingPreset.scoaAccountId,
+    );
+    const resolvedPresetDescription = resolvePresetDescription(
+      presetDescription,
+      existingPreset.presetDescription,
+      resolvedEntityAccountId,
+      resolvedScoaAccountId,
+    );
     const currentPresetType = normalizeDistributionType(existingPreset.presetType);
     const needsTypeRepair = !isCanonicalPresetType(existingPreset.presetType);
     const needsTypeUpdate = currentPresetType !== distributionType;
-    const needsDescriptionRepair =
-      presetDescription !== null && !isMeaningfulDescription(existingPreset.presetDescription);
-    const needsEntityAccountUpdate = existingPreset.entityAccountId !== entityAccountId;
-    const needsScoaAccountUpdate = existingPreset.scoaAccountId !== scoaAccountId;
+    const needsDescriptionUpdate = shouldUpdateDescription(
+      existingPreset.presetDescription,
+      resolvedPresetDescription,
+    );
+    const needsEntityAccountUpdate =
+      existingPreset.entityAccountId !== resolvedEntityAccountId;
+    const needsScoaAccountUpdate = existingPreset.scoaAccountId !== resolvedScoaAccountId;
+    const resolvedCacheKey = buildPresetKey(
+      entityId,
+      resolvedEntityAccountId,
+      resolvedScoaAccountId,
+      includeEntityAccountId,
+    );
 
     if (
       needsTypeRepair ||
       needsTypeUpdate ||
-      needsDescriptionRepair ||
+      needsDescriptionUpdate ||
       needsEntityAccountUpdate ||
       needsScoaAccountUpdate
     ) {
       const updatedPreset = await updateEntityDistributionPreset(existingPreset.presetGuid, {
         presetType: needsTypeRepair || needsTypeUpdate ? distributionType : undefined,
-        presetDescription: needsDescriptionRepair ? presetDescription : undefined,
-        entityAccountId: needsEntityAccountUpdate ? entityAccountId : undefined,
-        scoaAccountId: needsScoaAccountUpdate ? scoaAccountId : undefined,
+        presetDescription: needsDescriptionUpdate ? resolvedPresetDescription : undefined,
+        entityAccountId: needsEntityAccountUpdate ? resolvedEntityAccountId : undefined,
+        scoaAccountId: needsScoaAccountUpdate ? resolvedScoaAccountId : undefined,
         updatedBy: updatedBy ?? null,
       });
 
@@ -354,12 +431,12 @@ const ensurePreset = async (
           presetDetails: existingPreset.presetDetails ?? [],
         };
         presetMetadata.set(updatedWithDetails.presetGuid, updatedWithDetails);
-        presetLookup.set(cacheKey, updatedWithDetails.presetGuid);
+        presetLookup.set(resolvedCacheKey, updatedWithDetails.presetGuid);
         return { created: false, preset: updatedWithDetails };
       }
     }
 
-    presetLookup.set(cacheKey, existingPreset.presetGuid);
+    presetLookup.set(resolvedCacheKey, existingPreset.presetGuid);
     return { created: false, preset: existingPreset };
   }
 

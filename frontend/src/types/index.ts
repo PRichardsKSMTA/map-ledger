@@ -141,6 +141,8 @@ export interface ChartOfAccount {
   category: string | null;
   subCategory: string | null;
   description: string | null;
+  isFinancial?: boolean | null;
+  isSurvey?: boolean | null;
 }
 
 export interface ChartOfAccountOption extends TargetScoaOption, ChartOfAccount {}

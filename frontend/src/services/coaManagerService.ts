@@ -1,5 +1,6 @@
 export type CoaManagerCostType = string;
 export type CoaManagerIsFinancial = boolean | null;
+export type CoaManagerIsSurvey = boolean | null;
 
 export interface CoaManagerColumn {
   key: string;
@@ -11,10 +12,13 @@ export interface CoaManagerRow {
   id: string;
   accountNumber: string;
   accountName: string;
+  laborGroup: string;
+  operationalGroup: string;
   category: string;
   department: string;
   costType: CoaManagerCostType;
   isFinancial: CoaManagerIsFinancial;
+  isSurvey: CoaManagerIsSurvey;
 }
 
 export interface CoaManagerIndustryResponse {
@@ -175,11 +179,22 @@ const normalizeRow = (
     id,
     accountNumber,
     accountName,
+    laborGroup: getValue(row, ['laborGroup', 'labor_group', 'LABOR_GROUP']),
+    operationalGroup: getValue(row, [
+      'operationalGroup',
+      'operational_group',
+      'OPERATIONAL_GROUP',
+      'opGroup',
+      'OP_GROUP',
+    ]),
     category: getValue(row, ['category', 'CATEGORY']),
     department: getValue(row, ['department', 'DEPARTMENT', 'dept', 'DEPT']),
     costType: getValue(row, ['costType', 'cost_type', 'COST_TYPE']),
     isFinancial: coerceBoolean(
       getRawValue(row, ['isFinancial', 'is_financial', 'IS_FINANCIAL', 'financialFlag']),
+    ),
+    isSurvey: coerceBoolean(
+      getRawValue(row, ['isSurvey', 'is_survey', 'IS_SURVEY', 'surveyFlag']),
     ),
   };
 };
@@ -280,6 +295,23 @@ export const updateIndustryIsFinancial = async (
   }
 };
 
+export const updateIndustryIsSurvey = async (
+  industry: string,
+  rowId: string,
+  isSurvey: CoaManagerIsSurvey,
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/is-survey`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rowId, isSurvey }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unable to update survey flag.');
+    throw new Error(errorText || 'Unable to update survey flag.');
+  }
+};
+
 export const updateIndustryCostTypeBatch = async (
   industry: string,
   rowIds: string[],
@@ -317,6 +349,26 @@ export const updateIndustryIsFinancialBatch = async (
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unable to update financial flags.');
     throw new Error(errorText || 'Unable to update financial flags.');
+  }
+};
+
+export const updateIndustryIsSurveyBatch = async (
+  industry: string,
+  rowIds: string[],
+  isSurvey: CoaManagerIsSurvey,
+): Promise<void> => {
+  const response = await fetch(
+    `${API_BASE_URL}/coa-manager/industry/${industry}/is-survey/batch`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rowIds, isSurvey }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unable to update survey flags.');
+    throw new Error(errorText || 'Unable to update survey flags.');
   }
 };
 

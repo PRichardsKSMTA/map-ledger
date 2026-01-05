@@ -610,6 +610,9 @@ const accumulateStandardTargetValues = (
         return;
       }
       const option = findChartOfAccountTarget(normalizedTarget);
+      if (option?.isFinancial === false) {
+        return;
+      }
       const targetId = option?.id ?? normalizedTarget;
       const label = option?.label ?? normalizedTarget;
       const amount = account.netChange;
@@ -627,6 +630,9 @@ const accumulateStandardTargetValues = (
           return;
         }
         const option = findChartOfAccountTarget(normalizedTarget);
+        if (option?.isFinancial === false) {
+          return;
+        }
         const targetId = option?.id ?? normalizedTarget;
         const label = option?.label ?? split.targetName ?? normalizedTarget;
         const amount = getSplitSignedAmount(account, split);
@@ -1031,7 +1037,11 @@ const buildSaveInputFromAccount = (
   }
 
   const resolvedStatus = deriveMappingStatus(account);
-  if (resolvedStatus !== 'Mapped' && resolvedStatus !== 'Excluded') {
+  const shouldPersistStatus =
+    resolvedStatus === 'Mapped' ||
+    resolvedStatus === 'Excluded' ||
+    resolvedStatus === 'Unmapped';
+  if (!shouldPersistStatus) {
     return null;
   }
 

@@ -49,6 +49,7 @@ const toOption = (account: ChartOfAccount): ChartOfAccountOption => {
     category: account.category ?? null,
     subCategory: account.subCategory ?? null,
     description: account.description ?? null,
+    isFinancial: account.isFinancial ?? null,
   };
 };
 
@@ -86,6 +87,7 @@ const buildFallbackAccounts = (): ChartOfAccount[] =>
     category: null,
     subCategory: null,
     description: option.label,
+    isFinancial: null,
   }));
 
 const hydrateInitialState = () => {

@@ -29,6 +29,7 @@ const FALLBACK_SCOA_OPTIONS: ChartOfAccountOption[] = STANDARD_CHART_OF_ACCOUNTS
   category: null,
   subCategory: null,
   description: option.label,
+  isFinancial: null,
 }));
 
 const buildStaticScoaOptions = (): ChartOfAccountOption[] => {
@@ -167,7 +168,7 @@ export const buildOperationScoaActivitySheets = (
   accounts: GLAccountMappingRow[],
   distributionRows: DistributionRow[],
 ): OperationScoaSheet[] => {
-  const scoaOptions = buildStaticScoaOptions();
+  const scoaOptions = buildStaticScoaOptions().filter(option => option.isFinancial !== false);
   if (!scoaOptions.length) {
     return [];
   }

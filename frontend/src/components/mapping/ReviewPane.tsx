@@ -10,6 +10,7 @@ import {
   type DistributionOperationCatalogItem,
   useDistributionStore,
 } from '../../store/distributionStore';
+import { useChartOfAccountsStore } from '../../store/chartOfAccountsStore';
 import type {
   DistributionOperationShare,
   DistributionRow,
@@ -114,6 +115,7 @@ const ToggleIcon = ({ isOpen }: { isOpen: boolean }) =>
 const ReviewPane = () => {
   const accounts = useMappingStore(selectAccounts);
   const splitIssues = useMappingStore(selectSplitValidationIssues);
+  const chartOptions = useChartOfAccountsStore(state => state.options);
   const finalizeMappings = useMappingStore(state => state.finalizeMappings);
   const { selectedPeriod, validationErrors, isProcessing, calculateAllocations } =
     useRatioAllocationStore(state => ({
@@ -163,13 +165,47 @@ const ReviewPane = () => {
     [mappingWarnings, dynamicWarnings],
   );
 
+  const financialTargetLookup = useMemo(() => {
+    const lookup = new Map<string, boolean>();
+    chartOptions.forEach(option => {
+      if (option.isFinancial === null || option.isFinancial === undefined) {
+        return;
+      }
+      const idKey = option.id?.trim();
+      const valueKey = option.value?.trim();
+      if (idKey) {
+        lookup.set(idKey, option.isFinancial);
+      }
+      if (valueKey) {
+        lookup.set(valueKey, option.isFinancial);
+      }
+    });
+    return lookup;
+  }, [chartOptions]);
+
+  const isFinancialTarget = useCallback(
+    (targetId?: string | null) => {
+      const normalized = targetId?.trim();
+      if (!normalized) {
+        return true;
+      }
+      const flag = financialTargetLookup.get(normalized);
+      return flag !== false;
+    },
+    [financialTargetLookup],
+  );
+
   const activeClientId = useClientStore(state => state.activeClientId);
   const companies = useOrganizationStore(state => state.companies);
   const distributionRows = useDistributionStore(state => state.rows);
+  const reviewDistributionRows = useMemo(
+    () => distributionRows.filter(row => isFinancialTarget(row.accountId)),
+    [distributionRows, isFinancialTarget],
+  );
 
   const distributedRows = useMemo(
-    () => distributionRows.filter(row => row.status === 'Distributed'),
-    [distributionRows],
+    () => reviewDistributionRows.filter(row => row.status === 'Distributed'),
+    [reviewDistributionRows],
   );
 
   // State for nested accordion expansion
@@ -384,7 +420,7 @@ const ReviewPane = () => {
   const handleExportScoaActivity = async () => {
     setIsExporting(true);
     try {
-      const sheets = buildOperationScoaActivitySheets(accounts, distributionRows);
+      const sheets = buildOperationScoaActivitySheets(accounts, reviewDistributionRows);
       if (!sheets.length) {
         setStatusMessage('No SCoA activity is available for export.');
         return;

@@ -39,6 +39,12 @@ const openApiSpec = {
     '/coa-manager/industry/{industry}/is-financial/batch': {
       patch: { summary: 'Batch update financial flags for COA records' }
     },
+    '/coa-manager/industry/{industry}/is-survey': {
+      patch: { summary: 'Update survey flag for a single COA record' }
+    },
+    '/coa-manager/industry/{industry}/is-survey/batch': {
+      patch: { summary: 'Batch update survey flags for COA records' }
+    },
     '/coa-manager/import': {
       post: { summary: 'Import chart of accounts for an industry (CSV or Excel)' }
     },

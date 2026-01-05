@@ -9,13 +9,126 @@ export interface ChartOfAccountRecord {
   category: string | null;
   subCategory: string | null;
   description: string | null;
+  isFinancial: boolean | null;
+  isSurvey: boolean | null;
 }
 
 const TABLE_NAME = 'ML.CHART_OF_ACCOUNTS';
 
+const toNullableBoolean = (value: unknown): boolean | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) {
+      return true;
+    }
+    if (value === 0) {
+      return false;
+    }
+    return null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+    if (
+      normalized === 'true' ||
+      normalized === '1' ||
+      normalized === 'yes' ||
+      normalized === 'y'
+    ) {
+      return true;
+    }
+    if (
+      normalized === 'false' ||
+      normalized === '0' ||
+      normalized === 'no' ||
+      normalized === 'n'
+    ) {
+      return false;
+    }
+  }
+  return null;
+};
+
+const toNullableString = (value: unknown): string | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+};
+
+const toRequiredString = (value: unknown): string => toNullableString(value) ?? '';
+
+const hasIsFinancialColumn = async (): Promise<boolean> => {
+  const { recordset = [] } = await runQuery<{ exists: number }>(
+    `SELECT 1 AS exists
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
+      AND TABLE_NAME = PARSENAME(@tableName, 1)
+      AND COLUMN_NAME = 'IS_FINANCIAL'`,
+    {
+      tableName: TABLE_NAME,
+    },
+  );
+
+  return recordset.length > 0;
+};
+
+const hasIsSurveyColumn = async (): Promise<boolean> => {
+  const { recordset = [] } = await runQuery<{ exists: number }>(
+    `SELECT 1 AS exists
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
+      AND TABLE_NAME = PARSENAME(@tableName, 1)
+      AND COLUMN_NAME = 'IS_SURVEY'`,
+    {
+      tableName: TABLE_NAME,
+    },
+  );
+
+  return recordset.length > 0;
+};
+
+export const listChartOfAccountIds = async (): Promise<string[]> => {
+  const { recordset = [] } = await runQuery<{ accountNumber?: string | null }>(
+    `SELECT ACCOUNT_NUMBER AS accountNumber
+    FROM ${TABLE_NAME}
+    ORDER BY ACCOUNT_NUMBER`
+  );
+
+  const accounts = recordset
+    .map((row) => toNullableString(row.accountNumber))
+    .filter((account): account is string => Boolean(account));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  accounts.forEach((account) => {
+    if (!seen.has(account)) {
+      seen.add(account);
+      unique.push(account);
+    }
+  });
+
+  return unique;
+};
+
 export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => {
-  const { recordset = [] } = await runQuery<ChartOfAccountRecord>(
-    `SELECT
+  const includeIsFinancial = await hasIsFinancialColumn();
+  const includeIsSurvey = await hasIsSurveyColumn();
+  const selectClause = `SELECT
       ACCOUNT_NUMBER AS accountNumber,
       CORE_ACCOUNT AS coreAccount,
       OPERATIONAL_GROUP AS operationalGroup,
@@ -23,20 +136,26 @@ export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => 
       ACCOUNT_TYPE AS accountType,
       CATEGORY AS category,
       SUB_CATEGORY AS subCategory,
-      DESCRIPTION AS description
+      DESCRIPTION AS description${
+        includeIsFinancial ? ',\n      IS_FINANCIAL AS isFinancial' : ''
+      }${
+        includeIsSurvey ? ',\n      IS_SURVEY AS isSurvey' : ''
+      }
     FROM ${TABLE_NAME}
-    ORDER BY ACCOUNT_NUMBER`
-  );
+    ORDER BY ACCOUNT_NUMBER`;
+  const { recordset = [] } = await runQuery<Record<string, unknown>>(selectClause);
 
   return recordset.map((row) => ({
-    accountNumber: row.accountNumber?.trim?.() ?? '',
-    coreAccount: row.coreAccount ?? null,
-    operationalGroup: row.operationalGroup ?? null,
-    laborGroup: row.laborGroup ?? null,
-    accountType: row.accountType ?? null,
-    category: row.category ?? null,
-    subCategory: row.subCategory ?? null,
-    description: row.description ?? null,
+    accountNumber: toRequiredString(row.accountNumber),
+    coreAccount: toNullableString(row.coreAccount),
+    operationalGroup: toNullableString(row.operationalGroup),
+    laborGroup: toNullableString(row.laborGroup),
+    accountType: toNullableString(row.accountType),
+    category: toNullableString(row.category),
+    subCategory: toNullableString(row.subCategory),
+    description: toNullableString(row.description),
+    isFinancial: includeIsFinancial ? toNullableBoolean(row.isFinancial) : null,
+    isSurvey: includeIsSurvey ? toNullableBoolean(row.isSurvey) : null,
   }));
 };
 

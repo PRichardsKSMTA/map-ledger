@@ -5,9 +5,12 @@ import {
   fetchIndustryCoaManager,
   updateIndustryIsFinancial,
   updateIndustryIsFinancialBatch,
+  updateIndustryIsSurvey,
+  updateIndustryIsSurveyBatch,
   updateIndustryCostType,
   updateIndustryCostTypeBatch,
   type CoaManagerIsFinancial,
+  type CoaManagerIsSurvey,
   type CoaManagerColumn,
   type CoaManagerCostType,
   type CoaManagerRow,
@@ -44,6 +47,8 @@ interface CoaManagerState {
   updateBatchCostType: (rowIds: string[], costType: CoaManagerCostType) => Promise<void>;
   updateRowIsFinancial: (rowId: string, isFinancial: CoaManagerIsFinancial) => Promise<void>;
   updateBatchIsFinancial: (rowIds: string[], isFinancial: CoaManagerIsFinancial) => Promise<void>;
+  updateRowIsSurvey: (rowId: string, isSurvey: CoaManagerIsSurvey) => Promise<void>;
+  updateBatchIsSurvey: (rowIds: string[], isSurvey: CoaManagerIsSurvey) => Promise<void>;
 }
 
 const STATUS_RESET_MS = 2500;
@@ -380,6 +385,105 @@ export const useCoaManagerStore = create<CoaManagerState>((set, get) => ({
           rows: state.rows.map(row =>
             previousIsFinancial.has(row.id)
               ? { ...row, isFinancial: previousIsFinancial.get(row.id) ?? row.isFinancial }
+              : row,
+          ),
+          rowUpdateStatus: nextStatus,
+        };
+      });
+    }
+  },
+  updateRowIsSurvey: async (rowId: string, isSurvey: CoaManagerIsSurvey) => {
+    const { selectedIndustry, rows } = get();
+    if (!selectedIndustry) {
+      return;
+    }
+
+    const previousIsSurvey = new Map<string, CoaManagerIsSurvey>();
+    const nextRows = rows.map(row => {
+      if (row.id !== rowId) {
+        return row;
+      }
+      previousIsSurvey.set(row.id, row.isSurvey);
+      return { ...row, isSurvey };
+    });
+
+    set(state => ({
+      rows: nextRows,
+      rowUpdateStatus: {
+        ...state.rowUpdateStatus,
+        [rowId]: { state: 'pending' },
+      },
+    }));
+
+    try {
+      await updateIndustryIsSurvey(selectedIndustry, rowId, isSurvey);
+      set(state => ({
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'success' },
+        },
+      }));
+      applyStatusReset(set, [rowId]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Update failed.';
+      set(state => ({
+        rows: state.rows.map(row =>
+          previousIsSurvey.has(row.id)
+            ? { ...row, isSurvey: previousIsSurvey.get(row.id) ?? row.isSurvey }
+            : row,
+        ),
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'error', message },
+        },
+      }));
+    }
+  },
+  updateBatchIsSurvey: async (rowIds: string[], isSurvey: CoaManagerIsSurvey) => {
+    const { selectedIndustry, rows } = get();
+    if (!selectedIndustry || rowIds.length === 0) {
+      return;
+    }
+
+    const rowIdSet = new Set(rowIds);
+    const previousIsSurvey = new Map<string, CoaManagerIsSurvey>();
+    const nextRows = rows.map(row => {
+      if (!rowIdSet.has(row.id)) {
+        return row;
+      }
+      previousIsSurvey.set(row.id, row.isSurvey);
+      return { ...row, isSurvey };
+    });
+
+    set(state => {
+      const nextStatus = { ...state.rowUpdateStatus };
+      rowIds.forEach(id => {
+        nextStatus[id] = { state: 'pending' };
+      });
+      return { rows: nextRows, rowUpdateStatus: nextStatus };
+    });
+
+    try {
+      await updateIndustryIsSurveyBatch(selectedIndustry, rowIds, isSurvey);
+      set(state => {
+        const nextStatus = { ...state.rowUpdateStatus };
+        rowIds.forEach(id => {
+          nextStatus[id] = { state: 'success' };
+        });
+        return { rowUpdateStatus: nextStatus };
+      });
+      applyStatusReset(set, rowIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Batch update failed.';
+      set(state => {
+        const nextStatus = { ...state.rowUpdateStatus };
+        rowIds.forEach(id => {
+          nextStatus[id] = { state: 'error', message };
+        });
+        return {
+          rows: state.rows.map(row =>
+            previousIsSurvey.has(row.id)
+              ? { ...row, isSurvey: previousIsSurvey.get(row.id) ?? row.isSurvey }
               : row,
           ),
           rowUpdateStatus: nextStatus,

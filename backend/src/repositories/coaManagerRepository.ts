@@ -15,10 +15,13 @@ export interface CoaManagerRow {
   id: string;
   accountNumber: string;
   accountName: string;
+  laborGroup: string | null;
+  operationalGroup: string | null;
   category: string | null;
   department: string | null;
   costType: string | null;
   isFinancial: boolean | null;
+  isSurvey: boolean | null;
 }
 
 export interface IndustryCoaData {
@@ -66,10 +69,13 @@ type ColumnMapping = {
   recordId: string | null;
   accountNumber: string | null;
   accountName: string | null;
+  laborGroup: string | null;
+  operationalGroup: string | null;
   category: string | null;
   department: string | null;
   costType: string | null;
   isFinancial: string | null;
+  isSurvey: string | null;
 };
 
 const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
@@ -93,13 +99,22 @@ const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
     'NAME',
     'ACCT_NAME',
   ],
+  laborGroup: ['LABOR_GROUP', 'LABORGROUP', 'LABOR GROUP'],
+  operationalGroup: [
+    'OPERATIONAL_GROUP',
+    'OPERATIONALGROUP',
+    'OPERATIONAL GROUP',
+    'OP_GROUP',
+  ],
   category: ['CATEGORY', 'ACCOUNT_CATEGORY', 'ACCT_CATEGORY'],
   department: ['DEPARTMENT', 'DEPT'],
   costType: ['COST_TYPE', 'COSTTYPE'],
   isFinancial: ['IS_FINANCIAL', 'ISFINANCIAL'],
+  isSurvey: ['IS_SURVEY', 'ISSURVEY'],
 };
 
 const IS_FINANCIAL_COLUMN_TYPE = 'BIT';
+const IS_SURVEY_COLUMN_TYPE = 'BIT';
 
 const normalizeColumnKey = (value: string): string =>
   value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
@@ -132,19 +147,25 @@ const buildColumnMapping = (columns: string[]): ColumnMapping => {
     recordId: resolveColumnName(COLUMN_ALIASES.recordId, lookup),
     accountNumber: resolveColumnName(COLUMN_ALIASES.accountNumber, lookup),
     accountName: resolveColumnName(COLUMN_ALIASES.accountName, lookup),
+    laborGroup: resolveColumnName(COLUMN_ALIASES.laborGroup, lookup),
+    operationalGroup: resolveColumnName(COLUMN_ALIASES.operationalGroup, lookup),
     category: resolveColumnName(COLUMN_ALIASES.category, lookup),
     department: resolveColumnName(COLUMN_ALIASES.department, lookup),
     costType: resolveColumnName(COLUMN_ALIASES.costType, lookup),
     isFinancial: resolveColumnName(COLUMN_ALIASES.isFinancial, lookup),
+    isSurvey: resolveColumnName(COLUMN_ALIASES.isSurvey, lookup),
   };
 };
 
 const buildColumnResponse = (mapping: ColumnMapping): CoaManagerColumn[] => [
   { key: 'accountNumber', label: mapping.accountNumber ?? 'Account' },
   { key: 'accountName', label: mapping.accountName ?? 'Name' },
+  { key: 'laborGroup', label: mapping.laborGroup ?? 'Labor Group' },
+  { key: 'operationalGroup', label: mapping.operationalGroup ?? 'Operational Group' },
   { key: 'category', label: mapping.category ?? 'Category' },
   { key: 'department', label: mapping.department ?? 'Department' },
   { key: 'isFinancial', label: mapping.isFinancial ?? 'Is Financial' },
+  { key: 'isSurvey', label: mapping.isSurvey ?? 'Is Survey' },
   { key: 'costType', label: mapping.costType ?? 'Cost Type' },
 ];
 
@@ -273,11 +294,30 @@ const ensureIsFinancialColumn = async (tableName: string): Promise<void> => {
   );
 };
 
+const ensureIsSurveyColumn = async (tableName: string): Promise<void> => {
+  await runQuery(
+    `IF NOT EXISTS (
+      SELECT 1
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
+        AND TABLE_NAME = PARSENAME(@tableName, 1)
+        AND COLUMN_NAME = 'IS_SURVEY'
+    )
+    BEGIN
+      EXEC('ALTER TABLE ${tableName} ADD [IS_SURVEY] ${IS_SURVEY_COLUMN_TYPE} NULL')
+    END`,
+    {
+      tableName,
+    },
+  );
+};
+
 export const listIndustryCoaData = async (
   industryName: string,
 ): Promise<IndustryCoaData> => {
   const tableName = await resolveIndustryTableName(industryName);
   await ensureIsFinancialColumn(tableName);
+  await ensureIsSurveyColumn(tableName);
   const tableColumns = await listTableColumns(tableName);
   const mapping = buildColumnMapping(tableColumns);
   const orderByColumn = mapping.accountNumber ?? mapping.recordId;
@@ -302,10 +342,15 @@ export const listIndustryCoaData = async (
       id,
       accountNumber,
       accountName,
+      laborGroup: toNullableString(mapping.laborGroup ? row[mapping.laborGroup] : null),
+      operationalGroup: toNullableString(
+        mapping.operationalGroup ? row[mapping.operationalGroup] : null,
+      ),
       category: toNullableString(mapping.category ? row[mapping.category] : null),
       department: toNullableString(mapping.department ? row[mapping.department] : null),
       costType: toNullableString(mapping.costType ? row[mapping.costType] : null),
       isFinancial: toNullableBoolean(mapping.isFinancial ? row[mapping.isFinancial] : null),
+      isSurvey: toNullableBoolean(mapping.isSurvey ? row[mapping.isSurvey] : null),
     };
   });
 
@@ -346,6 +391,25 @@ export const updateIndustryIsFinancial = async (
     WHERE RECORD_ID = @recordId`,
     {
       isFinancial,
+      recordId,
+    },
+  );
+
+  return (result.rowsAffected?.[0] ?? 0) > 0;
+};
+
+export const updateIndustryIsSurvey = async (
+  industryName: string,
+  recordId: string,
+  isSurvey: boolean | null,
+): Promise<boolean> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const result = await runQuery(
+    `UPDATE ${tableName}
+    SET IS_SURVEY = @isSurvey
+    WHERE RECORD_ID = @recordId`,
+    {
+      isSurvey,
       recordId,
     },
   );
@@ -406,6 +470,36 @@ export const updateIndustryIsFinancialBatch = async (
   const result = await runQuery(
     `UPDATE ${tableName}
     SET IS_FINANCIAL = @isFinancial
+    WHERE RECORD_ID IN (${idsClause})`,
+    params,
+  );
+
+  return result.rowsAffected?.[0] ?? 0;
+};
+
+export const updateIndustryIsSurveyBatch = async (
+  industryName: string,
+  recordIds: string[],
+  isSurvey: boolean | null,
+): Promise<number> => {
+  if (recordIds.length === 0) {
+    return 0;
+  }
+
+  const tableName = await resolveIndustryTableName(industryName);
+  const params: Record<string, unknown> = {
+    isSurvey,
+  };
+  const idsClause = recordIds
+    .map((recordId, index) => {
+      params[`recordId${index}`] = recordId;
+      return `@recordId${index}`;
+    })
+    .join(', ');
+
+  const result = await runQuery(
+    `UPDATE ${tableName}
+    SET IS_SURVEY = @isSurvey
     WHERE RECORD_ID IN (${idsClause})`,
     params,
   );

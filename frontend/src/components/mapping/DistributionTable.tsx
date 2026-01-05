@@ -673,7 +673,8 @@ const buildDistributionPresetLibraryEntries = (
       }
       const previousType = previousTypes.get(row.id);
       const previouslyRequired = previousType ? requiresExpanded(previousType) : false;
-      if (!previouslyRequired && !nextExpanded.has(row.id)) {
+      const shouldAutoOpen = row.status === 'Undistributed';
+      if (!previouslyRequired && shouldAutoOpen && !nextExpanded.has(row.id)) {
         nextExpanded.add(row.id);
         autoOpenedId = row.id;
       }

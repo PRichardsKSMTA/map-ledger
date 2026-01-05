@@ -7,6 +7,8 @@ import {
   listIndustryCoaData,
   updateIndustryIsFinancial,
   updateIndustryIsFinancialBatch,
+  updateIndustryIsSurvey,
+  updateIndustryIsSurveyBatch,
   updateIndustryCostType,
   updateIndustryCostTypeBatch,
 } from '../../repositories/coaManagerRepository';
@@ -75,6 +77,9 @@ const normalizeIsFinancial = (value: unknown): boolean | null | undefined => {
   }
   return undefined;
 };
+
+const normalizeIsSurvey = (value: unknown): boolean | null | undefined =>
+  normalizeIsFinancial(value);
 
 const parseRowIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
@@ -228,6 +233,59 @@ export async function updateIndustryIsFinancialBatchHandler(
   }
 }
 
+export async function updateIndustryIsSurveyHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const rowId = getFirstStringValue(payload.rowId ?? payload.recordId ?? payload.id);
+  const isSurvey = normalizeIsSurvey(payload.isSurvey);
+
+  if (!rowId || isSurvey === undefined) {
+    return json({ message: 'rowId and isSurvey are required' }, 400);
+  }
+
+  try {
+    const updated = await updateIndustryIsSurvey(industry, rowId, isSurvey);
+    if (!updated) {
+      return json({ message: 'Record not found' }, 404);
+    }
+    return json({ ok: true });
+  } catch (error) {
+    return handleIndustryError(error, context, 'update survey flag');
+  }
+}
+
+export async function updateIndustryIsSurveyBatchHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const rowIds = parseRowIds(payload.rowIds ?? payload.recordIds);
+  const isSurvey = normalizeIsSurvey(payload.isSurvey);
+
+  if (rowIds.length === 0 || isSurvey === undefined) {
+    return json({ message: 'rowIds and isSurvey are required' }, 400);
+  }
+
+  try {
+    const updatedCount = await updateIndustryIsSurveyBatch(industry, rowIds, isSurvey);
+    return json({ updated: updatedCount });
+  } catch (error) {
+    return handleIndustryError(error, context, 'update survey flags');
+  }
+}
+
 app.http('coaManager-industry', {
   methods: ['GET'],
   authLevel: 'anonymous',
@@ -261,6 +319,20 @@ app.http('coaManager-isFinancial-batch', {
   authLevel: 'anonymous',
   route: 'coa-manager/industry/{industry}/is-financial/batch',
   handler: updateIndustryIsFinancialBatchHandler,
+});
+
+app.http('coaManager-isSurvey', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/is-survey',
+  handler: updateIndustryIsSurveyHandler,
+});
+
+app.http('coaManager-isSurvey-batch', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/is-survey/batch',
+  handler: updateIndustryIsSurveyBatchHandler,
 });
 
 export default getIndustryCoaHandler;
