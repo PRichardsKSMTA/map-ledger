@@ -13,6 +13,7 @@ const costTypeOptions = [
   { label: 'Balance Sheet', value: 'Balance Sheet' },
   { label: 'Overhead', value: 'Overhead' },
   { label: 'Variable', value: 'Variable' },
+  { label: 'Revenue', value: 'Revenue' },
 ] as const;
 
 const isFinancialOptions = [
