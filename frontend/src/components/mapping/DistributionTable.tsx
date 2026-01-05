@@ -1053,12 +1053,13 @@ const buildDistributionPresetLibraryEntries = (
     if (!selectAllRef.current) {
       return;
     }
-    const allIds = sortedRows.map(row => row.id);
-    const isAllSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+    const visibleIds = pagedRows.map(row => row.id);
+    const hasVisibleSelection = visibleIds.some(id => selectedIds.has(id));
+    const isAllSelected =
+      visibleIds.length > 0 && visibleIds.every(id => selectedIds.has(id));
     selectAllRef.current.checked = isAllSelected;
-    selectAllRef.current.indeterminate =
-      selectedIds.size > 0 && !isAllSelected && allIds.some(id => selectedIds.has(id));
-  }, [sortedRows, selectedIds]);
+    selectAllRef.current.indeterminate = !isAllSelected && hasVisibleSelection;
+  }, [pagedRows, selectedIds]);
 
   const handleSort = (key: SortKey) => {
     setSortConfig(previous => {
@@ -1101,10 +1102,14 @@ const buildDistributionPresetLibraryEntries = (
 
   const handleSelectAll = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      setSelection(sortedRows.map(row => row.id));
-    } else {
-      clearSelection();
+      const nextSelection = new Set(selectedIds);
+      pagedRows.forEach(row => nextSelection.add(row.id));
+      setSelection(Array.from(nextSelection));
+      return;
     }
+    const nextSelection = new Set(selectedIds);
+    pagedRows.forEach(row => nextSelection.delete(row.id));
+    setSelection(Array.from(nextSelection));
   };
 
   const handleRowSelection = (id: string) => {
@@ -1438,11 +1443,11 @@ const buildDistributionPresetLibraryEntries = (
                 <span className="sr-only">Toggle distribution operations</span>
               </th>
               <th scope="col" className="w-8 table-cell-tight text-left">
-                <span className="sr-only">Select all rows</span>
+                <span className="sr-only">Select all rows on this page</span>
                 <input
                   ref={selectAllRef}
                   type="checkbox"
-                  aria-label="Select all distribution rows"
+                  aria-label="Select all distribution rows on this page"
                   onChange={handleSelectAll}
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />

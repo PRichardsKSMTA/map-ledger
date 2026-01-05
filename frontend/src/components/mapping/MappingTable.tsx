@@ -482,15 +482,13 @@ export default function MappingTable() {
 
   useEffect(() => {
     if (!selectAllRef.current) return;
-    const allIds = sortedAccounts.map((account) => account.id);
+    const visibleIds = pagedAccounts.map((account) => account.id);
+    const hasVisibleSelection = visibleIds.some((id) => selectedIds.has(id));
     const isAllSelected =
-      allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+      visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
     selectAllRef.current.checked = isAllSelected;
-    selectAllRef.current.indeterminate =
-      selectedIds.size > 0 &&
-      !isAllSelected &&
-      allIds.some((id) => selectedIds.has(id));
-  }, [sortedAccounts, selectedIds]);
+    selectAllRef.current.indeterminate = !isAllSelected && hasVisibleSelection;
+  }, [pagedAccounts, selectedIds]);
 
   const handleSort = (key: SortKey) => {
     setSortConfig((previous) => {
@@ -504,12 +502,16 @@ export default function MappingTable() {
   };
 
   const handleSelectAll = (event: ChangeEvent<HTMLInputElement>) => {
-    const shouldSelectAll = event.target.checked;
-    if (shouldSelectAll) {
-      setSelection(sortedAccounts.map((account) => account.id));
-    } else {
-      clearSelection();
+    const visibleIds = pagedAccounts.map((account) => account.id);
+    if (event.target.checked) {
+      const nextSelection = new Set(selectedIds);
+      visibleIds.forEach((id) => nextSelection.add(id));
+      setSelection(Array.from(nextSelection));
+      return;
     }
+    const nextSelection = new Set(selectedIds);
+    visibleIds.forEach((id) => nextSelection.delete(id));
+    setSelection(Array.from(nextSelection));
   };
 
   const handleRowSelection = (id: string) => {
@@ -550,11 +552,11 @@ export default function MappingTable() {
           <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               <th scope="col" className="w-8 table-cell-tight text-left">
-                <span className="sr-only">Select all rows</span>
+                <span className="sr-only">Select all rows on this page</span>
                 <input
                   ref={selectAllRef}
                   type="checkbox"
-                  aria-label="Select all rows"
+                  aria-label="Select all rows on this page"
                   onChange={handleSelectAll}
                   className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />

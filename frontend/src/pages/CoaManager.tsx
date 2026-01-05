@@ -10,6 +10,7 @@ import { useCoaManagerStore } from '../store/coaManagerStore';
 
 const costTypeOptions = [
   { label: 'None', value: '' },
+  { label: 'Balance Sheet', value: 'Balance Sheet' },
   { label: 'Overhead', value: 'Overhead' },
   { label: 'Variable', value: 'Variable' },
 ] as const;
@@ -19,6 +20,8 @@ const isFinancialOptions = [
   { label: 'Yes', value: 'true' },
   { label: 'No', value: 'false' },
 ] as const;
+const isFinancialTooltip =
+  'True marks the account as a financial account for reporting; false marks it as an operational account.';
 
 type CostType = (typeof costTypeOptions)[number]['value'];
 type IsFinancialValue = (typeof isFinancialOptions)[number]['value'];
@@ -297,7 +300,9 @@ export default function CoaManager() {
                       {resolveLabel('category', 'Category')}
                     </th>
                     <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                      {resolveLabel('isFinancial', 'IS_FINANCIAL')}
+                      <span className="cursor-help" title={isFinancialTooltip}>
+                        {resolveLabel('isFinancial', 'IS_FINANCIAL')}
+                      </span>
                     </th>
                     <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
                       {resolveLabel('costType', 'COST_TYPE')}
