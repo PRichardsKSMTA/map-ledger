@@ -20,7 +20,7 @@ export default function Clients() {
         <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">Admin</p>
         <h1 className="text-2xl font-semibold text-gray-900">Client Profiles & Entities</h1>
         <p className="text-sm text-gray-600">
-          Manage client entities, display names, and statuses. Deleted entities are hidden from selection lists.
+          Manage client entities and operational statistics. Deleted entities are hidden from selection lists.
         </p>
       </header>
 
