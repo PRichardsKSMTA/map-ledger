@@ -34,7 +34,7 @@ export default function TemplateImportForm({ onClose }: Props) {
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
         />
       </div>
       <div>
@@ -43,7 +43,7 @@ export default function TemplateImportForm({ onClose }: Props) {
           type="text"
           value={industry}
           onChange={(e) => setIndustry(e.target.value)}
-          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
         />
       </div>
       <div>
@@ -51,7 +51,7 @@ export default function TemplateImportForm({ onClose }: Props) {
         <select
           value={interval}
           onChange={(e) => setInterval(e.target.value as 'Monthly' | 'Quarterly')}
-          className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
         >
           <option value="Monthly">Monthly</option>
           <option value="Quarterly">Quarterly</option>
@@ -84,7 +84,7 @@ export default function TemplateImportForm({ onClose }: Props) {
         </button>
         <button
           type="submit"
-          className="px-4 py-2 rounded-md bg-indigo-600 text-white text-sm"
+          className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm"
         >
           Build Template
         </button>

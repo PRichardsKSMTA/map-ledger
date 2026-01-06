@@ -107,7 +107,7 @@ export default function FormulaBuilder({ datapoints, value, onChange }: FormulaB
                   className="flex items-center justify-between p-2 text-sm text-left bg-white hover:bg-gray-50 border border-gray-200 rounded-md transition-colors group"
                 >
                   <span className="font-medium text-gray-900">{dp.accountName}</span>
-                  <Plus className="h-4 w-4 text-gray-400 group-hover:text-indigo-600" />
+                  <Plus className="h-4 w-4 text-gray-400 group-hover:text-blue-600" />
                 </button>
               ))}
           </div>

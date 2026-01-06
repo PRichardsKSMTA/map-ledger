@@ -18,7 +18,7 @@ const STATUS_DEFINITIONS: {
   {
     value: 'New',
     label: 'New',
-    className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
+    className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200',
   },
   {
     value: 'Unmapped',

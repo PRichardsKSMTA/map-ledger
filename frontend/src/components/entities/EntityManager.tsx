@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import Button from '../ui/Button';
+import ModalBackdrop from '../ui/ModalBackdrop';
 import { useClientStore } from '../../store/clientStore';
 import { useClientEntityStore } from '../../store/clientEntityStore';
 import type { ClientEntity } from '../../types';
@@ -50,7 +51,7 @@ const EntityFormModal: React.FC<EntityFormModalProps> = ({
   };
 
   return (
-    <div
+    <ModalBackdrop
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
@@ -141,7 +142,7 @@ const EntityFormModal: React.FC<EntityFormModalProps> = ({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 };
 

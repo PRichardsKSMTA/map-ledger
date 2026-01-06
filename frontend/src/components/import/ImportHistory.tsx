@@ -12,6 +12,7 @@ import {
 import { Import, ImportEntity } from '../../types';
 import { formatPeriodLabel, parsePeriodString } from '../../utils/period';
 import { useClientEntityStore } from '../../store/clientEntityStore';
+import ModalBackdrop from '../ui/ModalBackdrop';
 
 interface ImportHistoryProps {
   imports: Import[];
@@ -240,7 +241,7 @@ export default function ImportHistory({
       case 'distribution':
         return {
           label: 'Distribution',
-          icon: <Clock className="mr-2 h-5 w-5 text-indigo-500" aria-hidden="true" />,
+          icon: <Clock className="mr-2 h-5 w-5 text-blue-500" aria-hidden="true" />,
         };
       case 'review':
         return {
@@ -472,7 +473,7 @@ export default function ImportHistory({
       {total > 0 && renderPagination()}
 
       {previewImport && (
-        <div
+        <ModalBackdrop
           className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/50 px-4"
           role="dialog"
           aria-modal="true"
@@ -555,7 +556,7 @@ export default function ImportHistory({
               )}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

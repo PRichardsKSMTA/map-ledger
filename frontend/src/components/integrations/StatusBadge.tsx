@@ -5,7 +5,7 @@ interface StatusBadgeProps {
 export default function StatusBadge({ status }: StatusBadgeProps) {
   const styles = {
     coming_soon: 'bg-yellow-100 text-yellow-800',
-    beta: 'bg-purple-100 text-purple-800',
+    beta: 'bg-blue-100 text-blue-800',
   };
 
   const labels = {

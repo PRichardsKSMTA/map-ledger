@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Calendar, Check } from 'lucide-react';
 import { useMappingStore, selectAvailablePeriods } from '../../store/mappingStore';
 import { formatPeriodDate } from '../../utils/period';
+import ModalBackdrop from '../ui/ModalBackdrop';
 
 interface MonthScopeSelectorProps {
   entityId: string;
@@ -58,7 +59,7 @@ const MonthScopeSelector = ({
   const currentMonthLabel = currentMonth ? formatMonthLabel(currentMonth) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl max-w-md w-full mx-4">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -172,7 +173,7 @@ const MonthScopeSelector = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 };
 

@@ -43,7 +43,7 @@ export default function DatapointList({
     const styles = {
       Financial: 'bg-blue-100 text-blue-800',
       Operational: 'bg-green-100 text-green-800',
-      Calculated: 'bg-purple-100 text-purple-800'
+      Calculated: 'bg-blue-100 text-blue-800'
     };
 
     const icons = {
@@ -150,7 +150,7 @@ export default function DatapointList({
                           <div className="flex justify-end space-x-3 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => onEdit(datapoint)}
-                              className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                              className="text-blue-600 hover:text-blue-900 transition-colors"
                               title="Edit datapoint"
                             >
                               <Edit className="h-5 w-5" />

@@ -48,6 +48,7 @@ import { formatCurrencyAmount } from '../../utils/currency';
 import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions';
 import { formatPeriodDate } from '../../utils/period';
 import SearchableSelect from '../ui/SearchableSelect';
+import ModalBackdrop from '../ui/ModalBackdrop';
 
 type SortKey =
   | 'accountId'
@@ -70,7 +71,7 @@ const STATUS_LABELS: Record<GLAccountMappingRow['status'], string> = {
 };
 
 const STATUS_STYLES: Record<GLAccountMappingRow['status'], string> = {
-  New: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200',
+  New: 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200',
   Unmapped:
     'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200',
   Mapped:
@@ -1127,7 +1128,7 @@ export default function MappingTable() {
         </div>
       )}
       {activeDynamicAccountId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
+        <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
           <div
             role="dialog"
             aria-modal="true"
@@ -1159,7 +1160,7 @@ export default function MappingTable() {
               />
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

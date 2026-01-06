@@ -24,6 +24,7 @@ import DistributionToolbar from './DistributionToolbar';
 import DistributionSplitRow, {
   type DistributionOperationDraft,
 } from './DistributionSplitRow';
+import ModalBackdrop from '../ui/ModalBackdrop';
 import {
   fetchDistributionPresetsFromApi,
   mapDistributionPresetsToDynamic,
@@ -1809,7 +1810,7 @@ const buildDistributionPresetLibraryEntries = (
       )}
 
       {activeDynamicAccountId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+        <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
           <div
             role="dialog"
             aria-modal="true"
@@ -1846,7 +1847,7 @@ const buildDistributionPresetLibraryEntries = (
               />
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
     </div>
   );

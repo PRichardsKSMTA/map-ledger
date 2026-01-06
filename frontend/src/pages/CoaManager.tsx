@@ -442,7 +442,7 @@ export default function CoaManager() {
       <button
         type="button"
         onClick={() => handleSort(key)}
-        className="flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+        className="flex w-full items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
       >
         <span className={title ? 'cursor-help' : undefined} title={title}>
           {label}
@@ -466,7 +466,7 @@ export default function CoaManager() {
           <button
             type="button"
             onClick={() => handleSort('laborGroup')}
-            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             {resolveLabel('laborGroup', 'LABOR_GROUP')}
             <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -482,9 +482,9 @@ export default function CoaManager() {
                 event.stopPropagation();
                 setOpenFilter(previous => (previous === 'laborGroup' ? null : 'laborGroup'));
               }}
-              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 isFilterActive
-                  ? 'text-indigo-600 hover:text-indigo-700'
+                  ? 'text-blue-600 hover:text-blue-700'
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -512,7 +512,7 @@ export default function CoaManager() {
                         onChange={event =>
                           handleLaborGroupSelectAllChange(event.target.checked)
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                       Select all
                     </label>
@@ -531,7 +531,7 @@ export default function CoaManager() {
                               onChange={event =>
                                 handleLaborGroupValueToggle(option, event.target.checked)
                               }
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                             />
                             {option}
                           </label>
@@ -566,7 +566,7 @@ export default function CoaManager() {
           <button
             type="button"
             onClick={() => handleSort('operationalGroup')}
-            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
           >
             {resolveLabel('operationalGroup', 'OPERATIONAL_GROUP')}
             <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
@@ -584,9 +584,9 @@ export default function CoaManager() {
                   previous === 'operationalGroup' ? null : 'operationalGroup',
                 );
               }}
-              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                 isFilterActive
-                  ? 'text-indigo-600 hover:text-indigo-700'
+                  ? 'text-blue-600 hover:text-blue-700'
                   : 'text-gray-400 hover:text-gray-600'
               }`}
             >
@@ -614,7 +614,7 @@ export default function CoaManager() {
                         onChange={event =>
                           handleOperationalGroupSelectAllChange(event.target.checked)
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
                       Select all
                     </label>
@@ -637,7 +637,7 @@ export default function CoaManager() {
                                   event.target.checked,
                                 )
                               }
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                             />
                             {option}
                           </label>
@@ -687,7 +687,7 @@ export default function CoaManager() {
                   selectIndustry(event.target.value);
                 }}
                 disabled={industriesLoading}
-                className="w-full rounded-md border border-gray-300 mx-4 px-3 py-1 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:w-72"
+                className="w-full rounded-md border border-gray-300 mx-4 px-3 py-1 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:w-72"
               >
                 <option value="">Choose an industry</option>
                 {industries.map(industry => (
@@ -705,7 +705,7 @@ export default function CoaManager() {
               <button
                 type="button"
                 onClick={() => setIsImportModalOpen(true)}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 <Plus className="h-4 w-4" />
                 <span className="whitespace-nowrap">Add Industry</span>
@@ -736,7 +736,7 @@ export default function CoaManager() {
 
           {rowsLoading ? (
             <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
-              <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
               Loading COA rows…
             </div>
           ) : rowsError ? (
@@ -755,7 +755,7 @@ export default function CoaManager() {
                           checked={isAllSelected}
                           onChange={toggleSelectAll}
                           aria-label="Select all rows"
-                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                           Select
@@ -801,7 +801,7 @@ export default function CoaManager() {
                             checked={selectedRowIds.has(row.id)}
                             onChange={() => toggleRowSelection(row.id)}
                             aria-label={`Select account ${row.accountNumber}`}
-                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         </td>
                         <td className="px-4 py-3 font-medium text-gray-900">
@@ -830,7 +830,7 @@ export default function CoaManager() {
                                 event.target.value as FlagValue,
                               )
                             }
-                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                           >
                             {flagOptions.map(option => (
                               <option key={option.label} value={option.value}>
@@ -853,7 +853,7 @@ export default function CoaManager() {
                                 event.target.value as FlagValue,
                               )
                             }
-                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                           >
                             {flagOptions.map(option => (
                               <option key={option.label} value={option.value}>
@@ -875,7 +875,7 @@ export default function CoaManager() {
                                 onChange={event =>
                                   handleRowCostTypeChange(row.id, event.target.value as CostType)
                                 }
-                                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500"
+                                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                               >
                                 {costTypeOptions.map(option => (
                                   <option key={option.label} value={option.value}>
@@ -892,7 +892,7 @@ export default function CoaManager() {
                               >
                                 {status.state === 'pending' && (
                                   <>
-                                    <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
                                     <span className="text-xs text-gray-500">Saving changes</span>
                                   </>
                                 )}

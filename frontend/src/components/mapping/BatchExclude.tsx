@@ -1,3 +1,5 @@
+import ModalBackdrop from '../ui/ModalBackdrop';
+
 interface BatchExcludeProps {
   open: boolean;
   selectedCount: number;
@@ -11,7 +13,7 @@ export default function BatchExclude({ open, selectedCount, onClose, onConfirm }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -49,6 +51,6 @@ export default function BatchExclude({ open, selectedCount, onClose, onConfirm }
           </div>
         </div>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

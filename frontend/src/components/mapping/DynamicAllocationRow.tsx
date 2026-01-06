@@ -376,7 +376,7 @@ const DynamicAllocationRow = ({
         >
           <div
             aria-hidden="true"
-            className="absolute -left-6 top-3 h-3 w-3 rounded-full bg-white ring-2 ring-indigo-500 dark:bg-slate-900"
+            className="absolute -left-6 top-3 h-3 w-3 rounded-full bg-white ring-2 ring-blue-500 dark:bg-slate-900"
           />
           <div
             aria-hidden="true"

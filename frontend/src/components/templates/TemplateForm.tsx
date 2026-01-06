@@ -122,7 +122,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               placeholder="Enter template name"
             />
           </div>
@@ -131,7 +131,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
             <select
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
               {INDUSTRIES.map((ind) => (
                 <option key={ind} value={ind}>{ind}</option>
@@ -143,7 +143,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
             <select
               value={interval}
               onChange={(e) => setInterval(e.target.value as 'Monthly' | 'Quarterly')}
-              className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+              className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
               <option value="Monthly">Monthly</option>
               <option value="Quarterly">Quarterly</option>
@@ -161,7 +161,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
             onClick={() => setActiveGroupType('functional')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeGroupType === 'functional'
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
             }`}
           >
@@ -172,7 +172,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
             onClick={() => setActiveGroupType('operational')}
             className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
               activeGroupType === 'operational'
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-blue-600 text-white'
                 : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
             }`}
           >
@@ -188,7 +188,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
                 placeholder="Enter group name"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               />
             </div>
             <div className="w-32">
@@ -197,13 +197,13 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
                 placeholder="Code (123)"
                 value={newGroupCode}
                 onChange={(e) => setNewGroupCode(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               />
             </div>
             <button
               type="button"
               onClick={handleAddGroup}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Group
@@ -218,7 +218,7 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
                   className="flex items-center justify-between p-3 bg-white rounded-md border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center space-x-3">
-                    <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-indigo-100 text-indigo-600 text-sm font-medium">
+                    <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-blue-100 text-blue-600 text-sm font-medium">
                       {group.code}
                     </span>
                     <span className="font-medium text-gray-900">{group.name}</span>
@@ -241,13 +241,13 @@ export default function TemplateForm({ initialData, onSubmit, onCancel }: Templa
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           Cancel
         </button>
         <button
           onClick={handleSubmit}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
           <Save className="h-4 w-4 mr-2" />
           {initialData ? 'Update Template' : 'Create Template'}

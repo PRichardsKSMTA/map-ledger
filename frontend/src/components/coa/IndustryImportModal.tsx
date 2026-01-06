@@ -1,5 +1,6 @@
 import { DragEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { FileSpreadsheet, Loader2, UploadCloud, X } from 'lucide-react';
+import ModalBackdrop from '../ui/ModalBackdrop';
 
 interface IndustryImportModalProps {
   open: boolean;
@@ -108,11 +109,11 @@ export default function IndustryImportModal({
   };
 
   const dropzoneClasses = isDragActive
-    ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-300'
-    : 'border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50/40';
+    ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300'
+    : 'border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/40';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+    <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -151,7 +152,7 @@ export default function IndustryImportModal({
                 setError(null);
               }}
               placeholder="e.g., Construction"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isSubmitting}
               autoFocus
             />
@@ -207,7 +208,7 @@ export default function IndustryImportModal({
                 <div className="flex flex-col items-center gap-2 text-slate-600">
                   <UploadCloud className="h-6 w-6" />
                   <p className="text-sm">
-                    <span className="font-semibold text-indigo-600">Click to upload</span> or drag
+                    <span className="font-semibold text-blue-600">Click to upload</span> or drag
                     and drop
                   </p>
                   <p className="text-xs text-slate-500">CSV or Excel files (.csv, .xlsx, .xls)</p>
@@ -227,14 +228,14 @@ export default function IndustryImportModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-indigo-400"
+              className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
             >
               {isSubmitting ? (
                 <>
@@ -248,6 +249,6 @@ export default function IndustryImportModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }

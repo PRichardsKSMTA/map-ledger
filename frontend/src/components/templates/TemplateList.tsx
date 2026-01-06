@@ -59,7 +59,7 @@ export default function TemplateList({ templates, onEdit, onDelete, onSelect }: 
                     e.stopPropagation();
                     onEdit(template);
                   }}
-                  className="text-indigo-600 hover:text-indigo-900 mr-4"
+                  className="text-blue-600 hover:text-blue-900 mr-4"
                 >
                   <Edit className="h-5 w-5" />
                 </button>

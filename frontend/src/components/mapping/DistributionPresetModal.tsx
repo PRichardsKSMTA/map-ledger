@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { RatioPresetSummary } from '../../store/ratioAllocationStore';
+import ModalBackdrop from '../ui/ModalBackdrop';
 
 interface DistributionPresetModalProps {
   open: boolean;
@@ -40,7 +41,7 @@ export default function DistributionPresetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div
         role="dialog"
         aria-modal="true"
@@ -111,6 +112,6 @@ export default function DistributionPresetModal({
           </div>
         </form>
       </div>
-    </div>
+    </ModalBackdrop>
   );
 }
