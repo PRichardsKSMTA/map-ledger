@@ -10,18 +10,27 @@
   }
 
   body {
-    @apply bg-slate-100 text-slate-900 transition-colors duration-300 overflow-hidden;
+    @apply bg-slate-100 text-slate-900 transition-colors duration-300
+      overflow-hidden;
   }
 
   .dark body {
     @apply bg-slate-950 text-slate-100;
   }
 
+  /*
+    Sticky table headers:
+
+    - Sticky positioning works relative to the nearest scrolling ancestor.
+    - DO NOT make both <thead> and <th> sticky; it causes stacking/overlap.
+    - Make <th> sticky and control offset via --table-sticky-top when needed.
+  */
   table thead th {
     position: sticky;
-    top: 0;
-    z-index: 10;
+    top: var(--table-sticky-top, 0px);
+    z-index: 20;
     background-color: inherit;
+    background-clip: padding-box;
   }
 }
 
@@ -35,7 +44,8 @@
 }
 
 .shadow-soft {
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px -1px rgba(0, 0, 0, 0.1);
 }
 
 .shadow-inner-top {
@@ -51,37 +61,114 @@
 }
 
 /* Primary colors */
-.bg-primary-50 { @apply bg-blue-50; }
-.bg-primary-100 { @apply bg-blue-100; }
-.bg-primary-600 { @apply bg-blue-600; }
-.bg-primary-700 { @apply bg-blue-700; }
-.text-primary-600 { @apply text-blue-600; }
+.bg-primary-50 {
+  @apply bg-blue-50;
+}
+
+.bg-primary-100 {
+  @apply bg-blue-100;
+}
+
+.bg-primary-600 {
+  @apply bg-blue-600;
+}
+
+.bg-primary-700 {
+  @apply bg-blue-700;
+}
+
+.text-primary-600 {
+  @apply text-blue-600;
+}
 
 /* Dark mode overrides */
-.dark .bg-white { @apply bg-slate-900; }
-.dark .bg-gray-50 { @apply bg-slate-900; }
-.dark .bg-gray-100 { @apply bg-slate-800; }
-.dark .bg-gray-200 { @apply bg-slate-800; }
-.dark .text-gray-900 { @apply text-slate-100; }
-.dark .text-gray-700 { @apply text-slate-300; }
-.dark .text-gray-600 { @apply text-slate-300; }
-.dark .text-gray-500 { @apply text-slate-400; }
-.dark .text-gray-400 { @apply text-slate-400; }
-.dark .border-gray-200 { @apply border-slate-700; }
-.dark .border-gray-300 { @apply border-slate-700; }
+.dark .bg-white {
+  @apply bg-slate-900;
+}
+
+.dark .bg-gray-50 {
+  @apply bg-slate-900;
+}
+
+.dark .bg-gray-100 {
+  @apply bg-slate-800;
+}
+
+.dark .bg-gray-200 {
+  @apply bg-slate-800;
+}
+
+.dark .text-gray-900 {
+  @apply text-slate-100;
+}
+
+.dark .text-gray-700 {
+  @apply text-slate-300;
+}
+
+.dark .text-gray-600 {
+  @apply text-slate-300;
+}
+
+.dark .text-gray-500 {
+  @apply text-slate-400;
+}
+
+.dark .text-gray-400 {
+  @apply text-slate-400;
+}
+
+.dark .border-gray-200 {
+  @apply border-slate-700;
+}
+
+.dark .border-gray-300 {
+  @apply border-slate-700;
+}
+
 .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
   border-color: rgb(71 85 105 / 1);
 }
-.dark .hover\:bg-gray-50:hover { @apply bg-slate-800; }
-.dark .hover\:bg-primary-50:hover { @apply bg-slate-800 text-slate-100; }
-.dark .shadow-soft { @apply shadow-lg shadow-black/20; }
-.dark .bg-red-50 { @apply bg-red-500/15; }
-.dark .text-red-700 { @apply text-red-300; }
-.dark .border-red-400 { @apply border-red-500; }
-.dark .text-red-600 { @apply text-red-300; }
-.dark .bg-green-50 { @apply bg-green-500/15; }
-.dark .text-green-700 { @apply text-green-300; }
-.dark .border-green-400 { @apply border-green-500; }
+
+.dark .hover\:bg-gray-50:hover {
+  @apply bg-slate-800;
+}
+
+.dark .hover\:bg-primary-50:hover {
+  @apply bg-slate-800 text-slate-100;
+}
+
+.dark .shadow-soft {
+  @apply shadow-lg shadow-black/20;
+}
+
+.dark .bg-red-50 {
+  @apply bg-red-500/15;
+}
+
+.dark .text-red-700 {
+  @apply text-red-300;
+}
+
+.dark .border-red-400 {
+  @apply border-red-500;
+}
+
+.dark .text-red-600 {
+  @apply text-red-300;
+}
+
+.dark .bg-green-50 {
+  @apply bg-green-500/15;
+}
+
+.dark .text-green-700 {
+  @apply text-green-300;
+}
+
+.dark .border-green-400 {
+  @apply border-green-500;
+}
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
@@ -93,7 +180,8 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full hover:bg-gray-400 transition-colors duration-200;
+  @apply bg-gray-300 rounded-full hover:bg-gray-400 transition-colors
+    duration-200;
 }
 
 @layer utilities {
@@ -118,5 +206,32 @@
   .table-compact .table-cell-tight {
     padding-left: 0.25rem;
     padding-right: 0.25rem;
+  }
+
+  .table-scroll-x {
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  /*
+    Use this on the table wrapper to create the vertical scrolling context
+    that sticky headers need.
+  */
+  .table-scroll-panel {
+    max-height: clamp(18rem, 70vh, 48rem);
+    overflow-y: auto;
+  }
+
+  .app-scroll-locked {
+    overflow-y: hidden;
+  }
+
+  /*
+    Optional: apply this class to the table wrapper if you truly need the
+    header to sit below a fixed navbar. Set the value to your nav height.
+    Example: 4rem for a 64px nav.
+  */
+  .table-sticky-under-nav {
+    --table-sticky-top: 0px;
   }
 }

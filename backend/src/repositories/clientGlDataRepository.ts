@@ -57,13 +57,14 @@ const sanitizeClientGlData = (
 const collectUniqueGlIds = (
   entries: ClientGlDataInput[],
   allGlIds: string[],
+  excludedGlIds: Set<string>,
 ): string[] => {
   const unique = new Set<string>();
   const glIds: string[] = [];
 
   const addGlId = (value?: string | null) => {
     const normalized = normalizeText(value);
-    if (!normalized || unique.has(normalized)) {
+    if (!normalized || excludedGlIds.has(normalized) || unique.has(normalized)) {
       return;
     }
     unique.add(normalized);
@@ -79,12 +80,13 @@ const collectUniqueGlIds = (
 const expandClientGlDataEntries = (
   entries: ClientGlDataInput[],
   allGlIds: string[],
+  excludedGlIds: Set<string>,
 ): ClientGlDataInput[] => {
   if (!entries.length) {
     return entries;
   }
 
-  const glIds = collectUniqueGlIds(entries, allGlIds);
+  const glIds = collectUniqueGlIds(entries, allGlIds, excludedGlIds);
   if (!glIds.length) {
     return entries;
   }
@@ -210,6 +212,7 @@ export const replaceClientGlData = async (
   entries: ClientGlDataInput[],
   options?: {
     allGlIds?: string[];
+    excludedGlIds?: string[];
   },
 ): Promise<void> => {
   const normalized = sanitizeClientGlData(entries);
@@ -217,8 +220,20 @@ export const replaceClientGlData = async (
     return;
   }
 
-  const expanded = expandClientGlDataEntries(normalized, options?.allGlIds ?? []);
-  const payload = expanded.length ? expanded : normalized;
+  const excludedGlIds = new Set<string>(
+    (options?.excludedGlIds ?? []).map(value => normalizeText(value)).filter(Boolean) as string[],
+  );
+  const filtered = normalized.filter(entry => !excludedGlIds.has(entry.glId));
+  if (!filtered.length) {
+    return;
+  }
+
+  const expanded = expandClientGlDataEntries(
+    filtered,
+    options?.allGlIds ?? [],
+    excludedGlIds,
+  );
+  const payload = expanded.length ? expanded : filtered;
 
   const batches = chunkEntries(payload, MAX_ENTRIES_PER_BATCH);
   for (const batch of batches) {

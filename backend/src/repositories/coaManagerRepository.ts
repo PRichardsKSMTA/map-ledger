@@ -18,6 +18,7 @@ export interface CoaManagerRow {
   laborGroup: string | null;
   operationalGroup: string | null;
   category: string | null;
+  subCategory: string | null;
   department: string | null;
   costType: string | null;
   isFinancial: boolean | null;
@@ -72,6 +73,7 @@ type ColumnMapping = {
   laborGroup: string | null;
   operationalGroup: string | null;
   category: string | null;
+  subCategory: string | null;
   department: string | null;
   costType: string | null;
   isFinancial: string | null;
@@ -107,6 +109,7 @@ const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
     'OP_GROUP',
   ],
   category: ['CATEGORY', 'ACCOUNT_CATEGORY', 'ACCT_CATEGORY'],
+  subCategory: ['SUB_CATEGORY', 'SUBCATEGORY', 'SUB CATEGORY', 'ACCOUNT_SUBCATEGORY'],
   department: ['DEPARTMENT', 'DEPT'],
   costType: ['COST_TYPE', 'COSTTYPE'],
   isFinancial: ['IS_FINANCIAL', 'ISFINANCIAL'],
@@ -150,6 +153,7 @@ const buildColumnMapping = (columns: string[]): ColumnMapping => {
     laborGroup: resolveColumnName(COLUMN_ALIASES.laborGroup, lookup),
     operationalGroup: resolveColumnName(COLUMN_ALIASES.operationalGroup, lookup),
     category: resolveColumnName(COLUMN_ALIASES.category, lookup),
+    subCategory: resolveColumnName(COLUMN_ALIASES.subCategory, lookup),
     department: resolveColumnName(COLUMN_ALIASES.department, lookup),
     costType: resolveColumnName(COLUMN_ALIASES.costType, lookup),
     isFinancial: resolveColumnName(COLUMN_ALIASES.isFinancial, lookup),
@@ -163,6 +167,7 @@ const buildColumnResponse = (mapping: ColumnMapping): CoaManagerColumn[] => [
   { key: 'laborGroup', label: mapping.laborGroup ?? 'Labor Group' },
   { key: 'operationalGroup', label: mapping.operationalGroup ?? 'Operational Group' },
   { key: 'category', label: mapping.category ?? 'Category' },
+  { key: 'subCategory', label: mapping.subCategory ?? 'Sub Category' },
   { key: 'department', label: mapping.department ?? 'Department' },
   { key: 'isFinancial', label: mapping.isFinancial ?? 'Is Financial' },
   { key: 'isSurvey', label: mapping.isSurvey ?? 'Is Survey' },
@@ -347,6 +352,7 @@ export const listIndustryCoaData = async (
         mapping.operationalGroup ? row[mapping.operationalGroup] : null,
       ),
       category: toNullableString(mapping.category ? row[mapping.category] : null),
+      subCategory: toNullableString(mapping.subCategory ? row[mapping.subCategory] : null),
       department: toNullableString(mapping.department ? row[mapping.department] : null),
       costType: toNullableString(mapping.costType ? row[mapping.costType] : null),
       isFinancial: toNullableBoolean(mapping.isFinancial ? row[mapping.isFinancial] : null),

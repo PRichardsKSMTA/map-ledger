@@ -13,6 +13,16 @@ export interface ChartOfAccountRecord {
   isSurvey: boolean | null;
 }
 
+export interface SurveyChartOfAccountRecord {
+  accountNumber: string;
+  description: string | null;
+  operationalGroup: string | null;
+  laborGroup: string | null;
+  accountType: string | null;
+  category: string | null;
+  subCategory: string | null;
+}
+
 const TABLE_NAME = 'ML.CHART_OF_ACCOUNTS';
 
 const toNullableBoolean = (value: unknown): boolean | null => {
@@ -73,8 +83,8 @@ const toNullableString = (value: unknown): string | null => {
 const toRequiredString = (value: unknown): string => toNullableString(value) ?? '';
 
 const hasIsFinancialColumn = async (): Promise<boolean> => {
-  const { recordset = [] } = await runQuery<{ exists: number }>(
-    `SELECT 1 AS exists
+  const { recordset = [] } = await runQuery<{ columnExists: number }>(
+    `SELECT 1 AS columnExists
     FROM INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
       AND TABLE_NAME = PARSENAME(@tableName, 1)
@@ -88,8 +98,8 @@ const hasIsFinancialColumn = async (): Promise<boolean> => {
 };
 
 const hasIsSurveyColumn = async (): Promise<boolean> => {
-  const { recordset = [] } = await runQuery<{ exists: number }>(
-    `SELECT 1 AS exists
+  const { recordset = [] } = await runQuery<{ columnExists: number }>(
+    `SELECT 1 AS columnExists
     FROM INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
       AND TABLE_NAME = PARSENAME(@tableName, 1)
@@ -123,6 +133,66 @@ export const listChartOfAccountIds = async (): Promise<string[]> => {
   });
 
   return unique;
+};
+
+export const listSurveyAccountIds = async (): Promise<string[]> => {
+  const includeIsSurvey = await hasIsSurveyColumn();
+  if (!includeIsSurvey) {
+    return [];
+  }
+
+  const { recordset = [] } = await runQuery<{ accountNumber?: string | null }>(
+    `SELECT ACCOUNT_NUMBER AS accountNumber
+    FROM ${TABLE_NAME}
+    WHERE IS_SURVEY = 1
+    ORDER BY ACCOUNT_NUMBER`
+  );
+
+  const accounts = recordset
+    .map((row) => toNullableString(row.accountNumber))
+    .filter((account): account is string => Boolean(account));
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  accounts.forEach((account) => {
+    if (!seen.has(account)) {
+      seen.add(account);
+      unique.push(account);
+    }
+  });
+
+  return unique;
+};
+
+export const listSurveyChartOfAccounts = async (): Promise<SurveyChartOfAccountRecord[]> => {
+  const includeIsSurvey = await hasIsSurveyColumn();
+  if (!includeIsSurvey) {
+    return [];
+  }
+
+  const { recordset = [] } = await runQuery<Record<string, unknown>>(
+    `SELECT
+      ACCOUNT_NUMBER AS accountNumber,
+      DESCRIPTION AS description,
+      OPERATIONAL_GROUP AS operationalGroup,
+      LABOR_GROUP AS laborGroup,
+      ACCOUNT_TYPE AS accountType,
+      CATEGORY AS category,
+      SUB_CATEGORY AS subCategory
+    FROM ${TABLE_NAME}
+    WHERE IS_SURVEY = 1
+    ORDER BY SUB_CATEGORY, LABOR_GROUP, OPERATIONAL_GROUP, ACCOUNT_NUMBER`
+  );
+
+  return recordset.map((row) => ({
+    accountNumber: toRequiredString(row.accountNumber),
+    description: toNullableString(row.description),
+    operationalGroup: toNullableString(row.operationalGroup),
+    laborGroup: toNullableString(row.laborGroup),
+    accountType: toNullableString(row.accountType),
+    category: toNullableString(row.category),
+    subCategory: toNullableString(row.subCategory),
+  }));
 };
 
 export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => {

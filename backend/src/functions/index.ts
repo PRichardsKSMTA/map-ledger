@@ -21,6 +21,7 @@ import './clientFileEntities';
 import './clientEntities';
 import './clientHeaderMappings';
 import './fileRecords';
+import './clientSurvey';
 import './entityDistributionPresetDetails';
 import './entityDistributions';
 import './entityDistributionPresets';

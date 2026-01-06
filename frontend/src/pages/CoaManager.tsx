@@ -7,6 +7,7 @@ import {
   IndustryAlreadyExistsError,
 } from '../services/coaManagerService';
 import { useCoaManagerStore } from '../store/coaManagerStore';
+import scrollPageToTop from '../utils/scroll';
 
 const costTypeOptions = [
   { label: 'None', value: '' },
@@ -33,6 +34,7 @@ type SortKey =
   | 'laborGroup'
   | 'operationalGroup'
   | 'category'
+  | 'subCategory'
   | 'isFinancial'
   | 'isSurvey'
   | 'costType';
@@ -239,6 +241,20 @@ export default function CoaManager() {
   }, [openFilter]);
 
   useEffect(() => {
+    scrollPageToTop({ behavior: 'auto' });
+    const scrollContainer = document.getElementById('app-scroll-container');
+    if (!scrollContainer) {
+      return undefined;
+    }
+
+    scrollContainer.classList.add('app-scroll-locked');
+
+    return () => {
+      scrollContainer.classList.remove('app-scroll-locked');
+    };
+  }, []);
+
+  useEffect(() => {
     loadIndustries();
   }, [loadIndustries]);
 
@@ -387,6 +403,8 @@ export default function CoaManager() {
             return resolveGroupValue(row.operationalGroup);
           case 'category':
             return row.category;
+          case 'subCategory':
+            return row.subCategory;
           case 'costType':
             return row.costType;
           case 'isFinancial':
@@ -419,7 +437,7 @@ export default function CoaManager() {
       key={key}
       scope="col"
       aria-sort={getAriaSort(key)}
-      className="px-4 py-3"
+      className="bg-gray-50 px-4 py-3"
     >
       <button
         type="button"
@@ -442,7 +460,7 @@ export default function CoaManager() {
       <th
         scope="col"
         aria-sort={getAriaSort('laborGroup')}
-        className="px-4 py-3"
+        className="bg-gray-50 px-4 py-3"
       >
         <div className="flex items-center gap-2">
           <button
@@ -542,7 +560,7 @@ export default function CoaManager() {
       <th
         scope="col"
         aria-sort={getAriaSort('operationalGroup')}
-        className="px-4 py-3"
+        className="bg-gray-50 px-4 py-3"
       >
         <div className="flex items-center gap-2">
           <button
@@ -641,7 +659,7 @@ export default function CoaManager() {
   };
 
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
       <header className="space-y-2">
         <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
           Chart of Accounts
@@ -701,7 +719,10 @@ export default function CoaManager() {
       </section>
 
       {selectedIndustry ? (
-        <section aria-label="Chart of accounts table" className="space-y-4">
+        <section
+          aria-label="Chart of accounts table"
+          className="flex min-h-0 flex-1 flex-col gap-4"
+        >
           <div className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow md:flex-row md:items-center md:justify-between">
             <div className="space-y-1">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -723,11 +744,11 @@ export default function CoaManager() {
               {rowsError}
             </div>
           ) : (
-            <div className="min-h-[18rem] overflow-x-auto rounded-lg border border-gray-200 bg-white shadow">
+            <div className="table-scroll-panel flex min-h-0 flex-1 flex-col overflow-x-auto rounded-lg border border-gray-200 bg-white shadow">
               <table className="min-w-full table-compact divide-y divide-slate-200 text-left text-sm dark:divide-slate-700">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th scope="col" className="px-4 py-3">
+                    <th scope="col" className="bg-gray-50 px-4 py-3">
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
@@ -752,6 +773,10 @@ export default function CoaManager() {
                     {renderLaborGroupHeader()}
                     {renderOperationalGroupHeader()}
                     {renderSortableHeader('category', resolveLabel('category', 'Category'))}
+                    {renderSortableHeader(
+                      'subCategory',
+                      resolveLabel('subCategory', 'SUB_CATEGORY'),
+                    )}
                     {renderSortableHeader(
                       'isFinancial',
                       resolveLabel('isFinancial', 'IS_FINANCIAL'),
@@ -790,6 +815,7 @@ export default function CoaManager() {
                           {resolveGroupValue(row.operationalGroup)}
                         </td>
                         <td className="px-4 py-3 text-gray-700">{row.category}</td>
+                        <td className="px-4 py-3 text-gray-700">{row.subCategory}</td>
                         <td className="px-4 py-3">
                           <label className="sr-only" htmlFor={`is-financial-${row.id}`}>
                             {resolveLabel('isFinancial', 'IS_FINANCIAL')} for account{' '}

@@ -71,6 +71,10 @@ const openApiSpec = {
       post: { summary: 'Create or update client header mappings' },
       put: { summary: 'Replace client header mappings for specific template headers' }
     },
+    '/client-survey': {
+      get: { summary: 'List client survey accounts and values for a client/month' },
+      put: { summary: 'Update client survey GL values' }
+    },
     '/file-records': {
       get: { summary: 'List ingested file records for a file upload or client aggregation' }
     },

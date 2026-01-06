@@ -1432,7 +1432,7 @@ const buildDistributionPresetLibraryEntries = (
         </div>
       </div>
 
-      <div className="overflow-x-auto min-h-[26rem]">
+      <div className="table-scroll-x min-h-[26rem]">
         <table
           className="table-compact divide-y divide-slate-200 dark:divide-slate-700"
           role="table"

@@ -11,7 +11,7 @@ import {
   upsertEntityScoaActivity,
   type EntityScoaActivityInput,
 } from '../../repositories/entityScoaActivityRepository';
-import { listChartOfAccountIds } from '../../repositories/chartOfAccountsRepository';
+import { listChartOfAccountIds, listSurveyAccountIds } from '../../repositories/chartOfAccountsRepository';
 
 interface DistributionActivityEntryPayload {
   operationCd?: string | null;
@@ -77,9 +77,13 @@ const activityHandler = async (
     }
 
     const chartOfAccountIdsPromise = listChartOfAccountIds();
+    const surveyAccountIdsPromise = listSurveyAccountIds();
 
     await replaceOperationScoaActivity(entries);
-    const chartOfAccountIds = await chartOfAccountIdsPromise;
+    const [chartOfAccountIds, surveyAccountIds] = await Promise.all([
+      chartOfAccountIdsPromise,
+      surveyAccountIdsPromise,
+    ]);
     const clientGlDataPayload: ClientGlDataInput[] = entries.map(entry => ({
       operationCd: entry.operationCd,
       glId: entry.scoaAccountId,
@@ -107,7 +111,10 @@ const activityHandler = async (
     );
 
     await Promise.all([
-      replaceClientGlData(clientGlDataPayload, { allGlIds: chartOfAccountIds }),
+      replaceClientGlData(clientGlDataPayload, {
+        allGlIds: chartOfAccountIds,
+        excludedGlIds: surveyAccountIds,
+      }),
       upsertEntityScoaActivity(Array.from(entityActivityTotals.values())),
     ]);
 

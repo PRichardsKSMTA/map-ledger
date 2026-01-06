@@ -584,7 +584,7 @@ export default function MappingTable() {
   return (
     <div className="space-y-4">
       <MappingToolbar />
-      <div className="overflow-x-auto">
+      <div className="table-scroll-x">
         <table
           className="min-w-full table-compact divide-y divide-slate-200 text-sm dark:divide-slate-700"
           role="table"

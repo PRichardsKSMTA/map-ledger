@@ -93,6 +93,7 @@ export default function Sidebar({ isOpen }: SidebarProps) {
       key={label}
       to={to}
       aria-label={label}
+      title={isOpen ? undefined : label}
       className={({ isActive }) => getLinkClasses(isActive || isActiveOverride, isOpen)}
     >
       <span className="flex h-10 w-10 items-center justify-center rounded-lg text-current">

@@ -15,6 +15,7 @@ export interface CoaManagerRow {
   laborGroup: string;
   operationalGroup: string;
   category: string;
+  subCategory: string;
   department: string;
   costType: CoaManagerCostType;
   isFinancial: CoaManagerIsFinancial;
@@ -188,6 +189,7 @@ const normalizeRow = (
       'OP_GROUP',
     ]),
     category: getValue(row, ['category', 'CATEGORY']),
+    subCategory: getValue(row, ['subCategory', 'sub_category', 'SUB_CATEGORY']),
     department: getValue(row, ['department', 'DEPARTMENT', 'dept', 'DEPT']),
     costType: getValue(row, ['costType', 'cost_type', 'COST_TYPE']),
     isFinancial: coerceBoolean(
