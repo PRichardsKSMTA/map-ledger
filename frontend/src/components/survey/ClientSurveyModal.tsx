@@ -110,6 +110,7 @@ export default function ClientSurveyModal({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [subCategoryQuery, setSubCategoryQuery] = useState('');
 
   const saveTimersRef = useRef<Record<string, number>>({});
   const saveResetTimersRef = useRef<Record<string, number>>({});
@@ -236,6 +237,21 @@ export default function ClientSurveyModal({
       .sort((left, right) => compareLabels(left.label, right.label));
   }, [displayAccounts]);
 
+  const normalizedSubCategoryQuery = useMemo(
+    () => subCategoryQuery.trim().toLowerCase(),
+    [subCategoryQuery],
+  );
+
+  const filteredSections = useMemo(
+    () =>
+      normalizedSubCategoryQuery
+        ? sections.filter(section =>
+          section.label.toLowerCase().includes(normalizedSubCategoryQuery),
+        )
+        : sections,
+    [normalizedSubCategoryQuery, sections],
+  );
+
   useEffect(() => {
     savedValuesRef.current = savedValues;
   }, [savedValues]);
@@ -244,6 +260,7 @@ export default function ClientSurveyModal({
     if (!open) {
       setError(null);
       setSaveError(null);
+      setSubCategoryQuery('');
       if (!selectedMonth) {
         setSelectedMonth(getCurrentMonthInput());
       }
@@ -587,6 +604,7 @@ export default function ClientSurveyModal({
                   disabled={isLoading}
                 />
               </label>
+
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 {pendingSaveCount > 0
                   ? `Saving ${pendingSaveCount} change${pendingSaveCount === 1 ? '' : 's'}`
@@ -621,7 +639,17 @@ export default function ClientSurveyModal({
               </div>
             ) : (
               <div className="flex flex-1 flex-col gap-4 overflow-hidden">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2 dark:border-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2 pt-1 dark:border-slate-700">
+                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Search:
+                    <input
+                      type="search"
+                      value={subCategoryQuery}
+                      onChange={event => setSubCategoryQuery(event.target.value)}
+                      className="w-64 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                      disabled={isLoading || sections.length === 0}
+                    />
+                  </label>
                   <div role="tablist" className="flex flex-wrap gap-2">
                     {operationCodes.map(operationCd => {
                       const isActive = operationCd === activeOperation;
@@ -634,11 +662,10 @@ export default function ClientSurveyModal({
                           aria-selected={isActive}
                           aria-controls={`survey-panel-${operationCd}`}
                           onClick={() => setActiveOperation(operationCd)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                            isActive
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${isActive
                               ? 'bg-blue-600 text-white'
                               : 'border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 dark:border-slate-600 dark:text-slate-300 dark:hover:border-blue-400 dark:hover:text-blue-200'
-                          }`}
+                            }`}
                         >
                           {operationCd}
                         </button>
@@ -660,18 +687,23 @@ export default function ClientSurveyModal({
                   </button>
                 </div>
 
-                <div
-                  id={`survey-panel-${activeOperation ?? 'none'}`}
-                  role="tabpanel"
-                  aria-labelledby={`survey-tab-${activeOperation ?? 'none'}`}
-                  className="flex-1 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700"
-                >
-                  <div className="flex flex-col gap-4 p-4">
-                    {sections.map(section => (
-                      <section
-                        key={section.key}
-                        className="rounded-lg border border-slate-200 bg-white/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
-                      >
+                {filteredSections.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+                    No survey categories match "{subCategoryQuery}".
+                  </div>
+                ) : (
+                  <div
+                    id={`survey-panel-${activeOperation ?? 'none'}`}
+                    role="tabpanel"
+                    aria-labelledby={`survey-tab-${activeOperation ?? 'none'}`}
+                    className="flex-1 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700"
+                  >
+                    <div className="flex flex-col gap-4 p-4">
+                      {filteredSections.map(section => (
+                        <section
+                          key={section.key}
+                          className="rounded-lg border border-slate-200 bg-white/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
+                        >
                         <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
                           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                             {section.label}
@@ -683,8 +715,8 @@ export default function ClientSurveyModal({
                               .map(account =>
                                 activeOperation
                                   ? previousValues[
-                                      buildValueKey(activeOperation, account.accountNumber)
-                                    ]
+                                  buildValueKey(activeOperation, account.accountNumber)
+                                  ]
                                   : undefined,
                               )
                               .filter(Boolean) as { glMonth: string; glValue: number }[];
@@ -703,7 +735,7 @@ export default function ClientSurveyModal({
                               <div key={laborGroup.key} className="px-4 py-4">
                                 <div className="space-y-2">
                                   <div className="flex flex-wrap items-center gap-4">
-                                    <div className="min-w-[160px] text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                    <div className="w-40 shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                                       {laborGroup.label}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-4">
@@ -719,7 +751,10 @@ export default function ClientSurveyModal({
                                         const state = saveStates[key] ?? 'idle';
                                         const isInvalid = invalidKeySet.has(key);
                                         return (
-                                          <div key={key} className="flex items-center gap-2">
+                                          <div
+                                            key={key}
+                                            className="flex w-[200px] shrink-0 items-center gap-2"
+                                          >
                                             <label
                                               htmlFor={`survey-value-${key}`}
                                               className="text-xs font-medium text-slate-600 dark:text-slate-300"
@@ -748,11 +783,10 @@ export default function ClientSurveyModal({
                                                   )
                                                 }
                                                 title={account.description ?? account.accountNumber}
-                                                className={`w-32 rounded-md border px-2 py-1 pr-7 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-slate-100 ${
-                                                  isInvalid
+                                                className={`w-32 rounded-md border px-2 py-1 pr-7 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-slate-800 dark:text-slate-100 ${isInvalid
                                                     ? 'border-red-400 text-red-600 focus:border-red-500 focus:ring-red-500 dark:border-red-500 dark:text-red-200'
                                                     : 'border-slate-300 text-slate-900 dark:border-slate-600'
-                                                }`}
+                                                  }`}
                                               />
                                               {state === 'saving' ? (
                                                 <Loader2 className="absolute right-2 top-2 h-4 w-4 animate-spin text-blue-500" />
@@ -768,10 +802,10 @@ export default function ClientSurveyModal({
                                     </div>
                                   </div>
                                   <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
-                                    <div className="min-w-[160px]">
+                                    <div className="w-40 shrink-0">
                                       {previousMonthLabel
                                         ? `Values from ${previousMonthLabel}:`
-                                        : 'No previous values available yet.'}
+                                        : 'No historical values available yet.'}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-4">
                                       {laborGroup.accounts.map(account => {
@@ -791,9 +825,17 @@ export default function ClientSurveyModal({
                                             ? ` (${toMonthInputValue(previousEntry.glMonth)})`
                                             : '';
                                         return (
-                                          <span key={`prev-${key}`} className="whitespace-nowrap">
-                                            {account.displayOperationalGroup}: {valueLabel}
-                                            {monthSuffix}
+                                          <span
+                                            key={`prev-${key}`}
+                                            className="inline-flex w-[200px] shrink-0 items-center gap-2 whitespace-nowrap"
+                                          >
+                                            <span className="font-medium">
+                                              {account.displayOperationalGroup}:
+                                            </span>
+                                            <span className="pl-2">
+                                              {valueLabel}
+                                              {monthSuffix}
+                                            </span>
                                           </span>
                                         );
                                       })}
@@ -808,6 +850,7 @@ export default function ClientSurveyModal({
                     ))}
                   </div>
                 </div>
+                )}
               </div>
             )}
 
