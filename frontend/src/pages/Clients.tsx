@@ -56,7 +56,9 @@ export default function Clients() {
         </div>
       </section>
 
-      <EntityManager />
+      <section aria-label="Client entities" className="rounded-lg bg-white p-6 shadow">
+        <EntityManager />
+      </section>
 
       <ClientSurveyModal
         open={isSurveyOpen}

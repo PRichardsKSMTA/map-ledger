@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Layers, Pencil, Plus, Trash2 } from 'lucide-react';
 import Button from '../ui/Button';
 import ModalBackdrop from '../ui/ModalBackdrop';
 import { useClientStore } from '../../store/clientStore';
@@ -253,9 +253,12 @@ const EntityManager: React.FC = () => {
   return (
     <section className="space-y-4" aria-label="Entity manager">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Entities</h2>
-          <p className="text-sm text-gray-600">Manage client entities and their status.</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-blue-600">
+            <Layers className="h-4 w-4" />
+            Entities
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900">Manage client entities</h2>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <label className="text-sm text-gray-700" htmlFor="entity-client-selector">
