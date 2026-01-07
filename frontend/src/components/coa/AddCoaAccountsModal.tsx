@@ -16,7 +16,7 @@ interface AddCoaAccountsModalProps {
   onSubmit: (rows: CoaManagerAccountCreateInput[]) => Promise<void>;
 }
 
-type AddMode = 'subCategory' | 'laborGroup' | 'operationalGroup';
+type AddMode = 'subCategory' | 'laborGroup' | 'operationalGroup' | 'account';
 type FlagValue = '' | 'true' | 'false';
 
 type DraftRow = {
@@ -50,6 +50,17 @@ type SubCategorySelection = {
   isConflict: boolean;
 };
 
+type InlineNewOptionConfig = {
+  isOpen: boolean;
+  value: string;
+  placeholder: string;
+  errorMessage: string | null;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  onAdd: () => void;
+  onCancel: () => void;
+};
+
 const NEW_OPTION = '__new__';
 const MAX_CREATE_ROWS = 500;
 const CORE_ACCOUNT_PATTERN = /^\d{4}$/;
@@ -61,14 +72,17 @@ const toTitleCase = (value: string): string =>
   value
     .trim()
     .split(/\s+/)
-    .map(word =>
-      word
+    .map(word => {
+      if (word === '-') {
+        return word;
+      }
+      return word
         .split('-')
         .map(part =>
           part.length > 0 ? part[0].toUpperCase() + part.slice(1).toLowerCase() : part,
         )
-        .join('-'),
-    )
+        .join('-');
+    })
     .join(' ');
 
 const normalizeOptionValue = (value?: string | null): string | null => {
@@ -77,6 +91,26 @@ const normalizeOptionValue = (value?: string | null): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeComparable = (value: string): string => value.trim().toLowerCase();
+
+const hasDuplicateOption = (options: string[], value: string): boolean => {
+  const normalized = normalizeComparable(value);
+  return options.some(option => normalizeComparable(option) === normalized);
+};
+
+const mergeOptions = (options: string[], custom: string[]): string[] => {
+  const merged = [...options];
+  const existing = new Set(options.map(option => normalizeComparable(option)));
+  custom.forEach(entry => {
+    const normalized = normalizeComparable(entry);
+    if (!existing.has(normalized)) {
+      merged.push(entry);
+      existing.add(normalized);
+    }
+  });
+  return sortValues(merged);
 };
 
 const buildOptionList = (rows: CoaManagerRow[], selector: (row: CoaManagerRow) => string | null) => {
@@ -101,13 +135,23 @@ const parseFlagValue = (value: FlagValue): boolean | null => {
 };
 
 const formatAccountName = (
-  subCategory: string | null,
+  baseName: string | null,
   laborGroup: string | null,
   operationalGroup: string | null,
 ): string => {
-  const parts = [subCategory, laborGroup, operationalGroup]
-    .map(part => normalizeOptionValue(part))
-    .filter((part): part is string => Boolean(part));
+  const normalizeGroupPart = (value: string | null): string | null => {
+    const normalized = normalizeOptionValue(value);
+    if (!normalized) {
+      return null;
+    }
+    return normalized.toLowerCase() === 'general' ? null : normalized;
+  };
+
+  const parts = [
+    normalizeOptionValue(baseName),
+    normalizeGroupPart(laborGroup),
+    normalizeGroupPart(operationalGroup),
+  ].filter((part): part is string => Boolean(part));
   return parts.join(' - ');
 };
 
@@ -181,6 +225,9 @@ const resolveSelections = (
   return [];
 };
 
+const DEFAULT_CATEGORY = 'Other Operating Expenses';
+const DEFAULT_ACCOUNT_TYPE = 'Expense';
+
 export default function AddCoaAccountsModal({
   open,
   industry,
@@ -189,8 +236,17 @@ export default function AddCoaAccountsModal({
   onClose,
   onSubmit,
 }: AddCoaAccountsModalProps) {
-  const [mode, setMode] = useState<AddMode>('subCategory');
+  const [mode, setMode] = useState<AddMode>('account');
   const [newValue, setNewValue] = useState('');
+  const [customLaborGroups, setCustomLaborGroups] = useState<string[]>([]);
+  const [customOperationalGroups, setCustomOperationalGroups] = useState<string[]>([]);
+  const [customSubCategories, setCustomSubCategories] = useState<string[]>([]);
+  const [showNewLaborGroup, setShowNewLaborGroup] = useState(false);
+  const [showNewOperationalGroup, setShowNewOperationalGroup] = useState(false);
+  const [showNewSubCategory, setShowNewSubCategory] = useState(false);
+  const [newLaborGroupName, setNewLaborGroupName] = useState('');
+  const [newOperationalGroupName, setNewOperationalGroupName] = useState('');
+  const [newSubCategoryName, setNewSubCategoryName] = useState('');
   const [selectedLaborGroups, setSelectedLaborGroups] = useState<string[]>([]);
   const [selectedOperationalGroups, setSelectedOperationalGroups] = useState<string[]>([]);
   const [selectedSubCategories, setSelectedSubCategories] = useState<string[]>([]);
@@ -223,8 +279,17 @@ export default function AddCoaAccountsModal({
 
   useEffect(() => {
     if (open) {
-      setMode('subCategory');
+      setMode('account');
       setNewValue('');
+      setCustomLaborGroups([]);
+      setCustomOperationalGroups([]);
+      setCustomSubCategories([]);
+      setShowNewLaborGroup(false);
+      setShowNewOperationalGroup(false);
+      setShowNewSubCategory(false);
+      setNewLaborGroupName('');
+      setNewOperationalGroupName('');
+      setNewSubCategoryName('');
       setSelectedLaborGroups([]);
       setSelectedOperationalGroups([]);
       setSelectedSubCategories([]);
@@ -298,6 +363,10 @@ export default function AddCoaAccountsModal({
     () => buildOptionList(rows, row => row.subCategory),
     [rows],
   );
+  const allAccountNameOptions = useMemo(
+    () => buildOptionList(rows, row => row.accountName),
+    [rows],
+  );
   const allCategoryOptions = useMemo(
     () => buildOptionList(rows, row => row.category),
     [rows],
@@ -307,13 +376,21 @@ export default function AddCoaAccountsModal({
     [rows],
   );
 
-  const laborGroupOptions = useMemo(
+  const baseLaborGroupOptions = useMemo(
     () => buildOptionList(scopedRows, row => row.laborGroup),
     [scopedRows],
   );
-  const operationalGroupOptions = useMemo(
+  const baseOperationalGroupOptions = useMemo(
     () => buildOptionList(scopedRows, row => row.operationalGroup),
     [scopedRows],
+  );
+  const laborGroupOptions = useMemo(
+    () => mergeOptions(baseLaborGroupOptions, customLaborGroups),
+    [baseLaborGroupOptions, customLaborGroups],
+  );
+  const operationalGroupOptions = useMemo(
+    () => mergeOptions(baseOperationalGroupOptions, customOperationalGroups),
+    [baseOperationalGroupOptions, customOperationalGroups],
   );
   const categoryOptions = useMemo(
     () => buildOptionList(scopedRows, row => row.category),
@@ -372,7 +449,7 @@ export default function AddCoaAccountsModal({
         const categoryLabel = entry.category ?? 'Unassigned category';
         const accountTypeLabel = entry.accountType ?? 'Unassigned account type';
         const metadataLabel = hasAccountTypeVariance
-          ? `Category: ${categoryLabel} • Account Type: ${accountTypeLabel}`
+          ? `Category: ${categoryLabel} | Account Type: ${accountTypeLabel}`
           : `Category: ${categoryLabel}`;
         const value = `${subCategory}||${entry.category ?? ''}||${entry.accountType ?? ''}`;
         selections.push({
@@ -384,6 +461,25 @@ export default function AddCoaAccountsModal({
           isConflict: true,
         });
       });
+    });
+
+    const existingValues = new Set(
+      selections.map(option => normalizeComparable(option.subCategory)),
+    );
+    customSubCategories.forEach(value => {
+      const normalized = normalizeComparable(value);
+      if (existingValues.has(normalized)) {
+        return;
+      }
+      selections.push({
+        value,
+        subCategory: value,
+        category: null,
+        accountType: null,
+        metadataLabel: null,
+        isConflict: false,
+      });
+      existingValues.add(normalized);
     });
 
     return selections.sort((a, b) => {
@@ -399,7 +495,7 @@ export default function AddCoaAccountsModal({
         sensitivity: 'base',
       });
     });
-  }, [scopedRows, supportsAccountType, supportsCategory]);
+  }, [customSubCategories, scopedRows, supportsAccountType, supportsCategory]);
 
   const subCategoryOptionValues = useMemo(
     () => subCategorySelections.map(option => option.value),
@@ -410,6 +506,84 @@ export default function AddCoaAccountsModal({
     () => new Map(subCategorySelections.map(option => [option.value, option])),
     [subCategorySelections],
   );
+
+  const formattedLaborGroupName = newLaborGroupName.trim()
+    ? toTitleCase(newLaborGroupName)
+    : '';
+  const formattedOperationalGroupName = newOperationalGroupName.trim()
+    ? toTitleCase(newOperationalGroupName)
+    : '';
+  const formattedSubCategoryName = newSubCategoryName.trim()
+    ? toTitleCase(newSubCategoryName)
+    : '';
+
+  const laborGroupDuplicate =
+    formattedLaborGroupName.length > 0 &&
+    (hasDuplicateOption(allLaborGroupOptions, formattedLaborGroupName) ||
+      hasDuplicateOption(customLaborGroups, formattedLaborGroupName));
+  const operationalGroupDuplicate =
+    formattedOperationalGroupName.length > 0 &&
+    (hasDuplicateOption(allOperationalGroupOptions, formattedOperationalGroupName) ||
+      hasDuplicateOption(customOperationalGroups, formattedOperationalGroupName));
+  const subCategoryDuplicate =
+    formattedSubCategoryName.length > 0 &&
+    (hasDuplicateOption(allSubCategoryOptions, formattedSubCategoryName) ||
+      hasDuplicateOption(customSubCategories, formattedSubCategoryName));
+
+  const handleAddLaborGroup = () => {
+    if (!formattedLaborGroupName || laborGroupDuplicate) {
+      return;
+    }
+    setCustomLaborGroups(prev =>
+      hasDuplicateOption(prev, formattedLaborGroupName) ? prev : [...prev, formattedLaborGroupName],
+    );
+    setSelectedLaborGroups(prev =>
+      prev.includes(formattedLaborGroupName)
+        ? prev
+        : [...prev, formattedLaborGroupName],
+    );
+    setNewLaborGroupName('');
+    setShowNewLaborGroup(false);
+    setError(null);
+  };
+
+  const handleAddOperationalGroup = () => {
+    if (!formattedOperationalGroupName || operationalGroupDuplicate) {
+      return;
+    }
+    setCustomOperationalGroups(prev =>
+      hasDuplicateOption(prev, formattedOperationalGroupName)
+        ? prev
+        : [...prev, formattedOperationalGroupName],
+    );
+    setSelectedOperationalGroups(prev =>
+      prev.includes(formattedOperationalGroupName)
+        ? prev
+        : [...prev, formattedOperationalGroupName],
+    );
+    setNewOperationalGroupName('');
+    setShowNewOperationalGroup(false);
+    setError(null);
+  };
+
+  const handleAddSubCategory = () => {
+    if (!formattedSubCategoryName || subCategoryDuplicate) {
+      return;
+    }
+    setCustomSubCategories(prev =>
+      hasDuplicateOption(prev, formattedSubCategoryName)
+        ? prev
+        : [...prev, formattedSubCategoryName],
+    );
+    setSelectedSubCategories(prev =>
+      prev.includes(formattedSubCategoryName)
+        ? prev
+        : [...prev, formattedSubCategoryName],
+    );
+    setNewSubCategoryName('');
+    setShowNewSubCategory(false);
+    setError(null);
+  };
 
   const groupCodes = useMemo(() => {
     const laborCodes = new Map<string, number>();
@@ -454,6 +628,32 @@ export default function AddCoaAccountsModal({
       maxOperationalCode,
     };
   }, [rows]);
+
+  const customLaborGroupCodes = useMemo(() => {
+    const codes = new Map<string, number>();
+    if (customLaborGroups.length === 0) {
+      return codes;
+    }
+    let nextCode = groupCodes.maxLaborCode + 100;
+    customLaborGroups.forEach(group => {
+      codes.set(group, nextCode);
+      nextCode += 100;
+    });
+    return codes;
+  }, [customLaborGroups, groupCodes.maxLaborCode]);
+
+  const customOperationalGroupCodes = useMemo(() => {
+    const codes = new Map<string, number>();
+    if (customOperationalGroups.length === 0) {
+      return codes;
+    }
+    let nextCode = groupCodes.maxOperationalCode + 100;
+    customOperationalGroups.forEach(group => {
+      codes.set(group, nextCode);
+      nextCode += 100;
+    });
+    return codes;
+  }, [customOperationalGroups, groupCodes.maxOperationalCode]);
 
   const existingAccountNumbers = useMemo(() => {
     const values = new Set<string>();
@@ -546,8 +746,15 @@ export default function AddCoaAccountsModal({
     if (!open) {
       return;
     }
-    if (categoryChoice && categoryChoice !== NEW_OPTION && !categoryOptions.includes(categoryChoice)) {
-      setCategoryChoice('');
+    if (
+      categoryChoice &&
+      categoryChoice !== NEW_OPTION &&
+      !categoryOptions.includes(categoryChoice)
+    ) {
+      const nextCategory = categoryOptions.includes(DEFAULT_CATEGORY)
+        ? DEFAULT_CATEGORY
+        : categoryOptions[0] ?? '';
+      setCategoryChoice(nextCategory);
     }
   }, [categoryChoice, categoryOptions, open]);
 
@@ -560,9 +767,33 @@ export default function AddCoaAccountsModal({
       accountTypeChoice !== NEW_OPTION &&
       !accountTypeOptions.includes(accountTypeChoice)
     ) {
-      setAccountTypeChoice('');
+      const nextAccountType = accountTypeOptions.includes(DEFAULT_ACCOUNT_TYPE)
+        ? DEFAULT_ACCOUNT_TYPE
+        : accountTypeOptions[0] ?? '';
+      setAccountTypeChoice(nextAccountType);
     }
   }, [accountTypeChoice, accountTypeOptions, open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (mode !== 'subCategory' && mode !== 'account') {
+      return;
+    }
+    if (!categoryChoice) {
+      const nextCategory = categoryOptions.includes(DEFAULT_CATEGORY)
+        ? DEFAULT_CATEGORY
+        : categoryOptions[0] ?? '';
+      setCategoryChoice(nextCategory);
+    }
+    if (!accountTypeChoice) {
+      const nextAccountType = accountTypeOptions.includes(DEFAULT_ACCOUNT_TYPE)
+        ? DEFAULT_ACCOUNT_TYPE
+        : accountTypeOptions[0] ?? '';
+      setAccountTypeChoice(nextAccountType);
+    }
+  }, [accountTypeChoice, accountTypeOptions, categoryChoice, categoryOptions, mode, open]);
 
   const preview = useMemo(() => {
     const errors: string[] = [];
@@ -571,7 +802,7 @@ export default function AddCoaAccountsModal({
     const normalizedNewValue = trimmedNewValue.toLowerCase();
 
     if (!trimmedNewValue) {
-      errors.push('Enter a value for the new group.');
+      errors.push('Enter a value for the new name.');
     }
 
     const existingValues =
@@ -579,7 +810,9 @@ export default function AddCoaAccountsModal({
         ? allSubCategoryOptions
         : mode === 'laborGroup'
           ? allLaborGroupOptions
-          : allOperationalGroupOptions;
+          : mode === 'operationalGroup'
+            ? allOperationalGroupOptions
+            : allAccountNameOptions;
     if (
       trimmedNewValue &&
       existingValues.some(option => option.toLowerCase() === normalizedNewValue)
@@ -593,16 +826,20 @@ export default function AddCoaAccountsModal({
       accountTypeChoice === NEW_OPTION ? accountTypeCustom.trim() : accountTypeChoice.trim();
     const normalizedCore = coreAccount.trim();
 
-    if (mode === 'subCategory' && supportsCategory && !resolvedCategory) {
+    if ((mode === 'subCategory' || mode === 'account') && supportsCategory && !resolvedCategory) {
       errors.push('Select a category to assign to the new accounts.');
     }
 
-    if (mode === 'subCategory' && supportsAccountType && !resolvedAccountType) {
+    if (
+      (mode === 'subCategory' || mode === 'account') &&
+      supportsAccountType &&
+      !resolvedAccountType
+    ) {
       errors.push('Select an account type to assign to the new accounts.');
     }
 
     if (
-      mode === 'subCategory' &&
+      (mode === 'subCategory' || mode === 'account') &&
       categoryChoice === NEW_OPTION &&
       resolvedCategory &&
       allCategoryOptions.some(
@@ -613,7 +850,7 @@ export default function AddCoaAccountsModal({
     }
 
     if (
-      mode === 'subCategory' &&
+      (mode === 'subCategory' || mode === 'account') &&
       accountTypeChoice === NEW_OPTION &&
       resolvedAccountType &&
       allAccountTypeOptions.some(
@@ -659,17 +896,19 @@ export default function AddCoaAccountsModal({
     );
 
     const normalizedSubCategorySelections =
-      mode === 'subCategory'
-        ? normalizedSubCategories.map(value =>
-            value
-              ? {
-                  value,
-                  subCategory: value,
-                  category: resolvedCategory || null,
-                  accountType: resolvedAccountType || null,
-                }
-              : null,
-          )
+      mode === 'subCategory' || mode === 'account'
+        ? normalizedSubCategories.map(value => {
+            if (!value) {
+              return null;
+            }
+            const selection = subCategorySelectionMap.get(value);
+            return {
+              value,
+              subCategory: selection?.subCategory ?? value,
+              category: resolvedCategory || null,
+              accountType: resolvedAccountType || null,
+            };
+          })
         : normalizedSubCategories.map(value => {
             if (!value) {
               return null;
@@ -694,7 +933,7 @@ export default function AddCoaAccountsModal({
       errors.push(`Reduce selections to ${MAX_CREATE_ROWS} accounts or fewer.`);
     }
 
-    if (mode === 'subCategory' && supportsAccountNumber) {
+    if ((mode === 'subCategory' || mode === 'account') && supportsAccountNumber) {
       if (!normalizedCore) {
         errors.push('Core account is required.');
       } else if (!CORE_ACCOUNT_PATTERN.test(normalizedCore)) {
@@ -716,12 +955,29 @@ export default function AddCoaAccountsModal({
       errors.push('Unable to derive an operational group code from existing accounts.');
     }
 
+    const hasCustomLaborSelection = normalizedLaborGroups.some(
+      laborGroup => laborGroup && customLaborGroupCodes.has(laborGroup),
+    );
+    const hasCustomOperationalSelection = normalizedOperationalGroups.some(
+      operationalGroup =>
+        operationalGroup && customOperationalGroupCodes.has(operationalGroup),
+    );
+    if (hasCustomLaborSelection && groupCodes.maxLaborCode <= 0) {
+      errors.push('Unable to derive a labor group code from existing accounts.');
+    }
+    if (hasCustomOperationalSelection && groupCodes.maxOperationalCode <= 0) {
+      errors.push('Unable to derive an operational group code from existing accounts.');
+    }
+
     normalizedLaborGroups.forEach(laborGroup => {
       if (!laborGroup) {
         errors.push('Select a labor group to apply.');
         return;
       }
       if (mode !== 'laborGroup') {
+        if (customLaborGroupCodes.has(laborGroup)) {
+          return;
+        }
         if (groupCodes.laborConflicts.has(laborGroup)) {
           errors.push(`Labor group "${laborGroup}" has inconsistent codes.`);
         } else if (!groupCodes.laborCodes.has(laborGroup)) {
@@ -736,6 +992,9 @@ export default function AddCoaAccountsModal({
         return;
       }
       if (mode !== 'operationalGroup') {
+        if (customOperationalGroupCodes.has(operationalGroup)) {
+          return;
+        }
         if (groupCodes.operationalConflicts.has(operationalGroup)) {
           errors.push(`Operational group "${operationalGroup}" has inconsistent codes.`);
         } else if (!groupCodes.operationalCodes.has(operationalGroup)) {
@@ -744,7 +1003,7 @@ export default function AddCoaAccountsModal({
       }
     });
 
-    if (mode !== 'subCategory') {
+    if (mode !== 'subCategory' && mode !== 'account') {
       normalizedSubCategorySelections.forEach(selection => {
         if (!selection) {
           errors.push('Select a sub category to apply.');
@@ -771,42 +1030,43 @@ export default function AddCoaAccountsModal({
       const subCategory = selection?.subCategory ?? null;
       normalizedLaborGroups.forEach(laborGroup => {
         normalizedOperationalGroups.forEach(operationalGroup => {
-          const accountName = formatAccountName(
-            subCategory,
-            laborGroup,
-            operationalGroup,
-          );
+          const baseName = mode === 'account' ? formattedNewValue : subCategory;
+          const accountName = formatAccountName(baseName, laborGroup, operationalGroup);
           if (!accountName) {
             return;
           }
-          const operationalCode =
-            mode === 'operationalGroup'
+          const operationalCode = operationalGroup
+            ? customOperationalGroupCodes.get(operationalGroup) ??
+              groupCodes.operationalCodes.get(operationalGroup) ??
+              (mode === 'operationalGroup' ? nextOperationalGroupCode : null)
+            : mode === 'operationalGroup'
               ? nextOperationalGroupCode
-              : operationalGroup
-                ? groupCodes.operationalCodes.get(operationalGroup) ?? null
-                : null;
-          const laborCode =
-            mode === 'laborGroup'
+              : null;
+          const laborCode = laborGroup
+            ? customLaborGroupCodes.get(laborGroup) ??
+              groupCodes.laborCodes.get(laborGroup) ??
+              (mode === 'laborGroup' ? nextLaborGroupCode : null)
+            : mode === 'laborGroup'
               ? nextLaborGroupCode
-              : laborGroup
-                ? groupCodes.laborCodes.get(laborGroup) ?? null
-                : null;
+              : null;
           const metadata =
-            mode === 'subCategory' || !selection
+            mode === 'subCategory' || mode === 'account' || !selection
               ? null
               : {
                   category: selection.category,
                   accountType: selection.accountType,
                 };
           const resolvedCategoryValue =
-            mode === 'subCategory' ? resolvedCategory || null : metadata?.category ?? null;
+            mode === 'subCategory' || mode === 'account'
+              ? resolvedCategory || null
+              : metadata?.category ?? null;
           const resolvedAccountTypeValue =
-            mode === 'subCategory'
+            mode === 'subCategory' || mode === 'account'
               ? resolvedAccountType || null
               : metadata?.accountType ?? null;
 
           const baseCore =
-            mode === 'subCategory'
+            mode === 'subCategory' || mode === 'account'
               ? normalizedCore
               : subCategory
                 ? subCategoryCoreMap.get(subCategory) ?? ''
@@ -850,6 +1110,8 @@ export default function AddCoaAccountsModal({
     categoryOptions,
     coreAccount,
     costType,
+    customLaborGroupCodes,
+    customOperationalGroupCodes,
     existingCoreAccounts,
     groupCodes,
     isFinancial,
@@ -986,7 +1248,7 @@ export default function AddCoaAccountsModal({
   };
 
   const fieldErrorMessages = new Set([
-    'Enter a value for the new group.',
+    'Enter a value for the new name.',
     'Select at least one labor group.',
     'Select at least one operational group.',
     'Select at least one sub category.',
@@ -1014,8 +1276,13 @@ export default function AddCoaAccountsModal({
     error ??
     reviewError ??
     (hasSubmitted ? filteredPreviewErrors[0] ?? null : immediateError);
+  const hasInlineDuplicate =
+    laborGroupDuplicate || operationalGroupDuplicate || subCategoryDuplicate;
   const isSubmitDisabled =
-    isSubmitting || preview.errors.length > 0 || (showReview && reviewRows.some(row => row.error));
+    isSubmitting ||
+    preview.errors.length > 0 ||
+    hasInlineDuplicate ||
+    (showReview && reviewRows.some(row => row.error));
 
   const submitLabel = showReview ? 'Create Accounts' : 'Add Accounts';
 
@@ -1025,6 +1292,7 @@ export default function AddCoaAccountsModal({
     selections: string[],
     onChange: (next: string[]) => void,
     isRequired = false,
+    newOption?: InlineNewOptionConfig,
   ) => (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1032,26 +1300,78 @@ export default function AddCoaAccountsModal({
           {label}
           {isRequired && <span className="ml-1 text-red-600">*</span>}
         </span>
-        {options.length > 0 && (
+        {(options.length > 0 || newOption) && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <button
-              type="button"
-              onClick={() => onChange(options)}
-              className="font-medium text-blue-600 hover:text-blue-700"
-            >
-              Select all
-            </button>
-            <span>|</span>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="font-medium text-gray-600 hover:text-gray-800"
-            >
-              Clear
-            </button>
+            {newOption && (
+              <button
+                type="button"
+                onClick={newOption.onToggle}
+                className="font-medium text-blue-600 hover:text-blue-700"
+              >
+                + New
+              </button>
+            )}
+            {options.length > 0 && (
+              <>
+                <span>|</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(options)}
+                  className="font-medium text-blue-600 hover:text-blue-700"
+                >
+                  Select all
+                </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="font-medium text-gray-600 hover:text-gray-800"
+                >
+                  Clear
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
+      {newOption?.isOpen && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={newOption.value}
+            onChange={event => newOption.onChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                newOption.onAdd();
+              }
+            }}
+            placeholder={newOption.placeholder}
+            className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isSubmitting}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={newOption.onAdd}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={newOption.onCancel}
+            className="text-xs font-medium text-gray-600 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {newOption?.errorMessage && (
+        <span className="text-xs font-normal text-red-600">
+          {newOption.errorMessage}
+        </span>
+      )}
       {options.length === 0 ? (
         <p className="text-xs text-gray-500">No options available for this industry.</p>
       ) : (
@@ -1084,6 +1404,7 @@ export default function AddCoaAccountsModal({
     selections: string[],
     onChange: (next: string[]) => void,
     isRequired = false,
+    newOption?: InlineNewOptionConfig,
   ) => (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1091,26 +1412,78 @@ export default function AddCoaAccountsModal({
           {label}
           {isRequired && <span className="ml-1 text-red-600">*</span>}
         </span>
-        {options.length > 0 && (
+        {(options.length > 0 || newOption) && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
-            <button
-              type="button"
-              onClick={() => onChange(options.map(option => option.value))}
-              className="font-medium text-blue-600 hover:text-blue-700"
-            >
-              Select all
-            </button>
-            <span>|</span>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="font-medium text-gray-600 hover:text-gray-800"
-            >
-              Clear
-            </button>
+            {newOption && (
+              <button
+                type="button"
+                onClick={newOption.onToggle}
+                className="font-medium text-blue-600 hover:text-blue-700"
+              >
+                + New
+              </button>
+            )}
+            {options.length > 0 && (
+              <>
+                <span>|</span>
+                <button
+                  type="button"
+                  onClick={() => onChange(options.map(option => option.value))}
+                  className="font-medium text-blue-600 hover:text-blue-700"
+                >
+                  Select all
+                </button>
+                <span>|</span>
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="font-medium text-gray-600 hover:text-gray-800"
+                >
+                  Clear
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
+      {newOption?.isOpen && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="text"
+            value={newOption.value}
+            onChange={event => newOption.onChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                newOption.onAdd();
+              }
+            }}
+            placeholder={newOption.placeholder}
+            className="w-full max-w-xs rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={isSubmitting}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={newOption.onAdd}
+            className="text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            Add
+          </button>
+          <button
+            type="button"
+            onClick={newOption.onCancel}
+            className="text-xs font-medium text-gray-600 hover:text-gray-800"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {newOption?.errorMessage && (
+        <span className="text-xs font-normal text-red-600">
+          {newOption.errorMessage}
+        </span>
+      )}
       {options.length === 0 ? (
         <p className="text-xs text-gray-500">No options available for this industry.</p>
       ) : (
@@ -1155,10 +1528,17 @@ export default function AddCoaAccountsModal({
       ? 'Sub category'
       : mode === 'laborGroup'
         ? 'Labor group'
-        : 'Operational group';
+        : mode === 'operationalGroup'
+          ? 'Operational group'
+          : 'Account';
+
+  const newNameLabel = mode === 'account' ? 'New account name' : `New ${label} name`;
+  const newNamePlaceholder =
+    mode === 'account' ? 'Enter account name' : `Enter ${label.toLowerCase()} name`;
 
   const normalizedCore = coreAccount.trim();
-  const isCoreRequired = mode === 'subCategory' && supportsAccountNumber;
+  const isCoreRequired =
+    (mode === 'subCategory' || mode === 'account') && supportsAccountNumber;
   const isCoreInvalid =
     isCoreRequired && normalizedCore.length > 0 && !CORE_ACCOUNT_PATTERN.test(normalizedCore);
   const isCoreDuplicate =
@@ -1169,16 +1549,79 @@ export default function AddCoaAccountsModal({
       ? 'That core account already exists for this industry.'
       : null;
 
+  const laborGroupNewConfig: InlineNewOptionConfig = {
+    isOpen: showNewLaborGroup,
+    value: newLaborGroupName,
+    placeholder: 'New labor group',
+    errorMessage: laborGroupDuplicate ? 'Labor group already exists.' : null,
+    onToggle: () =>
+      setShowNewLaborGroup(prev => {
+        if (prev) {
+          setNewLaborGroupName('');
+        }
+        return !prev;
+      }),
+    onChange: setNewLaborGroupName,
+    onAdd: handleAddLaborGroup,
+    onCancel: () => {
+      setShowNewLaborGroup(false);
+      setNewLaborGroupName('');
+    },
+  };
+
+  const operationalGroupNewConfig: InlineNewOptionConfig = {
+    isOpen: showNewOperationalGroup,
+    value: newOperationalGroupName,
+    placeholder: 'New operational group',
+    errorMessage: operationalGroupDuplicate ? 'Operational group already exists.' : null,
+    onToggle: () =>
+      setShowNewOperationalGroup(prev => {
+        if (prev) {
+          setNewOperationalGroupName('');
+        }
+        return !prev;
+      }),
+    onChange: setNewOperationalGroupName,
+    onAdd: handleAddOperationalGroup,
+    onCancel: () => {
+      setShowNewOperationalGroup(false);
+      setNewOperationalGroupName('');
+    },
+  };
+
+  const subCategoryNewConfig: InlineNewOptionConfig = {
+    isOpen: showNewSubCategory,
+    value: newSubCategoryName,
+    placeholder: 'New sub category',
+    errorMessage: subCategoryDuplicate ? 'Sub category already exists.' : null,
+    onToggle: () =>
+      setShowNewSubCategory(prev => {
+        if (prev) {
+          setNewSubCategoryName('');
+        }
+        return !prev;
+      }),
+    onChange: setNewSubCategoryName,
+    onAdd: handleAddSubCategory,
+    onCancel: () => {
+      setShowNewSubCategory(false);
+      setNewSubCategoryName('');
+    },
+  };
+
   return (
     <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-coa-title"
-        className="w-full max-w-3xl rounded-xl bg-white shadow-xl"
+        className="w-full max-w-3xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-xl bg-white shadow-xl"
         onClick={event => event.stopPropagation()}
       >
-        <form onSubmit={handleSubmit} className="space-y-5 p-6">
+        <form
+          onSubmit={handleSubmit}
+          className="max-h-[calc(100vh-2rem)] space-y-5 overflow-y-auto p-6"
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 id="add-coa-title" className="text-lg font-semibold text-gray-900">
@@ -1201,20 +1644,22 @@ export default function AddCoaAccountsModal({
 
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-              Create a new
-              <select
-                value={mode}
+              <span className="flex items-center gap-1">
+                {newNameLabel}
+                <span className="text-red-600">*</span>
+              </span>
+              <input
+                type="text"
+                value={newValue}
                 onChange={event => {
-                  setMode(event.target.value as AddMode);
+                  setNewValue(event.target.value);
                   setError(null);
                 }}
+                placeholder={newNamePlaceholder}
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isSubmitting}
-              >
-                <option value="subCategory">Sub category</option>
-                <option value="laborGroup">Labor group</option>
-                <option value="operationalGroup">Operational group</option>
-              </select>
+                autoFocus
+              />
             </label>
 
             <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
@@ -1235,25 +1680,6 @@ export default function AddCoaAccountsModal({
             </label>
           </div>
 
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            <span className="flex items-center gap-1">
-              New {label} name
-              <span className="text-red-600">*</span>
-            </span>
-            <input
-              type="text"
-              value={newValue}
-              onChange={event => {
-                setNewValue(event.target.value);
-                setError(null);
-              }}
-              placeholder={`Enter ${label.toLowerCase()} name`}
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isSubmitting}
-              autoFocus
-            />
-          </label>
-
           <div className="space-y-4">
             {mode !== 'laborGroup' &&
               renderMultiSelect(
@@ -1261,7 +1687,8 @@ export default function AddCoaAccountsModal({
                 laborGroupOptions,
                 selectedLaborGroups,
                 setSelectedLaborGroups,
-                laborGroupOptions.length > 0,
+                true,
+                laborGroupNewConfig,
               )}
             {mode !== 'operationalGroup' &&
               renderMultiSelect(
@@ -1269,7 +1696,8 @@ export default function AddCoaAccountsModal({
                 operationalGroupOptions,
                 selectedOperationalGroups,
                 setSelectedOperationalGroups,
-                operationalGroupOptions.length > 0,
+                true,
+                operationalGroupNewConfig,
               )}
             {mode !== 'subCategory' &&
               renderSubCategoryMultiSelect(
@@ -1277,11 +1705,12 @@ export default function AddCoaAccountsModal({
                 subCategorySelections,
                 selectedSubCategories,
                 setSelectedSubCategories,
-                subCategorySelections.length > 0,
+                true,
+                subCategoryNewConfig,
               )}
           </div>
 
-          {mode === 'subCategory' && (
+          {(mode === 'subCategory' || mode === 'account') && (
             <>
               <div className="grid gap-4 md:grid-cols-2">
                 {supportsCategory && (
@@ -1302,7 +1731,6 @@ export default function AddCoaAccountsModal({
                       className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={isSubmitting}
                     >
-                      <option value="">Select category</option>
                       {categoryOptions.map(option => (
                         <option key={option} value={option}>
                           {option}
@@ -1331,7 +1759,6 @@ export default function AddCoaAccountsModal({
                       className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       disabled={isSubmitting}
                     >
-                      <option value="">Select account type</option>
                       {accountTypeOptions.map(option => (
                         <option key={option} value={option}>
                           {option}
@@ -1346,7 +1773,7 @@ export default function AddCoaAccountsModal({
               {(supportsCategory && categoryChoice === NEW_OPTION) ||
               (supportsAccountType && accountTypeChoice === NEW_OPTION) ? (
                 <div className="grid gap-4 md:grid-cols-2">
-                  {supportsCategory && categoryChoice === NEW_OPTION && (
+                  {supportsCategory && categoryChoice === NEW_OPTION ? (
                     <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
                       <span className="flex items-center gap-1">
                         New category
@@ -1364,8 +1791,10 @@ export default function AddCoaAccountsModal({
                         disabled={isSubmitting}
                       />
                     </label>
+                  ) : (
+                    <div aria-hidden="true" />
                   )}
-                  {supportsAccountType && accountTypeChoice === NEW_OPTION && (
+                  {supportsAccountType && accountTypeChoice === NEW_OPTION ? (
                     <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
                       <span className="flex items-center gap-1">
                         New account type
@@ -1383,13 +1812,15 @@ export default function AddCoaAccountsModal({
                         disabled={isSubmitting}
                       />
                     </label>
+                  ) : (
+                    <div aria-hidden="true" />
                   )}
                 </div>
               ) : null}
             </>
           )}
 
-          {mode === 'subCategory' && supportsAccountNumber && (
+          {(mode === 'subCategory' || mode === 'account') && supportsAccountNumber && (
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-1 text-sm font-medium text-gray-700 md:col-span-2">
                 <span className="flex items-center gap-1">
@@ -1483,7 +1914,7 @@ export default function AddCoaAccountsModal({
                 Review each account number and adjust the core value as needed.
               </p>
             )}
-            {!showReview && mode !== 'subCategory' && preview.rows.some(row => !row.baseCore) && (
+            {!showReview && !isCoreRequired && preview.rows.some(row => !row.baseCore) && (
               <p className="mt-2 text-xs text-gray-500">
                 Core account numbers will be set during the review step.
               </p>
