@@ -130,7 +130,7 @@ const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   targetScoa:
     'min-w-[18rem] md:min-w-[22rem] lg:min-w-[26rem] xl:min-w-[30rem] max-w-[36rem]',
   exclusion: 'w-56',
-  aiConfidence: 'w-28',
+  aiConfidence: 'w-20',
 };
 
 const COLUMN_ALIGNMENT_CLASSES: Partial<Record<SortKey, string>> = {
@@ -439,15 +439,8 @@ export default function MappingTable() {
     }
   }, [pageIndex, safePageIndex]);
 
-  const shouldAutoMapNextAccount = (account: GLAccountMappingRow) =>
-    account.mappingType === 'direct' &&
-    !account.manualCOAId?.trim() &&
-    account.status !== 'Mapped' &&
-    account.status !== 'Excluded';
-
   const handleTargetChange = (
     account: GLAccountMappingRow,
-    sortedIndex: number,
     nextValue: string
   ) => {
     const hasBatchSelection = selectedIds.has(account.id) && selectedIds.size > 1;
@@ -460,15 +453,6 @@ export default function MappingTable() {
     }
 
     updateTarget(account.id, nextValue);
-
-    if (!nextValue) {
-      return;
-    }
-
-    const nextAccount = sortedAccounts[sortedIndex + 1];
-    if (nextAccount && shouldAutoMapNextAccount(nextAccount)) {
-      updateTarget(nextAccount.id, nextValue);
-    }
   };
 
   const handleMappingTypeChange = (accountId: string, nextType: MappingType) => {
@@ -605,23 +589,29 @@ export default function MappingTable() {
               <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Toggle split details</span>
               </th>
-              {COLUMN_DEFINITIONS.map((column) => (
-                <th
-                  key={column.key}
-                  scope="col"
-                  aria-sort={getAriaSort(column.key)}
-                  className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''} ${COLUMN_ALIGNMENT_CLASSES[column.key] ?? ''}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleSort(column.key)}
-                    className={`flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${HEADER_BUTTON_ALIGNMENT[column.key] ?? ''}`}
+              {COLUMN_DEFINITIONS.map((column) => {
+                const headerLabel =
+                  column.key === 'aiConfidence' ? 'Confidence' : column.label;
+                return (
+                  <th
+                    key={column.key}
+                    scope="col"
+                    aria-sort={getAriaSort(column.key)}
+                    className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''} ${COLUMN_ALIGNMENT_CLASSES[column.key] ?? ''}`}
                   >
-                    {column.label}
-                    <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </th>
-              ))}
+                    <button
+                      type="button"
+                      onClick={() => handleSort(column.key)}
+                      className={`flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${HEADER_BUTTON_ALIGNMENT[column.key] ?? ''}`}
+                      aria-label={column.label}
+                      title={column.label}
+                    >
+                      {headerLabel}
+                      <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
@@ -882,10 +872,11 @@ export default function MappingTable() {
                             options={coaOptions}
                             placeholder="Search target"
                             onChange={(nextValue) =>
-                              handleTargetChange(account, absoluteIndex, nextValue)
+                              handleTargetChange(account, nextValue)
                             }
                             noOptionsMessage="No matching accounts"
                             className="w-full"
+                            selectOnTab
                           />
                         </>
                       )}
@@ -918,13 +909,13 @@ export default function MappingTable() {
                     <td
                       className={`px-3 py-4 text-slate-700 dark:text-slate-200 ${COLUMN_WIDTH_CLASSES.aiConfidence ?? ''}`}
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-1">
                         <span className="font-medium">
                           {account.aiConfidence !== undefined
                             ? `${account.aiConfidence}%`
                             : '—'}
                         </span>
-                        <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                           <div
                             className="h-full rounded-full bg-blue-600 dark:bg-blue-400"
                             style={{
@@ -936,8 +927,8 @@ export default function MappingTable() {
                       </div>
                     </td>
                     <td className="px-3 py-4">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative flex flex-col gap-2">
+                        <div className="flex flex-wrap items-center gap-2 pr-6">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${STATUS_STYLES[displayStatus]}`}
                             role="status"
@@ -947,19 +938,19 @@ export default function MappingTable() {
                             <StatusIcon className="h-3 w-3" aria-hidden="true" />
                             {statusLabel}
                           </span>
-                          {isRowSaving && (
-                            <span
-                              className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                              aria-live="polite"
-                            >
-                              <span
-                                className="h-2 w-2 animate-spin rounded-full border border-current border-t-transparent"
-                                aria-hidden="true"
-                              />
-                              Saving changes
-                            </span>
-                          )}
                         </div>
+                        {isRowSaving && (
+                          <span
+                            className="absolute right-0 top-1 flex h-5 w-5 items-center justify-center text-slate-500 dark:text-slate-300"
+                            aria-live="polite"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent"
+                              aria-hidden="true"
+                            />
+                            <span className="sr-only">Saving changes</span>
+                          </span>
+                        )}
                         {rowSaveError && (
                           <span className="text-xs text-rose-600 dark:text-rose-300">
                             Save failed{rowSaveError ? `: ${rowSaveError}` : ''}

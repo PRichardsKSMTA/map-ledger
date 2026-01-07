@@ -24,6 +24,7 @@ interface SearchableSelectProps<TOption extends Option> {
   noOptionsMessage?: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
+  selectOnTab?: boolean;
 }
 
 const baseInputClasses =
@@ -49,6 +50,7 @@ export default function SearchableSelect<TOption extends Option>({
   noOptionsMessage = 'No matches found',
   onChange,
   onBlur,
+  selectOnTab = false,
 }: SearchableSelectProps<TOption>) {
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
@@ -67,8 +69,10 @@ export default function SearchableSelect<TOption extends Option>({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const listboxRef = useRef<HTMLUListElement | null>(null);
   const previousValueRef = useRef<string | null>(null);
   const lastSyncedLabelRef = useRef<string>('');
+  const hasKeyboardNavigatedRef = useRef(false);
   const [menuStyles, setMenuStyles] = useState<MenuStyles | null>(null);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -112,13 +116,13 @@ export default function SearchableSelect<TOption extends Option>({
       if (menuRef.current?.contains(target)) {
         return;
       }
+      hasKeyboardNavigatedRef.current = false;
       setIsOpen(false);
-      onBlur?.();
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onBlur]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!isOpen) {
@@ -162,6 +166,7 @@ export default function SearchableSelect<TOption extends Option>({
     const optionValue = valueSelector(option);
     setSearchTerm(labelSelector(option));
     setIsOpen(false);
+    hasKeyboardNavigatedRef.current = false;
     onChange(optionValue);
   };
 
@@ -169,6 +174,7 @@ export default function SearchableSelect<TOption extends Option>({
     const nextValue = event.target.value;
     setSearchTerm(nextValue);
     setIsOpen(true);
+    hasKeyboardNavigatedRef.current = false;
 
     if (!nextValue.trim()) {
       onChange('');
@@ -178,22 +184,61 @@ export default function SearchableSelect<TOption extends Option>({
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (!isOpen && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
       setIsOpen(true);
+      hasKeyboardNavigatedRef.current = true;
       return;
     }
 
     if (event.key === 'ArrowDown') {
       event.preventDefault();
-      setHighlightedIndex(previous => Math.min(previous + 1, filteredOptions.length - 1));
+      hasKeyboardNavigatedRef.current = true;
+      setHighlightedIndex(previous => {
+        if (filteredOptions.length === 0) {
+          return 0;
+        }
+        return Math.min(previous + 1, filteredOptions.length - 1);
+      });
     } else if (event.key === 'ArrowUp') {
       event.preventDefault();
-      setHighlightedIndex(previous => Math.max(previous - 1, 0));
+      hasKeyboardNavigatedRef.current = true;
+      setHighlightedIndex(previous => {
+        if (filteredOptions.length === 0) {
+          return 0;
+        }
+        return Math.max(previous - 1, 0);
+      });
     } else if (event.key === 'Enter' && isOpen && filteredOptions[highlightedIndex]) {
       event.preventDefault();
       handleSelect(filteredOptions[highlightedIndex]);
+    } else if (event.key === 'Tab') {
+      if (selectOnTab && hasKeyboardNavigatedRef.current) {
+        const option = filteredOptions[highlightedIndex];
+        if (option) {
+          const optionValue = valueSelector(option);
+          if (optionValue !== value) {
+            handleSelect(option);
+            return;
+          }
+        }
+      }
+      hasKeyboardNavigatedRef.current = false;
+      setIsOpen(false);
     } else if (event.key === 'Escape') {
+      hasKeyboardNavigatedRef.current = false;
       setIsOpen(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen || !listboxRef.current) {
+      return;
+    }
+    const activeOption = listboxRef.current.querySelector<HTMLElement>(
+      `[data-option-index="${highlightedIndex}"]`,
+    );
+    if (activeOption) {
+      activeOption.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex, isOpen, filteredOptions.length]);
 
   const activeOption = filteredOptions[highlightedIndex];
   const activeDescendant = activeOption ? `${resolvedId}-option-${valueSelector(activeOption)}` : undefined;
@@ -215,6 +260,7 @@ export default function SearchableSelect<TOption extends Option>({
         <ul
           id={listboxId}
           role="listbox"
+          ref={listboxRef}
           className="max-h-60 overflow-y-auto py-1 text-sm"
           aria-label="Search results"
         >
@@ -231,6 +277,7 @@ export default function SearchableSelect<TOption extends Option>({
                     type="button"
                     onMouseDown={event => event.preventDefault()}
                     onClick={() => handleSelect(option)}
+                    data-option-index={index}
                     className={`flex w-full items-start gap-2 px-3 py-2 text-left transition ${
                       isActive
                         ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-100'
@@ -261,10 +308,17 @@ export default function SearchableSelect<TOption extends Option>({
         aria-activedescendant={isOpen ? activeDescendant : undefined}
         value={searchTerm}
         placeholder={placeholder}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => {
+          hasKeyboardNavigatedRef.current = false;
+          setIsOpen(true);
+        }}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}
-        onBlur={onBlur}
+        onBlur={() => {
+          hasKeyboardNavigatedRef.current = false;
+          setIsOpen(false);
+          onBlur?.();
+        }}
         disabled={disabled}
         className={`${baseInputClasses} ${disabled ? 'cursor-not-allowed opacity-75' : ''}`}
       />

@@ -199,6 +199,95 @@ describe('entityAccountMappings save handler change detection', () => {
     expect(mockedDeletePresetMappings).not.toHaveBeenCalled();
   });
 
+  it('dedupes entity accounts across multiple months in a single save request', async () => {
+    const payload = {
+      items: [
+        {
+          entityId: 'ent-1',
+          entityAccountId: 'acct-1',
+          accountName: 'Initial Name',
+          mappingType: 'direct',
+          mappingStatus: 'Mapped',
+          polarity: 'Debit',
+          glMonth: '2024-01',
+          updatedBy: 'tester-1',
+        },
+        {
+          entityId: 'ent-1',
+          entityAccountId: 'acct-1',
+          accountName: 'Updated Name',
+          mappingType: 'direct',
+          mappingStatus: 'Mapped',
+          polarity: 'Debit',
+          glMonth: '2024-02',
+          updatedBy: 'tester-2',
+        },
+      ],
+    };
+
+    mockedReadJson.mockResolvedValue(payload);
+
+    await saveHandler({} as any, { log: jest.fn(), error: jest.fn() } as any);
+
+    expect(mockedUpsertAccounts).toHaveBeenCalledWith([
+      {
+        entityId: 'ent-1',
+        accountId: 'acct-1',
+        accountName: 'Updated Name',
+        updatedBy: 'tester-2',
+      },
+    ]);
+  });
+
+  it('dedupes mapping inputs by entity, account, and gl month', async () => {
+    const payload = {
+      items: [
+        {
+          entityId: 'ent-1',
+          entityAccountId: 'acct-1',
+          accountName: 'Account One',
+          mappingType: 'direct',
+          mappingStatus: 'Mapped',
+          polarity: 'Debit',
+          glMonth: '2024-01',
+          updatedBy: 'tester-1',
+        },
+        {
+          entityId: 'ent-1',
+          entityAccountId: 'acct-1',
+          accountName: 'Account One',
+          mappingType: 'percentage',
+          mappingStatus: 'Mapped',
+          polarity: 'Debit',
+          glMonth: '2024-01-15',
+          updatedBy: 'tester-2',
+          splitDefinitions: [
+            {
+              targetId: 'scoa-1',
+              allocationType: 'percentage',
+              allocationValue: 100,
+            },
+          ],
+        },
+      ],
+    };
+
+    mockedReadJson.mockResolvedValue(payload);
+
+    await saveHandler({} as any, { log: jest.fn(), error: jest.fn() } as any);
+
+    expect(mockedUpsertMappings).toHaveBeenCalledWith([
+      expect.objectContaining({
+        entityId: 'ent-1',
+        entityAccountId: 'acct-1',
+        mappingType: 'percentage',
+        mappingStatus: 'Mapped',
+        glMonth: '2024-01-01',
+        updatedBy: 'tester-2',
+      }),
+    ]);
+  });
+
   it('aggregates SCOA activity totals across mapped accounts for affected months', async () => {
     const payload = {
       items: [

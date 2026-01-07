@@ -314,6 +314,7 @@ export default function MappingSplitRow({
                               placeholder="Search target"
                               onChange={value => handleTargetChange(split.id, value)}
                               noOptionsMessage="No matching accounts"
+                              selectOnTab
                             />
                           </>
                         )}

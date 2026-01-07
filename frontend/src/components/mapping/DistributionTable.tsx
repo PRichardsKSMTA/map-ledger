@@ -1669,14 +1669,8 @@ const buildDistributionPresetLibraryEntries = (
                         const StatusIcon = STATUS_ICONS[row.status];
                         const isSavingRow = row.autoSaveState === 'saving';
                         return (
-                          <div className="flex flex-col items-end gap-1 text-right">
+                          <div className="relative flex flex-col items-end gap-1 pr-4 text-right">
                             <div className="flex items-center gap-1">
-                              {isSavingRow && (
-                                <Loader2
-                                  className="h-3.5 w-3.5 animate-spin text-blue-600 dark:text-blue-300"
-                                  aria-hidden="true"
-                                />
-                              )}
                               <span
                                 className={`inline-flex min-w-[6rem] items-center justify-center gap-1 rounded-full px-3 py-1 text-sm font-medium ${statusBadgeClass}`}
                               >
@@ -1684,6 +1678,15 @@ const buildDistributionPresetLibraryEntries = (
                                 {statusLabel(row.status)}
                               </span>
                             </div>
+                            {isSavingRow && (
+                              <span
+                                className="absolute right-0 top-1 flex h-4 w-4 items-center justify-center text-blue-600 dark:text-blue-300"
+                                aria-live="polite"
+                              >
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                <span className="sr-only">Saving changes</span>
+                              </span>
+                            )}
                             {row.autoSaveError && (
                               <span className="text-sm font-medium text-rose-700 dark:text-rose-300" role="alert">
                                 {row.autoSaveError}
