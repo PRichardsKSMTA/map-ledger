@@ -6,6 +6,7 @@ import type {
   DynamicSourceAccount,
   EntitySummary,
   FileRecord,
+  ChartOfAccountOption,
   GLAccountMappingRow,
   MappingPresetLibraryEntry,
   MappingSaveInput,
@@ -322,6 +323,102 @@ const getSplitAmount = (
   account: GLAccountMappingRow,
   split: MappingSplitDefinition,
 ): number => Math.abs(getSplitSignedAmount(account, split));
+
+const normalizeCostType = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+  return value.trim().toLowerCase().replace(/[\s_]+/g, '');
+};
+
+const isBalanceSheetCostType = (value?: string | null): boolean =>
+  normalizeCostType(value) === 'balancesheet';
+
+const isNonFinancialTarget = (option: ChartOfAccountOption | null): boolean =>
+  option?.isFinancial === false || isBalanceSheetCostType(option?.costType);
+
+const isNonFinancialTargetId = (targetId?: string | null): boolean => {
+  const normalized = typeof targetId === 'string' ? targetId.trim() : '';
+  if (!normalized) {
+    return false;
+  }
+  return isNonFinancialTarget(findChartOfAccountTarget(normalized));
+};
+
+const getNonFinancialSplitAmount = (
+  account: GLAccountMappingRow,
+  split: MappingSplitDefinition,
+): number => {
+  if (!isNonFinancialTargetId(split.targetId)) {
+    return 0;
+  }
+  return getSplitSignedAmount(account, split);
+};
+
+const getNonFinancialMappedAmount = (account: GLAccountMappingRow): number => {
+  if (account.mappingType === 'direct') {
+    const targetId = account.manualCOAId?.trim();
+    if (!targetId) {
+      return 0;
+    }
+    return isNonFinancialTargetId(targetId) ? account.netChange : 0;
+  }
+
+  if (account.mappingType === 'dynamic') {
+    const targetId = account.manualCOAId?.trim() ?? account.suggestedCOAId?.trim();
+    if (!targetId) {
+      return 0;
+    }
+    return isNonFinancialTargetId(targetId) ? account.netChange : 0;
+  }
+
+  if (account.mappingType === 'percentage') {
+    if (account.splitDefinitions.length === 0) {
+      return 0;
+    }
+    return account.splitDefinitions.reduce(
+      (sum, split) => sum + getNonFinancialSplitAmount(account, split),
+      0,
+    );
+  }
+
+  return 0;
+};
+
+const getNonFinancialExcludedAmount = (account: GLAccountMappingRow): number => {
+  if (account.mappingType === 'percentage') {
+    return account.splitDefinitions.reduce((sum, split) => {
+      if (!split.isExclusion) {
+        return sum;
+      }
+      if (!isNonFinancialTargetId(split.targetId)) {
+        return sum;
+      }
+      return sum + getSplitSignedAmount(account, split);
+    }, 0);
+  }
+
+  if (account.mappingType === 'dynamic') {
+    const targetId = account.manualCOAId?.trim() ?? account.suggestedCOAId?.trim();
+    if (!targetId) {
+      return 0;
+    }
+    return isNonFinancialTargetId(targetId) ? getAccountExcludedAmount(account) : 0;
+  }
+
+  return 0;
+};
+
+const isDynamicAccountNonFinancial = (account: GLAccountMappingRow): boolean => {
+  if (account.mappingType !== 'dynamic') {
+    return false;
+  }
+  const targetId = account.manualCOAId?.trim() ?? account.suggestedCOAId?.trim();
+  if (!targetId) {
+    return false;
+  }
+  return isNonFinancialTargetId(targetId);
+};
 
 const isEffectivelyZero = (value: number, tolerance = 0.0001): boolean =>
   Math.abs(value) <= tolerance;
@@ -1456,10 +1553,17 @@ const resolveEntityConflicts = (
 };
 
 const calculateGrossTotal = (accounts: GLAccountMappingRow[]): number =>
-  accounts.reduce((sum, account) => sum + account.netChange, 0);
+  accounts.reduce(
+    (sum, account) => sum + account.netChange - getNonFinancialMappedAmount(account),
+    0,
+  );
 
 const calculateExcludedTotal = (accounts: GLAccountMappingRow[]): number =>
-  accounts.reduce((sum, account) => sum + getAccountExcludedAmount(account), 0);
+  accounts.reduce(
+    (sum, account) =>
+      sum + getAccountExcludedAmount(account) - getNonFinancialExcludedAmount(account),
+    0,
+  );
 
 const appendDirtyIds = (dirty: Set<string>, ids: Iterable<string>): Set<string> => {
   const next = new Set(dirty);
@@ -4130,7 +4234,7 @@ export const selectAccountsRequiringSplits = (state: MappingState) =>
       account.mappingType === 'percentage' && account.splitDefinitions.length === 0
   );
 
-export { getAccountExcludedAmount, getAllocatableNetChange };
+export { getAccountExcludedAmount, getAllocatableNetChange, isDynamicAccountNonFinancial };
 
 useRatioAllocationStore.subscribe(
   (state: RatioAllocationStoreState, previousState?: RatioAllocationStoreState) => {

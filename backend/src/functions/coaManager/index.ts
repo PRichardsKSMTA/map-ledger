@@ -5,6 +5,7 @@ import {
   InvalidIndustryNameError,
   InvalidIndustryTableError,
   listIndustryCoaData,
+  insertIndustryAccounts,
   updateIndustryIsFinancial,
   updateIndustryIsFinancialBatch,
   updateIndustryIsSurvey,
@@ -13,6 +14,25 @@ import {
   updateIndustryCostTypeBatch,
 } from '../../repositories/coaManagerRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
+
+const MAX_CREATE_ROWS = 500;
+
+type AccountRowInput = {
+  accountNumber?: string | null;
+  coreAccount?: string | null;
+  operationalGroupCode?: string | null;
+  laborGroupCode?: string | null;
+  accountName?: string | null;
+  laborGroup?: string | null;
+  operationalGroup?: string | null;
+  category?: string | null;
+  accountType?: string | null;
+  subCategory?: string | null;
+  department?: string | null;
+  costType?: string | null;
+  isFinancial?: boolean | null;
+  isSurvey?: boolean | null;
+};
 
 const resolveIndustryParam = (request: HttpRequest): string | undefined => {
   const params = request.params as Partial<{ industry?: string }> | undefined;
@@ -90,6 +110,74 @@ const parseRowIds = (value: unknown): string[] => {
     .filter((entry): entry is string => Boolean(entry));
 };
 
+const normalizeAccountText = (value: unknown): string | null => {
+  const resolved = getFirstStringValue(value);
+  return resolved ? resolved.trim() : null;
+};
+
+const getRowText = (row: Record<string, unknown>, keys: string[]): string | null => {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) {
+      continue;
+    }
+    const value = normalizeAccountText(row[key]);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+};
+
+const normalizeAccountRow = (row: Record<string, unknown>): AccountRowInput => {
+  const isFinancialValue =
+    row.isFinancial ?? row.is_financial ?? row.IS_FINANCIAL ?? row.financialFlag;
+  const isSurveyValue = row.isSurvey ?? row.is_survey ?? row.IS_SURVEY ?? row.surveyFlag;
+
+  return {
+    accountNumber: getRowText(row, [
+      'accountNumber',
+      'account_number',
+      'ACCOUNT_NUMBER',
+      'account',
+      'ACCOUNT',
+    ]),
+    coreAccount: getRowText(row, ['coreAccount', 'core_account', 'CORE_ACCOUNT']),
+    operationalGroupCode: getRowText(row, [
+      'operationalGroupCode',
+      'operational_group_code',
+      'OPERATIONAL_GROUP_CODE',
+    ]),
+    laborGroupCode: getRowText(row, [
+      'laborGroupCode',
+      'labor_group_code',
+      'LABOR_GROUP_CODE',
+    ]),
+    accountName: getRowText(row, [
+      'accountName',
+      'account_name',
+      'ACCOUNT_NAME',
+      'description',
+      'DESCRIPTION',
+      'name',
+      'NAME',
+    ]),
+    laborGroup: getRowText(row, ['laborGroup', 'labor_group', 'LABOR_GROUP']),
+    operationalGroup: getRowText(row, [
+      'operationalGroup',
+      'operational_group',
+      'OPERATIONAL_GROUP',
+      'opGroup',
+    ]),
+    category: getRowText(row, ['category', 'CATEGORY']),
+    accountType: getRowText(row, ['accountType', 'account_type', 'ACCOUNT_TYPE']),
+    subCategory: getRowText(row, ['subCategory', 'sub_category', 'SUB_CATEGORY']),
+    department: getRowText(row, ['department', 'DEPARTMENT', 'dept', 'DEPT']),
+    costType: getRowText(row, ['costType', 'cost_type', 'COST_TYPE']),
+    isFinancial: normalizeIsFinancial(isFinancialValue),
+    isSurvey: normalizeIsSurvey(isSurveyValue),
+  };
+};
+
 const handleIndustryError = (
   error: unknown,
   context: InvocationContext,
@@ -124,6 +212,77 @@ export async function getIndustryCoaHandler(
     return json(data);
   } catch (error) {
     return handleIndustryError(error, context, 'fetch COA data');
+  }
+}
+
+export async function createIndustryAccountsHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const rawRows = Array.isArray(payload.rows) ? payload.rows : [];
+
+  if (rawRows.length === 0) {
+    return json({ message: 'rows are required' }, 400);
+  }
+
+  if (rawRows.length > MAX_CREATE_ROWS) {
+    return json({ message: `Too many rows. Max allowed is ${MAX_CREATE_ROWS}.` }, 400);
+  }
+
+  const normalizedRows = rawRows
+    .map((row) =>
+      row && typeof row === 'object'
+        ? normalizeAccountRow(row as Record<string, unknown>)
+        : null,
+    )
+    .filter((row): row is AccountRowInput => row !== null);
+
+  if (normalizedRows.length === 0) {
+    return json({ message: 'rows are required' }, 400);
+  }
+
+  const invalidIndex = normalizedRows.findIndex(
+    (row) => !row.accountName && !row.accountNumber,
+  );
+  if (invalidIndex !== -1) {
+    return json(
+      { message: `Row ${invalidIndex + 1} must include an account name or number.` },
+      400,
+    );
+  }
+
+  const uniqueRows = new Map<string, AccountRowInput>();
+  normalizedRows.forEach((row) => {
+    const key = [
+      row.accountNumber ?? '',
+      row.coreAccount ?? '',
+      row.operationalGroupCode ?? '',
+      row.laborGroupCode ?? '',
+      row.accountName ?? '',
+      row.laborGroup ?? '',
+      row.operationalGroup ?? '',
+      row.category ?? '',
+      row.accountType ?? '',
+      row.subCategory ?? '',
+      row.department ?? '',
+      row.costType ?? '',
+      row.isFinancial ?? '',
+      row.isSurvey ?? '',
+    ].join('|');
+    uniqueRows.set(key, row);
+  });
+
+  try {
+    const inserted = await insertIndustryAccounts(industry, Array.from(uniqueRows.values()));
+    return json({ inserted });
+  } catch (error) {
+    return handleIndustryError(error, context, 'create COA accounts');
   }
 }
 
@@ -291,6 +450,13 @@ app.http('coaManager-industry', {
   authLevel: 'anonymous',
   route: 'coa-manager/industry/{industry}',
   handler: getIndustryCoaHandler,
+});
+
+app.http('coaManager-accounts', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/accounts',
+  handler: createIndustryAccountsHandler,
 });
 
 app.http('coaManager-costType', {

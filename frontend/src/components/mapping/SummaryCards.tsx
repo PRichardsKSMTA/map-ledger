@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import {
   getAccountExcludedAmount,
+  isDynamicAccountNonFinancial,
   selectAccounts,
   selectActiveEntityId,
   selectDistributionTargets,
@@ -61,23 +62,30 @@ const SummaryCards = () => {
     void loadHistoryForEntity(activeEntityId);
   }, [activeEntityId, historyEntityId, loadHistoryForEntity]);
 
+  const dynamicAccounts = useMemo(
+    () =>
+      accounts.filter(
+        account => account.mappingType === 'dynamic' && !isDynamicAccountNonFinancial(account),
+      ),
+    [accounts],
+  );
+
   const dynamicExclusionSummaries = useMemo(
     () =>
       computeDynamicExclusionSummaries({
-        accounts,
+        accounts: dynamicAccounts,
         allocations,
         basisAccounts,
         groups,
         selectedPeriod,
         results,
       }),
-    [accounts, allocations, basisAccounts, groups, results, selectedPeriod],
+    [allocations, basisAccounts, dynamicAccounts, groups, results, selectedPeriod],
   );
 
   const adjustedTotals = useMemo(() => {
     const dynamicOverrideTotal = sumDynamicExclusionAmounts(dynamicExclusionSummaries);
-    const baselineDynamicExcluded = accounts
-      .filter(account => account.mappingType === 'dynamic')
+    const baselineDynamicExcluded = dynamicAccounts
       .reduce((sum, account) => sum + getAccountExcludedAmount(account), 0);
     const normalizedExcludedTotal = excludedTotal - baselineDynamicExcluded + dynamicOverrideTotal;
     const normalizedNetTotal = grossTotal - normalizedExcludedTotal;
@@ -85,7 +93,7 @@ const SummaryCards = () => {
       excluded: normalizedExcludedTotal,
       net: normalizedNetTotal,
     };
-  }, [accounts, dynamicExclusionSummaries, excludedTotal, grossTotal]);
+  }, [dynamicAccounts, dynamicExclusionSummaries, excludedTotal, grossTotal]);
 
   const mappedCoverage = Math.round((mappedAccounts / Math.max(totalAccounts, 1)) * 100);
 

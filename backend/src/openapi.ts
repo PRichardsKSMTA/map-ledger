@@ -27,6 +27,9 @@ const openApiSpec = {
     '/coa-manager/industry/{industry}': {
       get: { summary: 'Fetch chart of accounts by industry' }
     },
+    '/coa-manager/industry/{industry}/accounts': {
+      post: { summary: 'Create chart of accounts records for an industry' }
+    },
     '/coa-manager/industry/{industry}/cost-type': {
       patch: { summary: 'Update cost type for a single COA record' }
     },

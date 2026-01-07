@@ -89,6 +89,59 @@ export const listEntityScoaActivity = async (
   return (result.recordset ?? []).map(mapRow);
 };
 
+export const listEntityScoaActivityForMonths = async (
+  entityId: string,
+  activityMonths: string[],
+): Promise<EntityScoaActivityRow[]> => {
+  if (!entityId) {
+    return [];
+  }
+
+  const normalizedMonths = Array.from(
+    new Set(
+      (activityMonths ?? [])
+        .map((month) => toSqlMonth(month))
+        .filter((month): month is string => Boolean(month)),
+    ),
+  );
+
+  if (!normalizedMonths.length) {
+    return listEntityScoaActivity(entityId);
+  }
+
+  const params: Record<string, unknown> = { entityId };
+  const monthParams = normalizedMonths.map((month, index) => {
+    params[`activityMonth${index}`] = month;
+    return `@activityMonth${index}`;
+  });
+
+  const result = await runQuery<{
+    entity_id: string;
+    scoa_account_id: string;
+    activity_month?: string | null;
+    activity_value?: number | null;
+    inserted_dttm?: Date | string | null;
+    updated_dttm?: Date | string | null;
+    updated_by?: string | null;
+  }>(
+    `SELECT
+      ENTITY_ID as entity_id,
+      SCOA_ACCOUNT_ID as scoa_account_id,
+      ACTIVITY_MONTH as activity_month,
+      ACTIVITY_VALUE as activity_value,
+      INSERTED_DTTM as inserted_dttm,
+      UPDATED_DTTM as updated_dttm,
+      UPDATED_BY as updated_by
+    FROM ${TABLE_NAME}
+    WHERE ENTITY_ID = @entityId
+      AND ACTIVITY_MONTH IN (${monthParams.join(', ')})
+    ORDER BY ACTIVITY_MONTH DESC, SCOA_ACCOUNT_ID ASC`,
+    params,
+  );
+
+  return (result.recordset ?? []).map(mapRow);
+};
+
 export const insertEntityScoaActivity = async (
   activities: EntityScoaActivityInput[]
 ): Promise<EntityScoaActivityRow[]> => {

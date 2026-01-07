@@ -12,7 +12,7 @@ import {
 } from '../store/mappingStore';
 import { useRatioAllocationStore } from '../store/ratioAllocationStore';
 import type { GLAccountMappingRow, TrialBalanceRow } from '../types';
-import { getChartOfAccountOptions } from '../store/chartOfAccountsStore';
+import { getChartOfAccountOptions, useChartOfAccountsStore } from '../store/chartOfAccountsStore';
 
 const buildMappingAccount = (
   overrides: Partial<GLAccountMappingRow> & { id: string },
@@ -81,6 +81,87 @@ describe('mappingStore selectors', () => {
         netTotal: 685000,
       })
     );
+  });
+
+  it('removes non-financial mapped activity from gross and excluded totals', () => {
+    const { options: originalOptions, optionIndex: originalIndex, accounts: originalAccounts } =
+      useChartOfAccountsStore.getState();
+    const nonFinancialOption = {
+      id: 'STAT-100',
+      value: 'STAT-100',
+      label: 'Operational Stat',
+      accountNumber: 'STAT-100',
+      coreAccount: null,
+      operationalGroup: null,
+      laborGroup: null,
+      accountType: null,
+      category: null,
+      subCategory: null,
+      description: 'Operational Stat',
+      costType: 'Balance Sheet',
+      isFinancial: false,
+    };
+
+    const nextOptions = [...originalOptions, nonFinancialOption];
+    const nextIndex = {
+      byId: { ...originalIndex.byId, [nonFinancialOption.id]: nonFinancialOption },
+      byValue: { ...originalIndex.byValue, [nonFinancialOption.value]: nonFinancialOption },
+    };
+
+    useChartOfAccountsStore.setState({
+      options: nextOptions,
+      optionIndex: nextIndex,
+      accounts: [
+        ...originalAccounts,
+        {
+          accountNumber: nonFinancialOption.value,
+          coreAccount: null,
+          operationalGroup: null,
+          laborGroup: null,
+          accountType: null,
+          category: null,
+          subCategory: null,
+          description: nonFinancialOption.description,
+          costType: nonFinancialOption.costType,
+          isFinancial: nonFinancialOption.isFinancial,
+          isSurvey: null,
+        },
+      ],
+    });
+
+    const nonFinancialAccount = buildMappingAccount({
+      id: 'acct-non-financial',
+      accountId: 'STAT-100',
+      accountName: 'Operational Stat',
+      mappingType: 'dynamic',
+      status: 'Mapped',
+      manualCOAId: nonFinancialOption.value,
+      netChange: 1200,
+      activity: 1200,
+      dynamicExclusionAmount: 300,
+    });
+
+    act(() => {
+      useMappingStore.setState(state => ({
+        ...state,
+        accounts: [nonFinancialAccount],
+        activeEntityId: 'ent-1',
+        activeEntities: [{ id: 'ent-1', name: 'Entity One' }],
+        activeEntityIds: ['ent-1'],
+        activePeriod: null,
+      }));
+    });
+
+    const summary = selectSummaryMetrics(useMappingStore.getState());
+    expect(summary.grossTotal).toBe(0);
+    expect(summary.excludedTotal).toBe(0);
+    expect(summary.netTotal).toBe(0);
+
+    useChartOfAccountsStore.setState({
+      options: originalOptions,
+      optionIndex: originalIndex,
+      accounts: originalAccounts,
+    });
   });
 
   it('counts percentage, dynamic, and exclusion mappings toward summary coverage', () => {

@@ -9,6 +9,7 @@ export interface ChartOfAccountRecord {
   category: string | null;
   subCategory: string | null;
   description: string | null;
+  costType: string | null;
   isFinancial: boolean | null;
   isSurvey: boolean | null;
 }
@@ -89,6 +90,21 @@ const hasIsFinancialColumn = async (): Promise<boolean> => {
     WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
       AND TABLE_NAME = PARSENAME(@tableName, 1)
       AND COLUMN_NAME = 'IS_FINANCIAL'`,
+    {
+      tableName: TABLE_NAME,
+    },
+  );
+
+  return recordset.length > 0;
+};
+
+const hasCostTypeColumn = async (): Promise<boolean> => {
+  const { recordset = [] } = await runQuery<{ columnExists: number }>(
+    `SELECT 1 AS columnExists
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = PARSENAME(@tableName, 2)
+      AND TABLE_NAME = PARSENAME(@tableName, 1)
+      AND COLUMN_NAME = 'COST_TYPE'`,
     {
       tableName: TABLE_NAME,
     },
@@ -197,6 +213,7 @@ export const listSurveyChartOfAccounts = async (): Promise<SurveyChartOfAccountR
 
 export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => {
   const includeIsFinancial = await hasIsFinancialColumn();
+  const includeCostType = await hasCostTypeColumn();
   const includeIsSurvey = await hasIsSurveyColumn();
   const selectClause = `SELECT
       ACCOUNT_NUMBER AS accountNumber,
@@ -207,6 +224,8 @@ export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => 
       CATEGORY AS category,
       SUB_CATEGORY AS subCategory,
       DESCRIPTION AS description${
+        includeCostType ? ',\n      COST_TYPE AS costType' : ''
+      }${
         includeIsFinancial ? ',\n      IS_FINANCIAL AS isFinancial' : ''
       }${
         includeIsSurvey ? ',\n      IS_SURVEY AS isSurvey' : ''
@@ -224,6 +243,7 @@ export const listChartOfAccounts = async (): Promise<ChartOfAccountRecord[]> => 
     category: toNullableString(row.category),
     subCategory: toNullableString(row.subCategory),
     description: toNullableString(row.description),
+    costType: includeCostType ? toNullableString(row.costType) : null,
     isFinancial: includeIsFinancial ? toNullableBoolean(row.isFinancial) : null,
     isSurvey: includeIsSurvey ? toNullableBoolean(row.isSurvey) : null,
   }));

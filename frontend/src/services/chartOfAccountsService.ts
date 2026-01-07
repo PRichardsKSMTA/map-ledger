@@ -14,7 +14,7 @@ const resolveApiBaseUrl = (): string | undefined => {
 };
 
 const API_BASE_URL = resolveApiBaseUrl() ?? '/api';
-const CACHE_KEY = 'ml_chart_of_accounts_cache_v1';
+const CACHE_KEY = 'ml_chart_of_accounts_cache_v2';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 
 export interface ChartOfAccountCacheEntry {
@@ -101,6 +101,7 @@ const normalizeAccount = (account: Record<string, unknown>): ChartOfAccount => {
     category: getValue(['category', 'CATEGORY']),
     subCategory: getValue(['subCategory', 'SUB_CATEGORY']),
     description: getValue(['description', 'DESCRIPTION']),
+    costType: getValue(['costType', 'COST_TYPE', 'cost_type']),
     isFinancial: getBoolean(['isFinancial', 'IS_FINANCIAL', 'financialFlag']),
     isSurvey: getBoolean(['isSurvey', 'IS_SURVEY', 'surveyFlag']),
   };

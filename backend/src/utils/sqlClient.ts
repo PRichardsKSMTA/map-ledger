@@ -58,6 +58,8 @@ const toOptionalBool = (value?: string): boolean | undefined => {
   return undefined;
 };
 
+const MAX_PARAM_LOG_ENTRIES = toInt(process.env.SQL_LOG_PARAM_LIMIT, 50);
+
 const normaliseKey = (key: string) => key.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 const parseKeyValueConnectionString = (connectionString: string) => {
@@ -435,9 +437,18 @@ export const runQuery = async <TRecord = Record<string, unknown>>(query: string,
     request.input(name, value as any);
   });
 
+  const paramEntries = Object.entries(parameters);
+  const logParameters =
+    paramEntries.length > MAX_PARAM_LOG_ENTRIES
+      ? {
+          parameterCount: paramEntries.length,
+          sample: Object.fromEntries(paramEntries.slice(0, MAX_PARAM_LOG_ENTRIES)),
+        }
+      : parameters;
+
   logInfo('Executing SQL query', {
     query,
-    parameters,
+    parameters: logParameters,
   });
 
   incrementQueryCount();

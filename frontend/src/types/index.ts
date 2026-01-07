@@ -141,6 +141,7 @@ export interface ChartOfAccount {
   category: string | null;
   subCategory: string | null;
   description: string | null;
+  costType?: string | null;
   isFinancial?: boolean | null;
   isSurvey?: boolean | null;
 }

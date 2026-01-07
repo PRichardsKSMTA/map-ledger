@@ -40,6 +40,7 @@ jest.mock('../src/repositories/entityMappingPresetDetailRepository', () => ({
 
 jest.mock('../src/repositories/entityScoaActivityRepository', () => ({
   listEntityScoaActivity: jest.fn(),
+  listEntityScoaActivityForMonths: jest.fn(),
   upsertEntityScoaActivity: jest.fn(),
 }));
 
@@ -64,7 +65,7 @@ import {
   updateEntityMappingPreset,
   listEntityMappingPresetsRaw,
 } from '../src/repositories/entityMappingPresetRepository';
-import { listEntityScoaActivity, upsertEntityScoaActivity } from '../src/repositories/entityScoaActivityRepository';
+import { listEntityScoaActivity, listEntityScoaActivityForMonths, upsertEntityScoaActivity } from '../src/repositories/entityScoaActivityRepository';
 import { deleteEntityPresetMappings, createEntityPresetMappings, listEntityPresetMappingsByPresetGuids, listEntityPresetMappings } from '../src/repositories/entityPresetMappingRepository';
 import {
   createEntityMappingPresetDetails,
@@ -82,6 +83,7 @@ type ListPresetsRawMock = jest.MockedFunction<typeof listEntityMappingPresetsRaw
 type UpsertAccountsMock = jest.MockedFunction<typeof upsertEntityAccounts>;
 type UpsertActivityMock = jest.MockedFunction<typeof upsertEntityScoaActivity>;
 type ListEntityActivityMock = jest.MockedFunction<typeof listEntityScoaActivity>;
+type ListEntityActivityForMonthsMock = jest.MockedFunction<typeof listEntityScoaActivityForMonths>;
 type DeletePresetMappingMock = jest.MockedFunction<typeof deleteEntityPresetMappings>;
 type CreatePresetMappingMock = jest.MockedFunction<typeof createEntityPresetMappings>;
 type ListPresetMappingsMock = jest.MockedFunction<typeof listEntityPresetMappingsByPresetGuids>;
@@ -102,6 +104,7 @@ const mockedListPresetsRaw = listEntityMappingPresetsRaw as ListPresetsRawMock;
 const mockedUpsertAccounts = upsertEntityAccounts as UpsertAccountsMock;
 const mockedUpsertActivity = upsertEntityScoaActivity as UpsertActivityMock;
 const mockedListEntityScoaActivity = listEntityScoaActivity as ListEntityActivityMock;
+const mockedListEntityScoaActivityForMonths = listEntityScoaActivityForMonths as ListEntityActivityForMonthsMock;
 const mockedDeletePresetMappings = deleteEntityPresetMappings as DeletePresetMappingMock;
 const mockedCreatePresetMappings = createEntityPresetMappings as CreatePresetMappingMock;
 const mockedListPresetMappings = listEntityPresetMappingsByPresetGuids as ListPresetMappingsMock;
@@ -122,6 +125,7 @@ const resetSaveHandlerMocks = () => {
   mockedUpsertAccounts.mockResolvedValue([]);
   mockedUpsertActivity.mockResolvedValue([]);
   mockedListEntityScoaActivity.mockResolvedValue([] as any);
+  mockedListEntityScoaActivityForMonths.mockResolvedValue([] as any);
   mockedDeletePresetMappings.mockResolvedValue(0 as any);
   mockedCreatePresetMappings.mockResolvedValue([] as any);
   mockedListPresetMappingsExisting.mockResolvedValue([] as any);
@@ -363,7 +367,10 @@ describe('entityAccountMappings save handler change detection', () => {
         }),
       ]),
     );
-    expect(mockedListEntityScoaActivity).toHaveBeenCalledWith('ent-1');
+    expect(mockedListEntityScoaActivityForMonths).toHaveBeenCalledWith(
+      'ent-1',
+      ['2024-01-01'],
+    );
   });
 
   it('rejects save requests that exceed the configured row limit', async () => {

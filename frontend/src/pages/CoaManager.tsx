@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowUpDown, CheckCircle2, Filter, Loader2, Plus } from 'lucide-react';
+import AddCoaAccountsModal from '../components/coa/AddCoaAccountsModal';
 import IndustryImportModal from '../components/coa/IndustryImportModal';
 import {
   createIndustry as createIndustryService,
+  createIndustryAccounts,
   importIndustryCoaFile,
   IndustryAlreadyExistsError,
+  type CoaManagerAccountCreateInput,
 } from '../services/coaManagerService';
 import { useCoaManagerStore } from '../store/coaManagerStore';
 import scrollPageToTop from '../utils/scroll';
@@ -34,6 +37,7 @@ type SortKey =
   | 'laborGroup'
   | 'operationalGroup'
   | 'category'
+  | 'accountType'
   | 'subCategory'
   | 'isFinancial'
   | 'isSurvey'
@@ -109,7 +113,9 @@ export default function CoaManager() {
   const updateBatchIsFinancial = useCoaManagerStore(state => state.updateBatchIsFinancial);
   const updateRowIsSurvey = useCoaManagerStore(state => state.updateRowIsSurvey);
   const updateBatchIsSurvey = useCoaManagerStore(state => state.updateBatchIsSurvey);
+  const refreshIndustryData = useCoaManagerStore(state => state.refreshIndustryData);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isAddAccountsModalOpen, setIsAddAccountsModalOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: SortDirection;
@@ -313,6 +319,17 @@ export default function CoaManager() {
     updateRowIsSurvey(rowId, isSurvey);
   };
 
+  const handleCreateAccounts = async (payload: CoaManagerAccountCreateInput[]) => {
+    if (!selectedIndustry) {
+      throw new Error('Select an industry to add accounts.');
+    }
+    if (payload.length === 0) {
+      throw new Error('No accounts were generated to add.');
+    }
+    await createIndustryAccounts(selectedIndustry, payload);
+    await refreshIndustryData();
+  };
+
   const handleSort = (key: SortKey) => {
     setSortConfig(previous => {
       if (previous?.key === key) {
@@ -403,6 +420,8 @@ export default function CoaManager() {
             return resolveGroupValue(row.operationalGroup);
           case 'category':
             return row.category;
+          case 'accountType':
+            return row.accountType;
           case 'subCategory':
             return row.subCategory;
           case 'costType':
@@ -732,6 +751,17 @@ export default function CoaManager() {
                 {selectedCount} row{selectedCount === 1 ? '' : 's'} selected
               </p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setIsAddAccountsModalOpen(true)}
+                disabled={rowsLoading}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="whitespace-nowrap">Add Accounts</span>
+              </button>
+            </div>
           </div>
 
           {rowsLoading ? (
@@ -774,6 +804,10 @@ export default function CoaManager() {
                     {renderOperationalGroupHeader()}
                     {renderSortableHeader('category', resolveLabel('category', 'Category'))}
                     {renderSortableHeader(
+                      'accountType',
+                      resolveLabel('accountType', 'Account Type'),
+                    )}
+                    {renderSortableHeader(
                       'subCategory',
                       resolveLabel('subCategory', 'SUB_CATEGORY'),
                     )}
@@ -815,6 +849,7 @@ export default function CoaManager() {
                           {resolveGroupValue(row.operationalGroup)}
                         </td>
                         <td className="px-4 py-3 text-gray-700">{row.category}</td>
+                        <td className="px-4 py-3 text-gray-700">{row.accountType}</td>
                         <td className="px-4 py-3 text-gray-700">{row.subCategory}</td>
                         <td className="px-4 py-3">
                           <label className="sr-only" htmlFor={`is-financial-${row.id}`}>
@@ -932,6 +967,14 @@ export default function CoaManager() {
         open={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onSubmit={handleIndustryImport}
+      />
+      <AddCoaAccountsModal
+        open={isAddAccountsModalOpen}
+        industry={selectedIndustry}
+        rows={rows}
+        columns={columns}
+        onClose={() => setIsAddAccountsModalOpen(false)}
+        onSubmit={handleCreateAccounts}
       />
     </div>
   );

@@ -10,6 +10,7 @@ import {
 import {
   EntityScoaActivityInput,
   listEntityScoaActivity,
+  listEntityScoaActivityForMonths,
   upsertEntityScoaActivity,
 } from '../../repositories/entityScoaActivityRepository';
 import { normalizeGlMonth } from '../../utils/glMonth';
@@ -243,7 +244,9 @@ export const recalculateEntityScoaActivityTotals = async (
 
     const totals = buildEntityScoaTotals(mappings, presetMappingLookup, normalizedMonths, updatedBy);
 
-    const existingActivity = await listEntityScoaActivity(entityId);
+    const existingActivity = normalizedMonths
+      ? await listEntityScoaActivityForMonths(entityId, Array.from(normalizedMonths))
+      : await listEntityScoaActivity(entityId);
     existingActivity
       .filter(row => {
         const month = normalizeActivityMonth(row.activityMonth) ?? row.activityMonth;

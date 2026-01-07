@@ -15,11 +15,29 @@ export interface CoaManagerRow {
   laborGroup: string;
   operationalGroup: string;
   category: string;
+  accountType: string;
   subCategory: string;
   department: string;
   costType: CoaManagerCostType;
   isFinancial: CoaManagerIsFinancial;
   isSurvey: CoaManagerIsSurvey;
+}
+
+export interface CoaManagerAccountCreateInput {
+  accountNumber?: string | null;
+  coreAccount?: string | null;
+  operationalGroupCode?: string | null;
+  laborGroupCode?: string | null;
+  accountName?: string | null;
+  laborGroup?: string | null;
+  operationalGroup?: string | null;
+  category?: string | null;
+  accountType?: string | null;
+  subCategory?: string | null;
+  department?: string | null;
+  costType?: CoaManagerCostType | null;
+  isFinancial?: CoaManagerIsFinancial;
+  isSurvey?: CoaManagerIsSurvey;
 }
 
 export interface CoaManagerIndustryResponse {
@@ -189,6 +207,7 @@ const normalizeRow = (
       'OP_GROUP',
     ]),
     category: getValue(row, ['category', 'CATEGORY']),
+    accountType: getValue(row, ['accountType', 'account_type', 'ACCOUNT_TYPE']),
     subCategory: getValue(row, ['subCategory', 'sub_category', 'SUB_CATEGORY']),
     department: getValue(row, ['department', 'DEPARTMENT', 'dept', 'DEPT']),
     costType: getValue(row, ['costType', 'cost_type', 'COST_TYPE']),
@@ -372,6 +391,24 @@ export const updateIndustryIsSurveyBatch = async (
     const errorText = await response.text().catch(() => 'Unable to update survey flags.');
     throw new Error(errorText || 'Unable to update survey flags.');
   }
+};
+
+export const createIndustryAccounts = async (
+  industry: string,
+  rows: CoaManagerAccountCreateInput[],
+): Promise<{ inserted: number }> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/accounts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+  });
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, 'Unable to create COA accounts.');
+    throw new Error(message || 'Unable to create COA accounts.');
+  }
+
+  return (await response.json()) as { inserted: number };
 };
 
 const extractErrorMessage = async (

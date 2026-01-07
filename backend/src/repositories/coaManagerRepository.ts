@@ -18,11 +18,29 @@ export interface CoaManagerRow {
   laborGroup: string | null;
   operationalGroup: string | null;
   category: string | null;
+  accountType: string | null;
   subCategory: string | null;
   department: string | null;
   costType: string | null;
   isFinancial: boolean | null;
   isSurvey: boolean | null;
+}
+
+export interface CoaManagerAccountInput {
+  accountNumber?: string | null;
+  coreAccount?: string | null;
+  operationalGroupCode?: string | null;
+  laborGroupCode?: string | null;
+  accountName?: string | null;
+  laborGroup?: string | null;
+  operationalGroup?: string | null;
+  category?: string | null;
+  accountType?: string | null;
+  subCategory?: string | null;
+  department?: string | null;
+  costType?: string | null;
+  isFinancial?: boolean | null;
+  isSurvey?: boolean | null;
 }
 
 export interface IndustryCoaData {
@@ -69,10 +87,14 @@ const normalizeText = (value?: string | null): string | null => {
 type ColumnMapping = {
   recordId: string | null;
   accountNumber: string | null;
+  coreAccount: string | null;
+  operationalGroupCode: string | null;
+  laborGroupCode: string | null;
   accountName: string | null;
   laborGroup: string | null;
   operationalGroup: string | null;
   category: string | null;
+  accountType: string | null;
   subCategory: string | null;
   department: string | null;
   costType: string | null;
@@ -93,6 +115,14 @@ const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
     'GL_ACCOUNT',
     'GL_ACCOUNT_NUMBER',
   ],
+  coreAccount: ['CORE_ACCOUNT', 'COREACCOUNT', 'CORE ACCOUNT'],
+  operationalGroupCode: [
+    'OPERATIONAL_GROUP_CODE',
+    'OPERATIONALGROUPCODE',
+    'OPERATIONAL GROUP CODE',
+    'OP_GROUP_CODE',
+  ],
+  laborGroupCode: ['LABOR_GROUP_CODE', 'LABORGROUPCODE', 'LABOR GROUP CODE'],
   accountName: [
     'ACCOUNT_NAME',
     'ACCOUNT_DESCRIPTION',
@@ -109,6 +139,7 @@ const COLUMN_ALIASES: Record<keyof ColumnMapping, string[]> = {
     'OP_GROUP',
   ],
   category: ['CATEGORY', 'ACCOUNT_CATEGORY', 'ACCT_CATEGORY'],
+  accountType: ['ACCOUNT_TYPE', 'ACCOUNT TYPE', 'ACCT_TYPE', 'ACCT TYPE', 'TYPE'],
   subCategory: ['SUB_CATEGORY', 'SUBCATEGORY', 'SUB CATEGORY', 'ACCOUNT_SUBCATEGORY'],
   department: ['DEPARTMENT', 'DEPT'],
   costType: ['COST_TYPE', 'COSTTYPE'],
@@ -149,10 +180,14 @@ const buildColumnMapping = (columns: string[]): ColumnMapping => {
   return {
     recordId: resolveColumnName(COLUMN_ALIASES.recordId, lookup),
     accountNumber: resolveColumnName(COLUMN_ALIASES.accountNumber, lookup),
+    coreAccount: resolveColumnName(COLUMN_ALIASES.coreAccount, lookup),
+    operationalGroupCode: resolveColumnName(COLUMN_ALIASES.operationalGroupCode, lookup),
+    laborGroupCode: resolveColumnName(COLUMN_ALIASES.laborGroupCode, lookup),
     accountName: resolveColumnName(COLUMN_ALIASES.accountName, lookup),
     laborGroup: resolveColumnName(COLUMN_ALIASES.laborGroup, lookup),
     operationalGroup: resolveColumnName(COLUMN_ALIASES.operationalGroup, lookup),
     category: resolveColumnName(COLUMN_ALIASES.category, lookup),
+    accountType: resolveColumnName(COLUMN_ALIASES.accountType, lookup),
     subCategory: resolveColumnName(COLUMN_ALIASES.subCategory, lookup),
     department: resolveColumnName(COLUMN_ALIASES.department, lookup),
     costType: resolveColumnName(COLUMN_ALIASES.costType, lookup),
@@ -167,6 +202,7 @@ const buildColumnResponse = (mapping: ColumnMapping): CoaManagerColumn[] => [
   { key: 'laborGroup', label: mapping.laborGroup ?? 'Labor Group' },
   { key: 'operationalGroup', label: mapping.operationalGroup ?? 'Operational Group' },
   { key: 'category', label: mapping.category ?? 'Category' },
+  { key: 'accountType', label: mapping.accountType ?? 'Account Type' },
   { key: 'subCategory', label: mapping.subCategory ?? 'Sub Category' },
   { key: 'department', label: mapping.department ?? 'Department' },
   { key: 'isFinancial', label: mapping.isFinancial ?? 'Is Financial' },
@@ -189,6 +225,24 @@ const toNullableString = (value: unknown): string | null => {
 };
 
 const toRequiredString = (value: unknown): string => toNullableString(value) ?? '';
+
+const parseAccountNumberParts = (
+  value?: string | null,
+): { core: string; operationalGroupCode: string; laborGroupCode: string } | null => {
+  if (!value) {
+    return null;
+  }
+  const match = value.trim().match(/^(\d+)-(\d+)-(\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const [, core, operationalGroupCode, laborGroupCode] = match;
+  return {
+    core,
+    operationalGroupCode: operationalGroupCode.padStart(3, '0'),
+    laborGroupCode: laborGroupCode.padStart(3, '0'),
+  };
+};
 
 const toNullableBoolean = (value: unknown): boolean | null => {
   if (value === undefined || value === null) {
@@ -352,6 +406,7 @@ export const listIndustryCoaData = async (
         mapping.operationalGroup ? row[mapping.operationalGroup] : null,
       ),
       category: toNullableString(mapping.category ? row[mapping.category] : null),
+      accountType: toNullableString(mapping.accountType ? row[mapping.accountType] : null),
       subCategory: toNullableString(mapping.subCategory ? row[mapping.subCategory] : null),
       department: toNullableString(mapping.department ? row[mapping.department] : null),
       costType: toNullableString(mapping.costType ? row[mapping.costType] : null),
@@ -511,6 +566,142 @@ export const updateIndustryIsSurveyBatch = async (
   );
 
   return result.rowsAffected?.[0] ?? 0;
+};
+
+const toNullableBitString = (value?: boolean | null): string | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return value ? '1' : '0';
+};
+
+const buildJsonPath = (column: string): string => {
+  const escaped = column.replace(/"/g, '""');
+  return `$.\"${escaped}\"`;
+};
+
+const buildInsertPayload = (
+  rows: CoaManagerAccountInput[],
+  mapping: ColumnMapping,
+): { columns: string[]; rows: Record<string, string | null>[] } => {
+  const columnLookup = {
+    accountNumber: mapping.accountNumber,
+    coreAccount: mapping.coreAccount,
+    operationalGroupCode: mapping.operationalGroupCode,
+    laborGroupCode: mapping.laborGroupCode,
+    accountName: mapping.accountName,
+    laborGroup: mapping.laborGroup,
+    operationalGroup: mapping.operationalGroup,
+    category: mapping.category,
+    accountType: mapping.accountType,
+    subCategory: mapping.subCategory,
+    department: mapping.department,
+    costType: mapping.costType,
+    isFinancial: mapping.isFinancial,
+    isSurvey: mapping.isSurvey,
+  };
+
+  const columns = Object.values(columnLookup).filter(
+    (value): value is string => Boolean(value),
+  );
+
+  const payloadRows = rows.map((row) => {
+    const record: Record<string, string | null> = {};
+    const parsedAccountNumber = parseAccountNumberParts(row.accountNumber ?? null);
+    if (columnLookup.accountNumber) {
+      record[columnLookup.accountNumber] = normalizeText(row.accountNumber ?? null);
+    }
+    if (columnLookup.coreAccount) {
+      record[columnLookup.coreAccount] = normalizeText(
+        row.coreAccount ?? parsedAccountNumber?.core ?? null,
+      );
+    }
+    if (columnLookup.operationalGroupCode) {
+      record[columnLookup.operationalGroupCode] = normalizeText(
+        row.operationalGroupCode ?? parsedAccountNumber?.operationalGroupCode ?? null,
+      );
+    }
+    if (columnLookup.laborGroupCode) {
+      record[columnLookup.laborGroupCode] = normalizeText(
+        row.laborGroupCode ?? parsedAccountNumber?.laborGroupCode ?? null,
+      );
+    }
+    if (columnLookup.accountName) {
+      record[columnLookup.accountName] = normalizeText(row.accountName ?? null);
+    }
+    if (columnLookup.laborGroup) {
+      record[columnLookup.laborGroup] = normalizeText(row.laborGroup ?? null);
+    }
+    if (columnLookup.operationalGroup) {
+      record[columnLookup.operationalGroup] = normalizeText(row.operationalGroup ?? null);
+    }
+    if (columnLookup.category) {
+      record[columnLookup.category] = normalizeText(row.category ?? null);
+    }
+    if (columnLookup.accountType) {
+      record[columnLookup.accountType] = normalizeText(row.accountType ?? null);
+    }
+    if (columnLookup.subCategory) {
+      record[columnLookup.subCategory] = normalizeText(row.subCategory ?? null);
+    }
+    if (columnLookup.department) {
+      record[columnLookup.department] = normalizeText(row.department ?? null);
+    }
+    if (columnLookup.costType) {
+      record[columnLookup.costType] = normalizeText(row.costType ?? null);
+    }
+    if (columnLookup.isFinancial) {
+      record[columnLookup.isFinancial] = toNullableBitString(row.isFinancial ?? null);
+    }
+    if (columnLookup.isSurvey) {
+      record[columnLookup.isSurvey] = toNullableBitString(row.isSurvey ?? null);
+    }
+    return record;
+  });
+
+  return { columns, rows: payloadRows };
+};
+
+export const insertIndustryAccounts = async (
+  industryName: string,
+  rows: CoaManagerAccountInput[],
+): Promise<number> => {
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  const tableName = await resolveIndustryTableName(industryName);
+  await ensureIsFinancialColumn(tableName);
+  await ensureIsSurveyColumn(tableName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+  const payload = buildInsertPayload(rows, mapping);
+
+  if (payload.columns.length === 0 || payload.rows.length === 0) {
+    return 0;
+  }
+
+  const columnList = payload.columns.map((column) => escapeColumnName(column)).join(', ');
+  const withClause = payload.columns
+    .map((column) => `  ${escapeColumnName(column)} NVARCHAR(255) '${buildJsonPath(column)}'`)
+    .join(',\n');
+  const jsonPayload = JSON.stringify(payload.rows);
+
+  const sql = `DECLARE @payload NVARCHAR(MAX) = @jsonPayload;
+
+    WITH SourceRows AS (
+      SELECT *
+      FROM OPENJSON(@payload)
+      WITH (
+${withClause}
+      )
+    )
+    INSERT INTO ${tableName} (${columnList})
+    SELECT ${columnList}
+    FROM SourceRows;`;
+
+  await runQuery(sql, { jsonPayload });
+  return payload.rows.length;
 };
 
 export default listIndustryCoaData;
