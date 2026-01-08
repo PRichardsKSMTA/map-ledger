@@ -54,6 +54,12 @@ const resolveHydrationMode = (value: string | null): HydrationMode => {
   return 'resume';
 };
 
+type EntityStepCompletion = {
+  mapping: boolean;
+  distribution: boolean;
+  review: boolean;
+};
+
 export default function Mapping() {
   const { uploadId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -112,8 +118,8 @@ export default function Mapping() {
     [availableEntities, availableEntityIds],
   );
   const lastClientIdRef = useRef<string | null>(null);
-  const entityCompletion = useMemo<Record<string, boolean>>(() => {
-    const completion: Record<string, boolean> = {};
+  const entityStepCompletion = useMemo<Record<string, EntityStepCompletion>>(() => {
+    const completion: Record<string, EntityStepCompletion> = {};
     availableEntities.forEach(entity => {
       const mappingProgress = entityMappingProgress[entity.id];
       const totalAccounts = mappingProgress?.totalAccounts ?? 0;
@@ -124,7 +130,11 @@ export default function Mapping() {
           ? true
           : distributionCompletionByEntity[entity.id] ?? false;
 
-      completion[entity.id] = mappingComplete && distributionComplete;
+      completion[entity.id] = {
+        mapping: mappingComplete,
+        distribution: distributionComplete,
+        review: mappingComplete && distributionComplete,
+      };
     });
     return completion;
   }, [availableEntities, distributionCompletionByEntity, entityMappingProgress]);
@@ -417,6 +427,16 @@ export default function Mapping() {
     [resolveEntityStage, searchParams, setActiveEntityId, setSearchParams],
   );
 
+  const statusEntityId = activeEntityId ?? lastActiveEntityId.current;
+  const activeStepCompletion = statusEntityId ? entityStepCompletion[statusEntityId] : null;
+  const stepStatuses = activeStepCompletion
+    ? {
+        mapping: activeStepCompletion.mapping,
+        distribution: activeStepCompletion.distribution,
+        review: activeStepCompletion.review,
+      }
+    : undefined;
+
   return (
     <div data-testid="mapping-page" className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
       <MappingHeader
@@ -429,12 +449,14 @@ export default function Mapping() {
           entities={availableEntities}
           activeEntityId={activeEntityId}
           onSelect={handleEntityChange}
-          entityStages={entityStages}
-          entityCompletion={entityCompletion}
         />
       )}
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <StepTabs activeStep={activeStep} onStepChange={handleStepChange} />
+        <StepTabs
+          activeStep={activeStep}
+          onStepChange={handleStepChange}
+          stepStatuses={stepStatuses}
+        />
         <section
           aria-label="Mapping workspace content"
           className="w-full border-t border-gray-200 p-6 dark:border-slate-700"

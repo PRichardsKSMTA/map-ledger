@@ -680,6 +680,10 @@ interface TargetAccumulatorEntry {
   value: number;
 }
 
+interface TargetAccumulatorByPeriodEntry extends TargetAccumulatorEntry {
+  valuesByPeriod: Record<string, number>;
+}
+
 const accumulateStandardTargetValues = (
   accounts: GLAccountMappingRow[],
 ): Map<string, TargetAccumulatorEntry> => {
@@ -751,6 +755,99 @@ const accumulateStandardTargetValues = (
       const allocatable = Math.max(0, baseAmount - excluded);
       const signedAmount = getSignedAmountForAccount(account, allocatable);
       addValue(targetId, label, signedAmount);
+    }
+  });
+
+  return accumulator;
+};
+
+const accumulateStandardTargetValuesByPeriod = (
+  accounts: GLAccountMappingRow[],
+): Map<string, TargetAccumulatorByPeriodEntry> => {
+  const accumulator = new Map<string, TargetAccumulatorByPeriodEntry>();
+
+  const addValue = (
+    targetId: string,
+    label: string,
+    amount: number,
+    periodKey: string | null,
+  ) => {
+    if (!Number.isFinite(amount) || amount === 0) {
+      return;
+    }
+    const existing = accumulator.get(targetId);
+    if (existing) {
+      existing.value += amount;
+      if (periodKey) {
+        existing.valuesByPeriod[periodKey] =
+          (existing.valuesByPeriod[periodKey] ?? 0) + amount;
+      }
+      return;
+    }
+    accumulator.set(targetId, {
+      id: targetId,
+      label,
+      value: amount,
+      valuesByPeriod: periodKey ? { [periodKey]: amount } : {},
+    });
+  };
+
+  accounts.forEach(account => {
+    const periodKey = normalizePeriod(account.glMonth);
+
+    if (account.mappingType === 'direct') {
+      if (account.status !== 'Mapped') {
+        return;
+      }
+      const normalizedTarget = account.manualCOAId?.trim();
+      if (!normalizedTarget) {
+        return;
+      }
+      const option = findChartOfAccountTarget(normalizedTarget);
+      if (option?.isFinancial === false) {
+        return;
+      }
+      const targetId = option?.id ?? normalizedTarget;
+      const label = option?.label ?? normalizedTarget;
+      const amount = account.netChange;
+      addValue(targetId, label, amount, periodKey);
+      return;
+    }
+
+    if (account.mappingType === 'percentage') {
+      account.splitDefinitions.forEach(split => {
+        if (split.isExclusion) {
+          return;
+        }
+        const normalizedTarget = split.targetId?.trim();
+        if (!normalizedTarget) {
+          return;
+        }
+        const option = findChartOfAccountTarget(normalizedTarget);
+        if (option?.isFinancial === false) {
+          return;
+        }
+        const targetId = option?.id ?? normalizedTarget;
+        const label = option?.label ?? split.targetName ?? normalizedTarget;
+        const amount = getSplitSignedAmount(account, split);
+        addValue(targetId, label, amount, periodKey);
+      });
+      return;
+    }
+
+    if (account.mappingType === 'dynamic') {
+      const normalizedTarget = account.manualCOAId?.trim() ?? account.suggestedCOAId?.trim();
+      if (!normalizedTarget) {
+        return;
+      }
+      const option = findChartOfAccountTarget(normalizedTarget);
+      const targetId = option?.id ?? normalizedTarget;
+      const label = option?.label ?? normalizedTarget;
+      const baseAmount = Math.abs(account.netChange);
+      const excluded = Math.abs(account.dynamicExclusionAmount ?? 0);
+      const allocatable = Math.max(0, baseAmount - excluded);
+      const signedAmount = getSignedAmountForAccount(account, allocatable);
+      addValue(targetId, label, signedAmount, periodKey);
     }
   });
 
@@ -936,15 +1033,16 @@ export const buildEntityReconciliationGroups = (
 const buildBasisAccountsFromMappings = (
   accounts: GLAccountMappingRow[],
 ): DynamicBasisAccount[] => {
-  const accumulator = accumulateStandardTargetValues(accounts);
+  const accumulator = accumulateStandardTargetValuesByPeriod(accounts);
 
   return Array.from(accumulator.values())
-    .map(({ id, label, value }) => ({
+    .map(({ id, label, value, valuesByPeriod }) => ({
       id,
       name: label,
       description: label,
       value,
       mappedTargetId: id,
+      valuesByPeriod: Object.keys(valuesByPeriod).length > 0 ? valuesByPeriod : undefined,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 };
@@ -2093,9 +2191,11 @@ export const useMappingStore = create<MappingState>((set, get) => {
       void get().refreshPresetLibrary([targetEntityId]);
     }
   },
-  setActivePeriod: period =>
+  setActivePeriod: period => {
+    let resolvedPeriod: string | null = null;
     set(state => {
       if (period === null) {
+        resolvedPeriod = null;
         return { activePeriod: null };
       }
 
@@ -2106,15 +2206,23 @@ export const useMappingStore = create<MappingState>((set, get) => {
       const availablePeriods = getPeriodsForAccounts(scopedAccounts);
 
       if (availablePeriods.length === 0) {
+        resolvedPeriod = null;
         return { activePeriod: null };
       }
 
       if (availablePeriods.includes(period)) {
+        resolvedPeriod = period;
         return { activePeriod: period };
       }
 
-      return { activePeriod: availablePeriods[0] ?? null };
-    }),
+      resolvedPeriod = availablePeriods[0] ?? null;
+      return { activePeriod: resolvedPeriod };
+    });
+
+    if (resolvedPeriod) {
+      useRatioAllocationStore.getState().setSelectedPeriod(resolvedPeriod);
+    }
+  },
   toggleStatusFilter: status =>
     set(state => {
       const exists = state.activeStatuses.includes(status);

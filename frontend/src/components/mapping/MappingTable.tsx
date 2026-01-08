@@ -1,6 +1,7 @@
 import {
   ChangeEvent,
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -144,6 +145,9 @@ const HEADER_BUTTON_ALIGNMENT: Partial<Record<SortKey, string>> = {
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const buildAccountIdentityKey = (
+  account: Pick<GLAccountMappingRow, 'entityId' | 'accountId'>,
+) => `${account.entityId ?? ''}__${account.accountId ?? ''}`;
 
 export default function MappingTable() {
   const {
@@ -171,8 +175,46 @@ export default function MappingTable() {
     [datapoints]
   );
   const accounts = useMappingStore(selectFilteredAccounts);
+  const allAccounts = useMappingStore(state => state.accounts);
   const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore((state) => state.activePeriod);
+  const accountLookup = useMemo(
+    () => new Map(allAccounts.map(account => [account.id, account])),
+    [allAccounts],
+  );
+  const accountIdsByIdentity = useMemo(() => {
+    const lookup = new Map<string, string[]>();
+    allAccounts.forEach(account => {
+      const key = buildAccountIdentityKey(account);
+      const existing = lookup.get(key);
+      if (existing) {
+        existing.push(account.id);
+      } else {
+        lookup.set(key, [account.id]);
+      }
+    });
+    return lookup;
+  }, [allAccounts]);
+  const expandAccountIds = useCallback(
+    (ids: string[]) => {
+      if (activePeriod) {
+        return ids;
+      }
+      const expanded = new Set<string>();
+      ids.forEach(id => {
+        const account = accountLookup.get(id);
+        if (!account) {
+          expanded.add(id);
+          return;
+        }
+        const key = buildAccountIdentityKey(account);
+        const matches = accountIdsByIdentity.get(key) ?? [id];
+        matches.forEach(matchId => expanded.add(matchId));
+      });
+      return Array.from(expanded);
+    },
+    [accountIdsByIdentity, accountLookup, activePeriod],
+  );
   const unmappedPeriodsByAccount = useMappingStore(selectUnmappedPeriodsByAccount);
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
@@ -466,15 +508,19 @@ export default function MappingTable() {
 
   const derivedSelectedPeriod = activePeriod ?? selectedPeriod ?? null;
   const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const expandedSelectedIdList = useMemo(
+    () => (selectedIdList.length > 0 ? expandAccountIds(selectedIdList) : []),
+    [expandAccountIds, selectedIdList],
+  );
   const dynamicPresetSelectionIds = useMemo(() => {
     if (!activeDynamicAccountId) {
       return [];
     }
     if (selectedIds.has(activeDynamicAccountId) && selectedIds.size > 1) {
-      return selectedIdList;
+      return expandedSelectedIdList;
     }
-    return [activeDynamicAccountId];
-  }, [activeDynamicAccountId, selectedIdList, selectedIds]);
+    return expandAccountIds([activeDynamicAccountId]);
+  }, [activeDynamicAccountId, expandAccountIds, expandedSelectedIdList, selectedIds]);
 
   const dynamicExclusionSummaries = useMemo(
     () =>
@@ -991,7 +1037,11 @@ export default function MappingTable() {
                             colSpan={COLUMN_DEFINITIONS.length + 2}
                             panelId={`split-panel-${account.id}`}
                             onOpenBuilder={() => setActiveDynamicAccountId(account.id)}
-                            batchAccountIds={hasBatchSelection ? selectedIdList : undefined}
+                            batchAccountIds={
+                              hasBatchSelection
+                                ? expandedSelectedIdList
+                                : expandAccountIds([account.id])
+                            }
                           />
                         ) : (
                         <MappingSplitRow

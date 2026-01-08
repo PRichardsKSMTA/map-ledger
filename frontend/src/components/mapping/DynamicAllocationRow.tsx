@@ -104,17 +104,30 @@ const DynamicAllocationRow = ({
   );
 
   useEffect(() => {
-    if (!account.presetId) {
+    const resolvedPresetId = account.presetId?.trim() ?? '';
+    if (!resolvedPresetId) {
+      return;
+    }
+    const presetExists = mappingContextPresets.some(
+      preset => preset.id === resolvedPresetId,
+    );
+    if (!presetExists) {
       return;
     }
     const activePreset = getActivePresetForSource(account.id);
-    if (activePreset?.id === account.presetId) {
+    if (activePreset?.id === resolvedPresetId) {
       return;
     }
-    setActivePresetForSource(account.id, account.presetId, {
+    setActivePresetForSource(account.id, resolvedPresetId, {
       suppressMutation: true,
     });
-  }, [account.id, account.presetId, getActivePresetForSource, setActivePresetForSource]);
+  }, [
+    account.id,
+    account.presetId,
+    getActivePresetForSource,
+    mappingContextPresets,
+    setActivePresetForSource,
+  ]);
 
   const allocation = useMemo(
     () => allocations.find(item => item.sourceAccount.id === account.id),

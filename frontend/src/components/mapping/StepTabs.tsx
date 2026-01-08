@@ -1,3 +1,5 @@
+import { CheckCircle, Circle } from 'lucide-react';
+
 export type MappingStep = 'mapping' | 'reconcile' | 'distribution' | 'review';
 
 const DEFAULT_STEPS: { key: MappingStep; label: string; description?: string }[] = [
@@ -15,9 +17,15 @@ interface StepTabsProps {
   activeStep: MappingStep;
   onStepChange: (step: MappingStep) => void;
   steps?: { key: MappingStep; label: string; description?: string }[];
+  stepStatuses?: Partial<Record<MappingStep, boolean>>;
 }
 
-const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsProps) => {
+const StepTabs = ({
+  activeStep,
+  onStepChange,
+  steps = DEFAULT_STEPS,
+  stepStatuses,
+}: StepTabsProps) => {
   return (
     <div className="pb-1">
       <nav
@@ -26,6 +34,10 @@ const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsP
       >
         {steps.map(step => {
           const isActive = step.key === activeStep;
+          const status = stepStatuses?.[step.key];
+          const showStatus = step.key !== 'reconcile' && typeof status === 'boolean';
+          const StatusIcon = status ? CheckCircle : Circle;
+          const statusLabel = status ? 'Complete' : 'Needs work';
           const baseClasses =
             'group relative flex-1 rounded-t-lg border px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900';
           const stateClasses = isActive
@@ -40,8 +52,15 @@ const StepTabs = ({ activeStep, onStepChange, steps = DEFAULT_STEPS }: StepTabsP
               className={`${baseClasses}${stateClasses}`}
               aria-current={isActive ? 'page' : undefined}
             >
-              <span className="block text-base font-semibold">
-                {step.label}
+              <span className="flex items-center gap-2 text-base font-semibold">
+                {showStatus && (
+                  <StatusIcon
+                    className={`h-4 w-4 ${status ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500 dark:text-amber-300'}`}
+                    aria-hidden="true"
+                  />
+                )}
+                <span>{step.label}</span>
+                {showStatus && <span className="sr-only">{statusLabel}</span>}
               </span>
               {step.description && (
                 <span className="mt-1 block text-xs text-gray-600 dark:text-gray-400">
