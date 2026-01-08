@@ -68,6 +68,43 @@ const CORE_ACCOUNT_PATTERN = /^\d{4}$/;
 const sortValues = (values: string[]): string[] =>
   [...values].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
+const formatAccountMetadata = (category: string | null, subCategory: string | null): string => {
+  const categoryLabel = category?.trim() ? category : 'Unassigned category';
+  const subCategoryLabel = subCategory?.trim() ? subCategory : 'Unassigned sub category';
+  return `Category: ${categoryLabel} | Sub category: ${subCategoryLabel}`;
+};
+
+const sortAccountKeys = (
+  rows: Array<{ key: string; accountNumber: string | null; accountName: string }>,
+): string[] =>
+  [...rows]
+    .sort((a, b) => {
+      if (!a.accountNumber && b.accountNumber) {
+        return 1;
+      }
+      if (a.accountNumber && !b.accountNumber) {
+        return -1;
+      }
+      if (!a.accountNumber && !b.accountNumber) {
+        return a.accountName.localeCompare(b.accountName, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      }
+      const numberCompare = a.accountNumber!.localeCompare(b.accountNumber!, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (numberCompare !== 0) {
+        return numberCompare;
+      }
+      return a.accountName.localeCompare(b.accountName, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+    })
+    .map(row => row.key);
+
 const toTitleCase = (value: string): string =>
   value
     .trim()
@@ -155,27 +192,8 @@ const formatAccountName = (
   return parts.join(' - ');
 };
 
-const ACCOUNT_NUMBER_PATTERN = /^(\d{4})-(\d+)-(\d+)$/;
 const ACCOUNT_NUMBER_CODES_PATTERN = /^(\d+)-(\d+)-(\d+)$/;
 
-const parseAccountNumber = (
-  value?: string | null,
-): { core: string; operationalCode: number; laborCode: number } | null => {
-  if (!value) {
-    return null;
-  }
-  const match = value.trim().match(ACCOUNT_NUMBER_PATTERN);
-  if (!match) {
-    return null;
-  }
-  const [, core, operational, labor] = match;
-  const operationalCode = Number(operational);
-  const laborCode = Number(labor);
-  if (!Number.isFinite(operationalCode) || !Number.isFinite(laborCode)) {
-    return null;
-  }
-  return { core, operationalCode, laborCode };
-};
 
 const parseAccountNumberCodes = (
   value?: string | null,
@@ -263,6 +281,7 @@ export default function AddCoaAccountsModal({
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [showReview, setShowReview] = useState(false);
   const [coreOverrides, setCoreOverrides] = useState<Record<string, string>>({});
+  const [reviewOrder, setReviewOrder] = useState<string[]>([]);
 
   const supportsAccountType = useMemo(
     () => columns.some(column => column.key === 'accountType'),
@@ -1146,7 +1165,24 @@ export default function AddCoaAccountsModal({
     setCoreOverrides({});
     setHasSubmitted(false);
     setError(null);
+    setReviewOrder([]);
   }, [draftFingerprint, open]);
+
+  useEffect(() => {
+    if (!showReview) {
+      setReviewOrder([]);
+      return;
+    }
+    setReviewOrder(
+      sortAccountKeys(
+        preview.rows.map(row => ({
+          key: row.key,
+          accountName: row.accountName,
+          accountNumber: buildAccountNumber(row.baseCore, row.operationalCode, row.laborCode),
+        })),
+      ),
+    );
+  }, [preview.rows, showReview]);
 
   const reviewRows = useMemo<ReviewRow[]>(() => {
     if (!showReview) {
@@ -1189,9 +1225,25 @@ export default function AddCoaAccountsModal({
     });
   }, [coreOverrides, existingAccountNumbers, preview.rows, showReview]);
 
-  if (!open) {
-    return null;
-  }
+  const reviewRowMap = useMemo(
+    () => new Map(reviewRows.map(row => [row.key, row])),
+    [reviewRows],
+  );
+
+  const orderedReviewRows = useMemo(() => {
+    if (!showReview) {
+      return [];
+    }
+    if (reviewOrder.length === 0) {
+      return reviewRows;
+    }
+    const ordered = reviewOrder
+      .map(key => reviewRowMap.get(key))
+      .filter((row): row is ReviewRow => Boolean(row));
+    const orderedKeys = new Set(reviewOrder);
+    const extras = reviewRows.filter(row => !orderedKeys.has(row.key));
+    return [...ordered, ...extras];
+  }, [reviewOrder, reviewRowMap, reviewRows, showReview]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1245,6 +1297,18 @@ export default function AddCoaAccountsModal({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSortReview = () => {
+    setReviewOrder(
+      sortAccountKeys(
+        reviewRows.map(row => ({
+          key: row.key,
+          accountName: row.accountName,
+          accountNumber: row.accountNumber,
+        })),
+      ),
+    );
   };
 
   const fieldErrorMessages = new Set([
@@ -1609,6 +1673,184 @@ export default function AddCoaAccountsModal({
     },
   };
 
+  const previewRowsSorted = useMemo(() => {
+    if (showReview) {
+      return [];
+    }
+    return preview.rows
+      .map(row => ({
+        row,
+        accountNumber: buildAccountNumber(row.baseCore, row.operationalCode, row.laborCode),
+      }))
+      .sort((a, b) => {
+        if (!a.accountNumber && b.accountNumber) {
+          return 1;
+        }
+        if (a.accountNumber && !b.accountNumber) {
+          return -1;
+        }
+        if (!a.accountNumber && !b.accountNumber) {
+          return a.row.accountName.localeCompare(b.row.accountName, undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          });
+        }
+        const numberCompare = a.accountNumber!.localeCompare(b.accountNumber!, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+        if (numberCompare !== 0) {
+          return numberCompare;
+        }
+        return a.row.accountName.localeCompare(b.row.accountName, undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      });
+  }, [preview.rows, showReview]);
+
+  if (!open) {
+    return null;
+  }
+
+  if (showReview) {
+    return (
+      <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-coa-title"
+          className="w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-xl bg-white shadow-xl"
+          onClick={event => event.stopPropagation()}
+        >
+          <form
+            onSubmit={handleSubmit}
+            className="max-h-[calc(100vh-2rem)] space-y-5 overflow-y-auto p-6"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="review-coa-title" className="text-lg font-semibold text-gray-900">
+                  Review account numbers
+                </h2>
+                <p className="text-sm text-gray-600">
+                  Review {preview.count} account{preview.count === 1 ? '' : 's'} for{' '}
+                  {industry || 'this industry'} before creating them.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="rounded-full p-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed"
+                aria-label="Close modal"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-gray-500">
+                Edit the 4-digit core value per account.
+              </span>
+              <button
+                type="button"
+                onClick={handleSortReview}
+                className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 shadow-sm hover:text-gray-800"
+              >
+                Sort
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+              {orderedReviewRows.map(row => (
+                <div
+                  key={row.key}
+                  className="rounded-md border border-gray-200 bg-white p-3 shadow-sm"
+                >
+                  <div className="grid gap-3 md:grid-cols-[170px_1fr]">
+                    <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+                      Core account
+                      <input
+                        type="text"
+                        value={row.coreValue}
+                        onChange={event => {
+                          setCoreOverrides(previous => ({
+                            ...previous,
+                            [row.key]: event.target.value,
+                          }));
+                          setError(null);
+                        }}
+                        inputMode="numeric"
+                        pattern="[0-9]{4}"
+                        className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isSubmitting}
+                      />
+                      {row.error && (
+                        <span className="text-xs font-normal text-red-600">{row.error}</span>
+                      )}
+                    </label>
+                    <div className="space-y-1">
+                      <div className="text-xs text-gray-500">Account number</div>
+                      <div className="text-sm font-semibold text-gray-900">
+                        {row.accountNumber ?? 'Account number incomplete'}
+                      </div>
+                      <div className="text-xs text-gray-600">{row.accountName}</div>
+                      <div className="text-xs text-gray-500">
+                        {formatAccountMetadata(row.category, row.subCategory)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {displayError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {displayError}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReview(false);
+                  setError(null);
+                }}
+                disabled={isSubmitting}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+              >
+                Back to edit
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitDisabled}
+                className="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating accounts
+                  </>
+                ) : (
+                  submitLabel
+                )}
+              </button>
+            </div>
+          </form>
+        </div>
+      </ModalBackdrop>
+    );
+  }
+
   return (
     <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div
@@ -1888,31 +2130,22 @@ export default function AddCoaAccountsModal({
             <div className="font-medium text-gray-700">
               {preview.count} account{preview.count === 1 ? '' : 's'} will be created.
             </div>
-            {!showReview && preview.rows.length > 0 && (
+            {previewRowsSorted.length > 0 && (
               <div className="mt-3 max-h-64 overflow-y-auto divide-y divide-gray-200 text-xs text-gray-600">
-                {preview.rows.map(row => {
-                  const accountNumber = buildAccountNumber(
-                    row.baseCore,
-                    row.operationalCode,
-                    row.laborCode,
-                  );
-                  return (
-                    <div key={row.key} className="py-2">
-                      <div className="text-sm font-medium text-gray-700">
-                        {row.accountName}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {accountNumber ?? 'Account number pending'}
-                      </div>
+                {previewRowsSorted.map(({ row, accountNumber }) => (
+                  <div key={row.key} className="py-2">
+                    <div className="text-sm font-medium text-gray-700">
+                      {row.accountName}
                     </div>
-                  );
-                })}
+                    <div className="text-xs text-gray-500">
+                      {accountNumber ?? 'Account number pending'}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formatAccountMetadata(row.category, row.subCategory)}
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-            {showReview && (
-              <p className="mt-2 text-xs text-gray-500">
-                Review each account number and adjust the core value as needed.
-              </p>
             )}
             {!showReview && !isCoreRequired && preview.rows.some(row => !row.baseCore) && (
               <p className="mt-2 text-xs text-gray-500">
@@ -1920,58 +2153,6 @@ export default function AddCoaAccountsModal({
               </p>
             )}
           </div>
-
-          {showReview && (
-            <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium text-gray-700">
-                  Review account numbers
-                </span>
-                <span className="text-xs text-gray-500">
-                  Edit the 4-digit core value per account.
-                </span>
-              </div>
-              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-                {reviewRows.map(row => (
-                  <div
-                    key={row.key}
-                    className="rounded-md border border-gray-200 bg-white p-3 shadow-sm"
-                  >
-                    <div className="grid gap-3 md:grid-cols-[170px_1fr]">
-                      <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-                        Core account
-                        <input
-                          type="text"
-                          value={row.coreValue}
-                          onChange={event => {
-                            setCoreOverrides(previous => ({
-                              ...previous,
-                              [row.key]: event.target.value,
-                            }));
-                            setError(null);
-                          }}
-                          inputMode="numeric"
-                          pattern="[0-9]{4}"
-                          className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          disabled={isSubmitting}
-                        />
-                        {row.error && (
-                          <span className="text-xs font-normal text-red-600">{row.error}</span>
-                        )}
-                      </label>
-                      <div className="space-y-1">
-                        <div className="text-xs text-gray-500">Account number</div>
-                        <div className="text-sm font-semibold text-gray-900">
-                          {row.accountNumber ?? 'Account number incomplete'}
-                        </div>
-                        <div className="text-xs text-gray-600">{row.accountName}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {displayError ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
