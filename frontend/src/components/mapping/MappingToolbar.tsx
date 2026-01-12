@@ -1,18 +1,17 @@
-import { ChangeEvent, useState } from 'react';
+import { ChangeEvent } from 'react';
 import { Search } from 'lucide-react';
 import {
   selectActiveStatuses,
   selectSearchTerm,
   useMappingStore,
 } from '../../store/mappingStore';
-import { useMappingSelectionStore } from '../../store/mappingSelectionStore';
 import type { GLAccountMappingRow } from '../../types';
-import PresetModal from './PresetModal';
-import BatchExclude from './BatchExclude';
 
 interface MappingToolbarProps {
   onApplyAcrossPeriods?: () => void;
   canApplyAcrossPeriods?: boolean;
+  onApplyToFuturePeriods?: () => void;
+  canApplyToFuturePeriods?: boolean;
 }
 
 const STATUS_DEFINITIONS: {
@@ -45,68 +44,24 @@ const STATUS_DEFINITIONS: {
 export default function MappingToolbar({
   onApplyAcrossPeriods,
   canApplyAcrossPeriods = false,
+  onApplyToFuturePeriods,
+  canApplyToFuturePeriods = false,
 }: MappingToolbarProps) {
   const searchTerm = useMappingStore(selectSearchTerm);
   const activeStatuses = useMappingStore(selectActiveStatuses);
   const setSearchTerm = useMappingStore(state => state.setSearchTerm);
   const toggleStatusFilter = useMappingStore(state => state.toggleStatusFilter);
   const clearStatusFilters = useMappingStore(state => state.clearStatusFilters);
-  const bulkAccept = useMappingStore(state => state.bulkAccept);
-  const finalizeMappings = useMappingStore(state => state.finalizeMappings);
-  const applyBatchMapping = useMappingStore(state => state.applyBatchMapping);
-  const applyPresetToAccounts = useMappingStore(state => state.applyPresetToAccounts);
   const saveError = useMappingStore(state => state.saveError);
-  const { selectedIds, clearSelection } = useMappingSelectionStore();
-  const [isPresetOpen, setPresetOpen] = useState(false);
-  const [isBatchExcludeOpen, setBatchExcludeOpen] = useState(false);
-  const [finalizeError, setFinalizeError] = useState<string | null>(null);
-  const hasSelection = selectedIds.size > 0;
-  const selectedCount = selectedIds.size;
   const showApplyAcrossPeriods = Boolean(onApplyAcrossPeriods);
+  const showApplyToFuturePeriods = Boolean(onApplyToFuturePeriods);
 
   const handleSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
   };
 
-  const handleBulkAccept = () => {
-    if (!selectedIds.size) return;
-    bulkAccept(Array.from(selectedIds));
-    setFinalizeError(null);
-  };
-
-  const handleFinalize = () => {
-    if (!selectedIds.size) return;
-    const success = finalizeMappings(Array.from(selectedIds));
-    if (success) {
-      clearSelection();
-      setFinalizeError(null);
-    } else {
-      setFinalizeError('Resolve split allocations before publishing selected rows.');
-    }
-  };
-
   const handleClearFilters = () => {
     clearStatusFilters();
-  };
-
-  const handleApplyPreset = (presetId: string) => {
-    if (!selectedIds.size) {
-      return;
-    }
-    applyPresetToAccounts(Array.from(selectedIds), presetId);
-    setPresetOpen(false);
-    clearSelection();
-    setFinalizeError(null);
-  };
-
-  const handleConfirmExclude = () => {
-    if (!selectedIds.size) {
-      return;
-    }
-    applyBatchMapping(Array.from(selectedIds), { mappingType: 'exclude', status: 'Excluded' });
-    setBatchExcludeOpen(false);
-    clearSelection();
-    setFinalizeError(null);
   };
 
   return (
@@ -137,130 +92,75 @@ export default function MappingToolbar({
             />
           </div>
         </div>
-        <div className="flex flex-col gap-2">
-          <div
-            role="group"
-            aria-label="Filter by status"
-            className="flex flex-wrap items-center gap-2"
-          >
-            {STATUS_DEFINITIONS.map(status => {
-              const isActive = activeStatuses.includes(status.value);
-              return (
-                <button
-                  key={status.value}
-                  type="button"
-                  onClick={() => toggleStatusFilter(status.value)}
-                  aria-pressed={isActive}
-                  className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-                    isActive ? status.className : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  {status.label}
-                </button>
-              );
-            })}
-          </div>
+        <div
+          role="group"
+          aria-label="Filter by status"
+          className="flex flex-wrap items-center gap-2 lg:mt-6"
+        >
+          {STATUS_DEFINITIONS.map(status => {
+            const isActive = activeStatuses.includes(status.value);
+            return (
+              <button
+                key={status.value}
+                type="button"
+                onClick={() => toggleStatusFilter(status.value)}
+                aria-pressed={isActive}
+                className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                  isActive ? status.className : 'border border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'
+                }`}
+              >
+                {status.label}
+              </button>
+            );
+          })}
           <button
             type="button"
             onClick={handleClearFilters}
-            className="self-start text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
+            className="text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
           >
             Clear filters
           </button>
         </div>
       </div>
-      <div className="flex flex-col items-start gap-2 lg:items-end">
-        <span className="text-sm text-slate-600 dark:text-slate-300" aria-live="polite">
-          {hasSelection ? `${selectedCount} row${selectedCount === 1 ? '' : 's'} selected` : 'No rows selected'}
-        </span>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setPresetOpen(true)}
-            disabled={!hasSelection}
-            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-              hasSelection
-                ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
-            }`}
-          >
-            Apply preset
-          </button>
-          <button
-            type="button"
-            onClick={() => setBatchExcludeOpen(true)}
-            disabled={!hasSelection}
-            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-              hasSelection
-                ? 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 focus:ring-rose-500 dark:border-rose-400/60 dark:bg-slate-800 dark:text-rose-300 dark:hover:bg-rose-900/30'
-                : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
-            }`}
-          >
-            Exclude
-          </button>
-          <button
-            type="button"
-            onClick={handleBulkAccept}
-            disabled={!hasSelection}
-            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-              hasSelection
-                ? 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500'
-                : 'cursor-not-allowed bg-slate-200 text-slate-500 focus:ring-0 dark:bg-slate-800 dark:text-slate-500'
-            }`}
-          >
-            Accept suggested
-          </button>
-          <button
-            type="button"
-            onClick={handleFinalize}
-            disabled={!hasSelection}
-            className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-              hasSelection
-                ? 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500'
-                : 'cursor-not-allowed bg-slate-200 text-slate-500 focus:ring-0 dark:bg-slate-800 dark:text-slate-500'
-            }`}
-          >
-            Finalize selection
-          </button>
-          {showApplyAcrossPeriods && (
-            <button
-              type="button"
-              onClick={onApplyAcrossPeriods}
-              disabled={!canApplyAcrossPeriods}
-              className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-                canApplyAcrossPeriods
-                  ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
-                  : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
-              }`}
-            >
-              Apply to all periods
-            </button>
-          )}
-
-        </div>
-        {(finalizeError || saveError) && (
-          <div className="space-y-1" role="alert">
-            {finalizeError && (
-              <p className="text-sm text-rose-600 dark:text-rose-300">{finalizeError}</p>
+      {(showApplyAcrossPeriods || showApplyToFuturePeriods || saveError) && (
+        <div className="flex flex-col items-start gap-2 lg:items-end">
+          <div className="flex flex-wrap gap-2">
+            {showApplyAcrossPeriods && (
+              <button
+                type="button"
+                onClick={onApplyAcrossPeriods}
+                disabled={!canApplyAcrossPeriods}
+                className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                  canApplyAcrossPeriods
+                    ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                    : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+                }`}
+              >
+                Apply to all periods
+              </button>
             )}
-            {saveError && (
-              <p className="text-sm text-rose-600 dark:text-rose-300">{saveError}</p>
+            {showApplyToFuturePeriods && (
+              <button
+                type="button"
+                onClick={onApplyToFuturePeriods}
+                disabled={!canApplyToFuturePeriods}
+                className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                  canApplyToFuturePeriods
+                    ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                    : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-600'
+                }`}
+              >
+                Apply to future periods
+              </button>
             )}
           </div>
-        )}
-      </div>
-      <PresetModal
-        open={isPresetOpen && hasSelection}
-        selectedCount={selectedCount}
-        onClose={() => setPresetOpen(false)}
-        onApply={handleApplyPreset}
-      />
-      <BatchExclude
-        open={isBatchExcludeOpen && hasSelection}
-        selectedCount={selectedCount}
-        onClose={() => setBatchExcludeOpen(false)}
-        onConfirm={handleConfirmExclude}
-      />
+          {saveError && (
+            <div className="space-y-1" role="alert">
+              <p className="text-sm text-rose-600 dark:text-rose-300">{saveError}</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

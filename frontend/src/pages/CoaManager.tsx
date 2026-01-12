@@ -1,6 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowUpDown, CheckCircle2, Filter, Loader2, Plus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowUpDown,
+  CheckCircle2,
+  Filter,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react';
 import AddCoaAccountsModal from '../components/coa/AddCoaAccountsModal';
+import DeleteAccountModal from '../components/coa/DeleteAccountModal';
+import EditableCoreAccountCell from '../components/coa/EditableCoreAccountCell';
+import EditableTextCell from '../components/coa/EditableTextCell';
 import IndustryImportModal from '../components/coa/IndustryImportModal';
 import {
   createIndustry as createIndustryService,
@@ -10,6 +24,7 @@ import {
   type CoaManagerAccountCreateInput,
 } from '../services/coaManagerService';
 import { useCoaManagerStore } from '../store/coaManagerStore';
+import toProperCase from '../utils/properCase';
 import scrollPageToTop from '../utils/scroll';
 
 const costTypeOptions = [
@@ -114,8 +129,26 @@ export default function CoaManager() {
   const updateRowIsSurvey = useCoaManagerStore(state => state.updateRowIsSurvey);
   const updateBatchIsSurvey = useCoaManagerStore(state => state.updateBatchIsSurvey);
   const refreshIndustryData = useCoaManagerStore(state => state.refreshIndustryData);
+  // Edit mode state
+  const isEditMode = useCoaManagerStore(state => state.isEditMode);
+  const setEditMode = useCoaManagerStore(state => state.setEditMode);
+  const laborGroups = useCoaManagerStore(state => state.laborGroups);
+  const operationalGroups = useCoaManagerStore(state => state.operationalGroups);
+  const rowValidationErrors = useCoaManagerStore(state => state.rowValidationErrors);
+  const updateAccountField = useCoaManagerStore(state => state.updateAccountField);
+  const deleteAccount = useCoaManagerStore(state => state.deleteAccount);
+  const undoRowChanges = useCoaManagerStore(state => state.undoRowChanges);
+  const undoAllChanges = useCoaManagerStore(state => state.undoAllChanges);
+  const hasUndoableChanges = useCoaManagerStore(state => state.hasUndoableChanges);
+  const hasAnyUndoableChanges = useCoaManagerStore(state => state.hasAnyUndoableChanges);
+  const validateField = useCoaManagerStore(state => state.validateField);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isAddAccountsModalOpen, setIsAddAccountsModalOpen] = useState(false);
+  const [deleteModalRow, setDeleteModalRow] = useState<{
+    id: string;
+    accountNumber: string;
+    accountName: string;
+  } | null>(null);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
     direction: SortDirection;
@@ -153,6 +186,75 @@ export default function CoaManager() {
       a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
     );
   }, [rows]);
+
+  // Dropdown options derived from current rows for inline editing
+  const categoryOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.category?.trim()) {
+        options.add(row.category.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const accountTypeOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.accountType?.trim()) {
+        options.add(row.accountType.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const subCategoryOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.subCategory?.trim()) {
+        options.add(row.subCategory.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  // Labor group dropdown options (name + code pairs)
+  const laborGroupDropdownOptions = useMemo(() => {
+    if (laborGroups.length > 0) {
+      return laborGroups;
+    }
+    // Fallback to rows if group codes haven't loaded
+    const options = new Map<string, string>();
+    rows.forEach(row => {
+      if (row.laborGroup?.trim()) {
+        const parts = row.accountNumber.split('-');
+        const code = parts.length === 3 ? parts[2] : '';
+        if (!options.has(row.laborGroup)) {
+          options.set(row.laborGroup, code);
+        }
+      }
+    });
+    return Array.from(options.entries()).map(([name, code]) => ({ name, code }));
+  }, [laborGroups, rows]);
+
+  // Operational group dropdown options (name + code pairs)
+  const operationalGroupDropdownOptions = useMemo(() => {
+    if (operationalGroups.length > 0) {
+      return operationalGroups;
+    }
+    // Fallback to rows if group codes haven't loaded
+    const options = new Map<string, string>();
+    rows.forEach(row => {
+      if (row.operationalGroup?.trim()) {
+        const parts = row.accountNumber.split('-');
+        const code = parts.length === 3 ? parts[1] : '';
+        if (!options.has(row.operationalGroup)) {
+          options.set(row.operationalGroup, code);
+        }
+      }
+    });
+    return Array.from(options.entries()).map(([name, code]) => ({ name, code }));
+  }, [operationalGroups, rows]);
 
   useEffect(() => {
     setLaborGroupFilter(previous => {
@@ -264,6 +366,13 @@ export default function CoaManager() {
     loadIndustries();
   }, [loadIndustries]);
 
+  // Exit edit mode when navigating away from the page
+  useEffect(() => {
+    return () => {
+      setEditMode(false);
+    };
+  }, [setEditMode]);
+
   const handleIndustryImport = async (payload: { name: string; file: File }) => {
     const trimmed = payload.name.trim();
     if (!trimmed) {
@@ -328,6 +437,127 @@ export default function CoaManager() {
     }
     await createIndustryAccounts(selectedIndustry, payload);
     await refreshIndustryData();
+  };
+
+  // ============================================================================
+  // Inline Edit Handlers
+  // ============================================================================
+
+  const handleCoreAccountSave = useCallback(
+    async (rowId: string, currentAccountNumber: string, newCore: string) => {
+      const parts = currentAccountNumber.split('-');
+      const currentCore = parts[0] ?? '';
+
+      if (newCore === currentCore) {
+        return;
+      }
+
+      // Build new full account number for validation
+      const newAccountNumber =
+        parts.length === 3 ? `${newCore}-${parts[1]}-${parts[2]}` : newCore;
+
+      const validation = await validateField(rowId, 'accountNumber', newAccountNumber);
+      if (!validation.valid) {
+        return;
+      }
+
+      await updateAccountField(rowId, { coreAccount: newCore });
+    },
+    [validateField, updateAccountField],
+  );
+
+  const handleAccountNameSave = useCallback(
+    async (rowId: string, currentName: string, newName: string) => {
+      if (newName === currentName) {
+        return;
+      }
+
+      const validation = await validateField(rowId, 'accountName', newName);
+      if (!validation.valid) {
+        return;
+      }
+
+      await updateAccountField(rowId, { accountName: newName });
+    },
+    [validateField, updateAccountField],
+  );
+
+  const handleLaborGroupChange = async (
+    rowId: string,
+    currentAccountNumber: string,
+    newLaborGroup: string,
+  ) => {
+    const groupInfo = laborGroupDropdownOptions.find(g => g.name === newLaborGroup);
+    if (!groupInfo) {
+      return;
+    }
+
+    const parts = currentAccountNumber.split('-');
+    if (parts.length !== 3) {
+      return;
+    }
+
+    // Build new account number with new labor group code
+    const newAccountNumber = `${parts[0]}-${parts[1]}-${groupInfo.code.padStart(3, '0')}`;
+
+    const validation = await validateField(rowId, 'accountNumber', newAccountNumber);
+    if (!validation.valid) {
+      return;
+    }
+
+    await updateAccountField(rowId, {
+      laborGroup: newLaborGroup,
+      laborGroupCode: groupInfo.code,
+    });
+  };
+
+  const handleOperationalGroupChange = async (
+    rowId: string,
+    currentAccountNumber: string,
+    newOpGroup: string,
+  ) => {
+    const groupInfo = operationalGroupDropdownOptions.find(g => g.name === newOpGroup);
+    if (!groupInfo) {
+      return;
+    }
+
+    const parts = currentAccountNumber.split('-');
+    if (parts.length !== 3) {
+      return;
+    }
+
+    // Build new account number with new operational group code
+    const newAccountNumber = `${parts[0]}-${groupInfo.code.padStart(3, '0')}-${parts[2]}`;
+
+    const validation = await validateField(rowId, 'accountNumber', newAccountNumber);
+    if (!validation.valid) {
+      return;
+    }
+
+    await updateAccountField(rowId, {
+      operationalGroup: newOpGroup,
+      operationalGroupCode: groupInfo.code,
+    });
+  };
+
+  const handleCategoryChange = async (rowId: string, newCategory: string) => {
+    await updateAccountField(rowId, { category: newCategory });
+  };
+
+  const handleAccountTypeChange = async (rowId: string, newAccountType: string) => {
+    await updateAccountField(rowId, { accountType: newAccountType });
+  };
+
+  const handleSubCategoryChange = async (rowId: string, newSubCategory: string) => {
+    await updateAccountField(rowId, { subCategory: newSubCategory });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModalRow) {
+      return;
+    }
+    await deleteAccount(deleteModalRow.accountNumber);
+    setDeleteModalRow(null);
   };
 
   const handleSort = (key: SortKey) => {
@@ -751,18 +981,63 @@ export default function CoaManager() {
                 {selectedCount} row{selectedCount === 1 ? '' : 's'} selected
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Edit Mode Toggle */}
+              <button
+                type="button"
+                onClick={() => setEditMode(!isEditMode)}
+                disabled={rowsLoading}
+                className={`inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isEditMode
+                    ? 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+                }`}
+              >
+                {isEditMode ? (
+                  <>
+                    <X className="h-4 w-4" />
+                    <span className="whitespace-nowrap">Exit Edit Mode</span>
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="h-4 w-4" />
+                    <span className="whitespace-nowrap">Edit Mode</span>
+                  </>
+                )}
+              </button>
+
+              {/* Undo All Button (only visible in edit mode with changes) */}
+              {isEditMode && hasAnyUndoableChanges() && (
+                <button
+                  type="button"
+                  onClick={undoAllChanges}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                >
+                  <Undo2 className="h-4 w-4" />
+                  <span className="whitespace-nowrap">Undo All Changes</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setIsAddAccountsModalOpen(true)}
                 disabled={rowsLoading}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
                 <span className="whitespace-nowrap">Add Accounts</span>
               </button>
             </div>
           </div>
+
+          {/* Edit Mode Indicator */}
+          {isEditMode && (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              <span className="font-medium">Edit Mode Active:</span> Click on cells to edit. Changes
+              are saved automatically. Use the undo buttons to revert changes made during this
+              session.
+            </div>
+          )}
 
           {rowsLoading ? (
             <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
@@ -822,13 +1097,30 @@ export default function CoaManager() {
                       isSurveyTooltip,
                     )}
                     {renderSortableHeader('costType', resolveLabel('costType', 'COST_TYPE'))}
+                    {/* Status indicator column header */}
+                    <th scope="col" className="w-8 bg-gray-50 px-2 py-3 dark:bg-gray-800">
+                      <span className="sr-only">Status</span>
+                    </th>
+                    {isEditMode && (
+                      <th scope="col" className="bg-gray-50 px-4 py-3 dark:bg-gray-800">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Actions
+                        </span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
                   {sortedRows.map(row => {
                     const status = rowStatus[row.id] ?? { state: 'idle' };
+                    const validationError = rowValidationErrors[row.id];
+                    const hasUndo = hasUndoableChanges(row.id);
+
                     return (
-                      <tr key={row.id} className="hover:bg-gray-50">
+                      <tr
+                        key={row.id}
+                        className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${hasUndo ? 'bg-blue-50/50 dark:bg-blue-900/20' : ''}`}
+                      >
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
@@ -838,19 +1130,159 @@ export default function CoaManager() {
                             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          {row.accountNumber}
+                        {/* Account Number (Core Account only editable) */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <EditableCoreAccountCell
+                              accountNumber={row.accountNumber}
+                              onSave={newCore =>
+                                handleCoreAccountSave(row.id, row.accountNumber, newCore)
+                              }
+                              validationError={
+                                validationError?.field === 'accountNumber'
+                                  ? validationError.message
+                                  : null
+                              }
+                            />
+                          ) : (
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {row.accountNumber}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">{row.accountName}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {resolveGroupValue(row.laborGroup)}
+                        {/* Account Name */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <EditableTextCell
+                              value={row.accountName}
+                              onSave={newName =>
+                                handleAccountNameSave(row.id, row.accountName, newName)
+                              }
+                              formatOnBlur={toProperCase}
+                              className="w-full min-w-[200px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                              validationError={
+                                validationError?.field === 'accountName'
+                                  ? validationError.message
+                                  : null
+                              }
+                            />
+                          ) : (
+                            <span className="text-gray-700 dark:text-gray-300">
+                              {row.accountName}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {resolveGroupValue(row.operationalGroup)}
+                        {/* Labor Group */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <select
+                              value={row.laborGroup ?? ''}
+                              onChange={e =>
+                                handleLaborGroupChange(
+                                  row.id,
+                                  row.accountNumber,
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full min-w-[120px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-</option>
+                              {laborGroupDropdownOptions.map(opt => (
+                                <option key={opt.name} value={opt.name}>
+                                  {opt.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700">
+                              {resolveGroupValue(row.laborGroup)}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-3 text-gray-700">{row.category}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.accountType}</td>
-                        <td className="px-4 py-3 text-gray-700">{row.subCategory}</td>
+                        {/* Operational Group */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <select
+                              value={row.operationalGroup ?? ''}
+                              onChange={e =>
+                                handleOperationalGroupChange(
+                                  row.id,
+                                  row.accountNumber,
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full min-w-[120px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-</option>
+                              {operationalGroupDropdownOptions.map(opt => (
+                                <option key={opt.name} value={opt.name}>
+                                  {opt.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700">
+                              {resolveGroupValue(row.operationalGroup)}
+                            </span>
+                          )}
+                        </td>
+                        {/* Category */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <select
+                              value={row.category ?? ''}
+                              onChange={e => handleCategoryChange(row.id, e.target.value)}
+                              className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-</option>
+                              {categoryOptions.map(opt => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700">{row.category}</span>
+                          )}
+                        </td>
+                        {/* Account Type */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <select
+                              value={row.accountType ?? ''}
+                              onChange={e => handleAccountTypeChange(row.id, e.target.value)}
+                              className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-</option>
+                              {accountTypeOptions.map(opt => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700">{row.accountType}</span>
+                          )}
+                        </td>
+                        {/* Sub Category */}
+                        <td className="px-4 py-3">
+                          {isEditMode ? (
+                            <select
+                              value={row.subCategory ?? ''}
+                              onChange={e => handleSubCategoryChange(row.id, e.target.value)}
+                              className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            >
+                              <option value="">-</option>
+                              {subCategoryOptions.map(opt => (
+                                <option key={opt} value={opt}>
+                                  {opt}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700">{row.subCategory}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <label className="sr-only" htmlFor={`is-financial-${row.id}`}>
                             {resolveLabel('isFinancial', 'IS_FINANCIAL')} for account{' '}
@@ -898,57 +1330,90 @@ export default function CoaManager() {
                           </select>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1">
-                              <label className="sr-only" htmlFor={`cost-type-${row.id}`}>
-                                {resolveLabel('costType', 'COST_TYPE')} for account{' '}
-                                {row.accountNumber}
-                              </label>
-                              <select
-                                id={`cost-type-${row.id}`}
-                                value={row.costType}
-                                onChange={event =>
-                                  handleRowCostTypeChange(row.id, event.target.value as CostType)
-                                }
-                                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                          <div className="flex items-center gap-2">
+                            <label className="sr-only" htmlFor={`cost-type-${row.id}`}>
+                              {resolveLabel('costType', 'COST_TYPE')} for account{' '}
+                              {row.accountNumber}
+                            </label>
+                            <select
+                              id={`cost-type-${row.id}`}
+                              value={row.costType}
+                              onChange={event =>
+                                handleRowCostTypeChange(row.id, event.target.value as CostType)
+                              }
+                              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                            >
+                              {costTypeOptions.map(option => (
+                                <option key={option.label} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </td>
+                        {/* Status Indicator Column */}
+                        <td className="w-8 px-2 py-3">
+                          <div
+                            className="flex h-5 w-5 items-center justify-center"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            {status.state === 'pending' && (
+                              <Loader2
+                                className="h-4 w-4 animate-spin text-blue-500"
+                                aria-label="Saving changes"
+                              />
+                            )}
+                            {status.state === 'success' && (
+                              <CheckCircle2
+                                className="h-4 w-4 text-emerald-500"
+                                aria-label="Saved"
+                              />
+                            )}
+                            {status.state === 'error' && (
+                              <span
+                                title={status.message ?? 'Update failed.'}
+                                className="cursor-help"
                               >
-                                {costTypeOptions.map(option => (
-                                  <option key={option.label} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            {status.state !== 'idle' && (
-                              <div
-                                className="ml-auto flex items-center gap-2"
-                                role="status"
-                                aria-live="polite"
-                              >
-                                {status.state === 'pending' && (
-                                  <>
-                                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                                    <span className="text-xs text-gray-500">Saving changes</span>
-                                  </>
-                                )}
-                                {status.state === 'success' && (
-                                  <>
-                                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                                    <span className="text-xs text-emerald-600">Updated</span>
-                                  </>
-                                )}
-                                {status.state === 'error' && (
-                                  <>
-                                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                                    <span className="text-xs text-amber-700">
-                                      {status.message ?? 'Update failed.'}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
+                                <AlertTriangle
+                                  className="h-4 w-4 text-red-500"
+                                  aria-label={status.message ?? 'Update failed.'}
+                                />
+                              </span>
                             )}
                           </div>
                         </td>
+                        {/* Actions Column (Undo / Delete) */}
+                        {isEditMode && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {hasUndo && (
+                                <button
+                                  type="button"
+                                  onClick={() => undoRowChanges(row.id)}
+                                  title="Undo changes to this row"
+                                  className="rounded p-1 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                                >
+                                  <Undo2 className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDeleteModalRow({
+                                    id: row.id,
+                                    accountNumber: row.accountNumber,
+                                    accountName: row.accountName,
+                                  })
+                                }
+                                title="Delete this account"
+                                className="rounded p-1 text-red-500 transition hover:bg-red-50 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -976,6 +1441,14 @@ export default function CoaManager() {
         onClose={() => setIsAddAccountsModalOpen(false)}
         onSubmit={handleCreateAccounts}
       />
+      {deleteModalRow && (
+        <DeleteAccountModal
+          accountNumber={deleteModalRow.accountNumber}
+          accountName={deleteModalRow.accountName}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeleteModalRow(null)}
+        />
+      )}
     </div>
   );
 }

@@ -12,6 +12,13 @@ import {
   updateIndustryIsSurveyBatch,
   updateIndustryCostType,
   updateIndustryCostTypeBatch,
+  updateIndustryAccount,
+  deleteIndustryAccount,
+  checkAccountNumberExists,
+  checkAccountNameExists,
+  listLaborGroupCodes,
+  listOperationalGroupCodes,
+  type CoaManagerAccountUpdateInput,
 } from '../../repositories/coaManagerRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
 
@@ -499,6 +506,180 @@ app.http('coaManager-isSurvey-batch', {
   authLevel: 'anonymous',
   route: 'coa-manager/industry/{industry}/is-survey/batch',
   handler: updateIndustryIsSurveyBatchHandler,
+});
+
+// ============================================================================
+// Account Update/Delete/Validate Handlers
+// ============================================================================
+
+export async function updateIndustryAccountHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const rowId = getFirstStringValue(payload.rowId ?? payload.recordId ?? payload.id);
+
+  if (!rowId) {
+    return json({ message: 'rowId is required' }, 400);
+  }
+
+  const updates: CoaManagerAccountUpdateInput = {};
+
+  if (payload.coreAccount !== undefined) {
+    updates.coreAccount = normalizeAccountText(payload.coreAccount);
+  }
+  if (payload.accountName !== undefined) {
+    updates.accountName = normalizeAccountText(payload.accountName);
+  }
+  if (payload.laborGroup !== undefined) {
+    updates.laborGroup = normalizeAccountText(payload.laborGroup);
+  }
+  if (payload.laborGroupCode !== undefined) {
+    updates.laborGroupCode = normalizeAccountText(payload.laborGroupCode);
+  }
+  if (payload.operationalGroup !== undefined) {
+    updates.operationalGroup = normalizeAccountText(payload.operationalGroup);
+  }
+  if (payload.operationalGroupCode !== undefined) {
+    updates.operationalGroupCode = normalizeAccountText(payload.operationalGroupCode);
+  }
+  if (payload.category !== undefined) {
+    updates.category = normalizeAccountText(payload.category);
+  }
+  if (payload.accountType !== undefined) {
+    updates.accountType = normalizeAccountText(payload.accountType);
+  }
+  if (payload.subCategory !== undefined) {
+    updates.subCategory = normalizeAccountText(payload.subCategory);
+  }
+
+  try {
+    const updated = await updateIndustryAccount(industry, rowId, updates);
+    if (!updated) {
+      return json({ message: 'Record not found' }, 404);
+    }
+    return json({ ok: true });
+  } catch (error) {
+    return handleIndustryError(error, context, 'update account');
+  }
+}
+
+export async function deleteIndustryAccountHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const accountNumber = getFirstStringValue(
+    payload.accountNumber ?? payload.account_number ?? payload.rowId,
+  );
+
+  if (!accountNumber) {
+    return json({ message: 'accountNumber is required' }, 400);
+  }
+
+  try {
+    const deleted = await deleteIndustryAccount(industry, accountNumber);
+    if (!deleted) {
+      return json({ message: 'Record not found' }, 404);
+    }
+    return json({ ok: true });
+  } catch (error) {
+    return handleIndustryError(error, context, 'delete account');
+  }
+}
+
+export async function validateAccountHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  const payload = (await readJson<Record<string, unknown>>(request)) ?? {};
+  const field = getFirstStringValue(payload.field);
+  const value = getFirstStringValue(payload.value);
+  const excludeRecordId = getFirstStringValue(payload.excludeRecordId);
+
+  if (!field || !value) {
+    return json({ message: 'field and value are required' }, 400);
+  }
+
+  try {
+    let exists = false;
+
+    if (field === 'accountNumber') {
+      exists = await checkAccountNumberExists(industry, value, excludeRecordId);
+    } else if (field === 'accountName') {
+      exists = await checkAccountNameExists(industry, value, excludeRecordId);
+    } else {
+      return json({ message: 'Invalid field. Must be accountNumber or accountName.' }, 400);
+    }
+
+    return json({ exists, valid: !exists });
+  } catch (error) {
+    return handleIndustryError(error, context, 'validate account field');
+  }
+}
+
+export async function getGroupCodesHandler(
+  request: HttpRequest,
+  context: InvocationContext,
+): Promise<HttpResponseInit> {
+  const industry = resolveIndustryParam(request);
+  if (!industry) {
+    return json({ message: 'industry is required' }, 400);
+  }
+
+  try {
+    const [laborGroups, operationalGroups] = await Promise.all([
+      listLaborGroupCodes(industry),
+      listOperationalGroupCodes(industry),
+    ]);
+
+    return json({ laborGroups, operationalGroups });
+  } catch (error) {
+    return handleIndustryError(error, context, 'fetch group codes');
+  }
+}
+
+app.http('coaManager-account-update', {
+  methods: ['PATCH'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/account',
+  handler: updateIndustryAccountHandler,
+});
+
+app.http('coaManager-account-delete', {
+  methods: ['DELETE'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/account',
+  handler: deleteIndustryAccountHandler,
+});
+
+app.http('coaManager-validate', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/validate',
+  handler: validateAccountHandler,
+});
+
+app.http('coaManager-group-codes', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'coa-manager/industry/{industry}/group-codes',
+  handler: getGroupCodesHandler,
 });
 
 export default getIndustryCoaHandler;

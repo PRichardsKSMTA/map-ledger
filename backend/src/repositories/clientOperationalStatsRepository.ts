@@ -4,6 +4,7 @@ import { runQuery } from '../utils/sqlClient';
 export interface OperationalStatAccount {
   accountNumber: string;
   description: string | null;
+  isSurvey: boolean;
 }
 
 export interface ClientOperationalStatRow {
@@ -16,6 +17,7 @@ export interface ClientOperationalStatRow {
 const CHART_TABLE = 'ML.CHART_OF_ACCOUNTS';
 const GL_TABLE = 'ML.CLIENT_GL_DATA';
 const OPERATIONS_VIEW = 'ML.V_CLIENT_OPERATIONS';
+const CLIENT_OPERATION_CODES_TABLE = 'dbo.CLIENT_OPERATION_CODES';
 
 const normalizeText = (value?: string | null): string | null => {
   if (value === undefined || value === null) {
@@ -84,7 +86,8 @@ export const listOperationalChartOfAccounts = async (): Promise<OperationalStatA
   const { recordset = [] } = await runQuery<Record<string, unknown>>(
     `SELECT
       ACCOUNT_NUMBER AS accountNumber,
-      DESCRIPTION AS description
+      DESCRIPTION AS description,
+      COALESCE(IS_SURVEY, 0) AS isSurvey
     FROM ${CHART_TABLE}
     WHERE IS_FINANCIAL = 0
     ORDER BY ACCOUNT_NUMBER`,
@@ -93,6 +96,7 @@ export const listOperationalChartOfAccounts = async (): Promise<OperationalStatA
   return recordset.map(row => ({
     accountNumber: toRequiredString(row.accountNumber),
     description: toNullableString(row.description),
+    isSurvey: row.isSurvey === 1 || row.isSurvey === true,
   }));
 };
 
@@ -114,16 +118,79 @@ export const executeDispatchMiles = async (
     return `${year}${month}${day}`;
   })();
 
-  await runQuery(
+  // Fire and forget - start the stored procedure but don't wait for it to complete.
+  // This prevents timeout issues since the SP can take a while to run.
+  runQuery(
     `EXEC dbo.UPDATE_DISPATCH_MILES @SCAC = @scac, @BeginDt = @beginDt, @EndDt = @endDt`,
     {
       scac: scac.trim(),
       beginDt,
       endDt,
     },
+  ).catch((error) => {
+    // Log but don't throw - this runs in the background
+    console.error('[executeDispatchMiles] Stored procedure failed:', error);
+  });
+
+  return { success: true, message: 'FreightMath statistics update started.' };
+};
+
+export interface FMStatisticsCheckResult {
+  hasFMStatistics: boolean;
+  mostRecentPeriod: string | null;
+  nonSurveyAccountsWithData: number;
+  totalNonSurveyAccounts: number;
+}
+
+/**
+ * Checks if a client has FM (FreightMath) statistics.
+ * FM statistics are operational accounts that are NOT financial (IS_FINANCIAL = 0)
+ * and NOT survey accounts (IS_SURVEY = 0).
+ * These are populated by the UPDATE_DISPATCH_MILES stored procedure.
+ *
+ * Uses CLIENT_SCAC to identify the client's data via CLIENT_OPERATION_CODES.
+ */
+export const checkClientFMStatistics = async (
+  clientScac: string,
+): Promise<FMStatisticsCheckResult> => {
+  if (!clientScac || !clientScac.trim()) {
+    return {
+      hasFMStatistics: false,
+      mostRecentPeriod: null,
+      nonSurveyAccountsWithData: 0,
+      totalNonSurveyAccounts: 0,
+    };
+  }
+
+  const scac = clientScac.trim();
+
+  // Simple query: check if there's ANY non-zero value for non-financial, non-survey accounts
+  // for this client's SCAC. Uses EXISTS for fast short-circuit evaluation.
+  const result = await runQuery<{
+    has_data: number;
+  }>(
+    `SELECT CASE WHEN EXISTS (
+      SELECT 1
+      FROM ${GL_TABLE} gl
+      INNER JOIN ${CLIENT_OPERATION_CODES_TABLE} coc ON coc.OPERATION_CD = gl.OPERATION_CD
+      INNER JOIN ${CHART_TABLE} coa ON coa.ACCOUNT_NUMBER = gl.GL_ID
+      WHERE coc.CLIENT_SCAC = @scac
+        AND coa.IS_FINANCIAL = 0
+        AND coa.IS_SURVEY = 0
+        AND gl.GL_VALUE IS NOT NULL
+        AND gl.GL_VALUE != 0
+    ) THEN 1 ELSE 0 END as has_data`,
+    { scac },
   );
 
-  return { success: true, message: 'FreightMath statistics updated successfully.' };
+  const hasData = (result.recordset?.[0]?.has_data ?? 0) === 1;
+
+  return {
+    hasFMStatistics: hasData,
+    mostRecentPeriod: null,
+    nonSurveyAccountsWithData: hasData ? 1 : 0,
+    totalNonSurveyAccounts: 0,
+  };
 };
 
 export const listClientOperationalStats = async (

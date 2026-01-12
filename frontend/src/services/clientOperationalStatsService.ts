@@ -58,9 +58,12 @@ const normalizeAccount = (record: Record<string, unknown>): OperationalStatAccou
   const description =
     getValue(record, ['description', 'DESCRIPTION', 'accountDescription', 'account_description']) ??
     null;
+  const isSurveyRaw = record.isSurvey ?? record.IS_SURVEY ?? record.is_survey;
+  const isSurvey = isSurveyRaw === true || isSurveyRaw === 1 || isSurveyRaw === '1';
   return {
     accountNumber,
     description,
+    isSurvey,
   };
 };
 
@@ -125,6 +128,13 @@ export interface RefreshFMStatisticsResult {
   message: string;
 }
 
+export interface FMStatisticsCheckResult {
+  hasFMStatistics: boolean;
+  mostRecentPeriod: string | null;
+  nonSurveyAccountsWithData: number;
+  totalNonSurveyAccounts: number;
+}
+
 export const refreshFMStatistics = async (
   scac: string,
   endDate?: string | null,
@@ -153,5 +163,40 @@ export const refreshFMStatistics = async (
   return {
     success: payload.success ?? true,
     message: payload.message ?? 'FreightMath statistics updated successfully.',
+  };
+};
+
+export const checkClientFMStatistics = async (
+  scac: string,
+): Promise<FMStatisticsCheckResult> => {
+  if (!scac || !scac.trim()) {
+    return {
+      hasFMStatistics: false,
+      mostRecentPeriod: null,
+      nonSurveyAccountsWithData: 0,
+      totalNonSurveyAccounts: 0,
+    };
+  }
+
+  const params = new URLSearchParams({ scac: scac.trim() });
+
+  const response = await fetch(`${API_BASE_URL}/client-operational-stats/check-fm?${params.toString()}`);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => 'Unable to check FM statistics.');
+    throw new Error(errorText || `Failed to check FM statistics (${response.status})`);
+  }
+
+  const payload = (await response.json()) as {
+    hasFMStatistics?: boolean;
+    mostRecentPeriod?: string | null;
+    nonSurveyAccountsWithData?: number;
+    totalNonSurveyAccounts?: number;
+  };
+
+  return {
+    hasFMStatistics: payload.hasFMStatistics ?? false,
+    mostRecentPeriod: payload.mostRecentPeriod ?? null,
+    nonSurveyAccountsWithData: payload.nonSurveyAccountsWithData ?? 0,
+    totalNonSurveyAccounts: payload.totalNonSurveyAccounts ?? 0,
   };
 };

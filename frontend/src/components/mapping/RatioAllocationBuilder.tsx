@@ -34,6 +34,18 @@ const hasNonZeroValue = (
   return typeof periodValue === 'number' && Number.isFinite(periodValue) && Math.abs(periodValue) > 0;
 };
 
+/**
+ * Determines if an operational account should be shown in basis datapoint dropdowns.
+ * All operational accounts (survey and FM statistics) are always shown.
+ */
+const shouldShowOperationalAccount = (
+  _account: DynamicBasisAccount,
+  _periodId?: string | null,
+): boolean => {
+  // All operational accounts are always shown regardless of value
+  return true;
+};
+
 const normalizeAccountId = (value?: string | null): string => (value ?? '').trim();
 const normalizeAccountLabel = (value?: string | null): string => (value ?? '').trim();
 
@@ -132,17 +144,13 @@ const RatioAllocationBuilder = ({
       ),
     [allBasisAccounts],
   );
-  const operationalAccountsWithValue = useMemo(
-    () => operationalAccounts.filter(account => hasNonZeroValue(account, selectedPeriod)),
-    [operationalAccounts, selectedPeriod],
-  );
   const basisAccounts = useMemo(
     () => {
       if (resolvedPresetContext !== 'distribution') {
         return allBasisAccounts;
       }
       if (resolvedBasisCategory === 'operational') {
-        return operationalAccountsWithValue;
+        return operationalAccounts;
       }
       return allBasisAccounts.filter(
         account => (account.basisCategory ?? 'financial') === 'financial',
@@ -150,7 +158,7 @@ const RatioAllocationBuilder = ({
     },
     [
       allBasisAccounts,
-      operationalAccountsWithValue,
+      operationalAccounts,
       resolvedBasisCategory,
       resolvedPresetContext,
     ],
@@ -180,8 +188,7 @@ const RatioAllocationBuilder = ({
   const showOperationalSurveyCta =
     useOperationBasis &&
     resolvedBasisCategory === 'operational' &&
-    operationalAccounts.length > 0 &&
-    operationalAccountsWithValue.length === 0;
+    operationalAccounts.length > 0;
 
   const [selectedAllocationId, setSelectedAllocationId] = useState<string | null>(null);
   const [isCreatingPreset, setIsCreatingPreset] = useState(false);
@@ -332,6 +339,14 @@ const RatioAllocationBuilder = ({
           if (sourceAccountId && account.id === sourceAccountId) {
             return false;
           }
+          // For operational basis in distribution context, filter out non-survey accounts with zero values
+          if (
+            useOperationBasis &&
+            resolvedBasisCategory === 'operational' &&
+            !shouldShowOperationalAccount(account, selectedPeriod)
+          ) {
+            return false;
+          }
           const dynamicUsers = newPresetDynamicUsage.get(account.id);
           if (dynamicUsers && dynamicUsers.size > 0) {
             if (!dropdownKey || dynamicUsers.size > 1 || !dynamicUsers.has(dropdownKey)) {
@@ -361,7 +376,10 @@ const RatioAllocationBuilder = ({
       canonicalTargetResolver,
       newPresetDynamicUsage,
       newPresetTargetCanonicalUsage,
+      resolvedBasisCategory,
       selectedAllocation?.sourceAccount.id,
+      selectedPeriod,
+      useOperationBasis,
     ],
   );
 
@@ -567,7 +585,7 @@ const RatioAllocationBuilder = ({
             ((account.basisCategory ?? 'financial') === resolvedBasisCategory &&
               (!useOperationBasis ||
                 resolvedBasisCategory !== 'operational' ||
-                hasNonZeroValue(account, selectedPeriod))),
+                shouldShowOperationalAccount(account, selectedPeriod))),
         ),
       );
     },
@@ -658,32 +676,29 @@ const RatioAllocationBuilder = ({
             </div>
           </div>
 
-          {basisAccounts.length === 0 && (
+          {showOperationalSurveyCta && (
             <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
-              {showOperationalSurveyCta ? (
-                <>
-                  No operational basis datapoints have values for the selected period.{' '}
-                  {onOpenClientSurvey ? (
-                    <button
-                      type="button"
-                      onClick={onOpenClientSurvey}
-                      className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-                    >
-                      Click here to provide operational survey data
-                    </button>
-                  ) : (
-                    <Link
-                      to="/clients?openSurvey=1"
-                      className="font-semibold text-blue-600 hover:text-blue-700"
-                    >
-                      Click here to provide operational survey data
-                    </Link>
-                  )}
-                  .
-                </>
+              {onOpenClientSurvey ? (
+                <button
+                  type="button"
+                  onClick={onOpenClientSurvey}
+                  className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                >
+                  Click here to provide operational survey data
+                </button>
               ) : (
-                'Complete your direct and percentage mappings to add basis datapoints before creating presets.'
+                <Link
+                  to="/clients?openSurvey=1"
+                  className="font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Click here to provide operational survey data
+                </Link>
               )}
+            </p>
+          )}
+          {basisAccounts.length === 0 && !showOperationalSurveyCta && (
+            <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
+              Complete your direct and percentage mappings to add basis datapoints before creating presets.
             </p>
           )}
 

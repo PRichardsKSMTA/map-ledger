@@ -9,11 +9,17 @@ import {
   updateIndustryIsSurveyBatch,
   updateIndustryCostType,
   updateIndustryCostTypeBatch,
+  updateIndustryAccount,
+  deleteIndustryAccount,
+  validateAccountField,
+  fetchGroupCodes,
   type CoaManagerIsFinancial,
   type CoaManagerIsSurvey,
   type CoaManagerColumn,
   type CoaManagerCostType,
   type CoaManagerRow,
+  type CoaManagerAccountUpdateInput,
+  type GroupCodeMapping,
   IndustryAlreadyExistsError,
 } from '../services/coaManagerService';
 
@@ -21,6 +27,11 @@ export type RowUpdateStatus = {
   state: 'idle' | 'pending' | 'success' | 'error';
   message?: string;
 };
+
+export interface RowValidationError {
+  field: string;
+  message: string;
+}
 
 interface CoaManagerState {
   industries: string[];
@@ -35,6 +46,16 @@ interface CoaManagerState {
   rowUpdateStatus: Record<string, RowUpdateStatus>;
   createIndustryError: string | null;
   createIndustryLoading: boolean;
+  // Edit mode state
+  isEditMode: boolean;
+  originalRows: CoaManagerRow[];
+  changedRowIds: Set<string>;
+  deletedRowIds: Set<string>;
+  rowValidationErrors: Record<string, RowValidationError | null>;
+  laborGroups: GroupCodeMapping[];
+  operationalGroups: GroupCodeMapping[];
+  groupCodesLoading: boolean;
+  // Actions
   loadIndustries: () => Promise<void>;
   selectIndustry: (industry: string) => Promise<void>;
   refreshIndustryData: () => Promise<void>;
@@ -49,6 +70,23 @@ interface CoaManagerState {
   updateBatchIsFinancial: (rowIds: string[], isFinancial: CoaManagerIsFinancial) => Promise<void>;
   updateRowIsSurvey: (rowId: string, isSurvey: CoaManagerIsSurvey) => Promise<void>;
   updateBatchIsSurvey: (rowIds: string[], isSurvey: CoaManagerIsSurvey) => Promise<void>;
+  // Edit mode actions
+  setEditMode: (enabled: boolean) => void;
+  updateAccountField: (
+    rowId: string,
+    updates: CoaManagerAccountUpdateInput,
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteAccount: (accountNumber: string) => Promise<{ success: boolean; error?: string }>;
+  undoRowChanges: (rowId: string) => Promise<void>;
+  undoAllChanges: () => Promise<void>;
+  hasUndoableChanges: (rowId: string) => boolean;
+  hasAnyUndoableChanges: () => boolean;
+  validateField: (
+    rowId: string,
+    field: 'accountNumber' | 'accountName',
+    value: string,
+  ) => Promise<{ valid: boolean; message?: string }>;
+  clearRowValidationError: (rowId: string) => void;
 }
 
 const STATUS_RESET_MS = 2500;
@@ -84,6 +122,15 @@ export const useCoaManagerStore = create<CoaManagerState>((set, get) => ({
   rowUpdateStatus: {},
   createIndustryError: null,
   createIndustryLoading: false,
+  // Edit mode initial state
+  isEditMode: false,
+  originalRows: [],
+  changedRowIds: new Set(),
+  deletedRowIds: new Set(),
+  rowValidationErrors: {},
+  laborGroups: [],
+  operationalGroups: [],
+  groupCodesLoading: false,
   loadIndustries: async () => {
     set({ industriesLoading: true, industriesError: null });
     try {
@@ -490,5 +537,375 @@ export const useCoaManagerStore = create<CoaManagerState>((set, get) => ({
         };
       });
     }
+  },
+
+  // ============================================================================
+  // Edit Mode Actions
+  // ============================================================================
+
+  setEditMode: (enabled: boolean) => {
+    const { rows, selectedIndustry } = get();
+    if (enabled) {
+      // Entering edit mode - snapshot current rows and load group codes
+      set({
+        isEditMode: true,
+        originalRows: rows.map(row => ({ ...row })),
+        changedRowIds: new Set(),
+        deletedRowIds: new Set(),
+        rowValidationErrors: {},
+        groupCodesLoading: true,
+      });
+
+      // Load group codes in background
+      if (selectedIndustry) {
+        fetchGroupCodes(selectedIndustry)
+          .then(response => {
+            set({
+              laborGroups: response.laborGroups,
+              operationalGroups: response.operationalGroups,
+              groupCodesLoading: false,
+            });
+          })
+          .catch(() => {
+            set({ groupCodesLoading: false });
+          });
+      }
+    } else {
+      // Exiting edit mode - clear undo history
+      set({
+        isEditMode: false,
+        originalRows: [],
+        changedRowIds: new Set(),
+        deletedRowIds: new Set(),
+        rowValidationErrors: {},
+        laborGroups: [],
+        operationalGroups: [],
+      });
+    }
+  },
+
+  updateAccountField: async (rowId: string, updates: CoaManagerAccountUpdateInput) => {
+    const { selectedIndustry, rows } = get();
+    if (!selectedIndustry) {
+      return { success: false, error: 'No industry selected.' };
+    }
+
+    // Optimistically update local state
+    const nextRows = rows.map(row => {
+      if (row.id !== rowId) {
+        return row;
+      }
+      const updated = { ...row };
+      if (updates.coreAccount !== undefined) {
+        // Rebuild account number with new core
+        const parts = row.accountNumber.split('-');
+        if (parts.length === 3) {
+          updated.accountNumber = `${updates.coreAccount}-${parts[1]}-${parts[2]}`;
+        }
+      }
+      if (updates.accountName !== undefined) {
+        updated.accountName = updates.accountName ?? '';
+      }
+      if (updates.laborGroup !== undefined) {
+        updated.laborGroup = updates.laborGroup ?? '';
+      }
+      if (updates.operationalGroup !== undefined) {
+        updated.operationalGroup = updates.operationalGroup ?? '';
+      }
+      if (updates.category !== undefined) {
+        updated.category = updates.category ?? '';
+      }
+      if (updates.accountType !== undefined) {
+        updated.accountType = updates.accountType ?? '';
+      }
+      if (updates.subCategory !== undefined) {
+        updated.subCategory = updates.subCategory ?? '';
+      }
+      // Update account number if labor or operational group code changed
+      if (updates.laborGroupCode !== undefined || updates.operationalGroupCode !== undefined) {
+        const parts = row.accountNumber.split('-');
+        if (parts.length === 3) {
+          const core = updates.coreAccount ?? parts[0];
+          const opCode = updates.operationalGroupCode ?? parts[1];
+          const laborCode = updates.laborGroupCode ?? parts[2];
+          updated.accountNumber = `${core}-${opCode.padStart(3, '0')}-${laborCode.padStart(3, '0')}`;
+        }
+      }
+      return updated;
+    });
+
+    set(state => ({
+      rows: nextRows,
+      changedRowIds: new Set([...state.changedRowIds, rowId]),
+      rowUpdateStatus: {
+        ...state.rowUpdateStatus,
+        [rowId]: { state: 'pending' },
+      },
+      rowValidationErrors: {
+        ...state.rowValidationErrors,
+        [rowId]: null,
+      },
+    }));
+
+    try {
+      await updateIndustryAccount(selectedIndustry, rowId, updates);
+      set(state => ({
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'success' },
+        },
+      }));
+      applyStatusReset(set, [rowId]);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Update failed.';
+      // Revert to previous value from originalRows
+      const { originalRows } = get();
+      const original = originalRows.find(r => r.id === rowId);
+      set(state => ({
+        rows: original
+          ? state.rows.map(row => (row.id === rowId ? { ...original } : row))
+          : state.rows,
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'error', message },
+        },
+      }));
+      return { success: false, error: message };
+    }
+  },
+
+  deleteAccount: async (accountNumber: string) => {
+    const { selectedIndustry, rows } = get();
+    if (!selectedIndustry) {
+      return { success: false, error: 'No industry selected.' };
+    }
+
+    const targetRow = rows.find(row => row.accountNumber === accountNumber);
+    if (!targetRow) {
+      return { success: false, error: 'Account not found.' };
+    }
+
+    // Optimistically remove from local state
+    set(state => ({
+      rows: state.rows.filter(row => row.accountNumber !== accountNumber),
+      deletedRowIds: new Set([...state.deletedRowIds, targetRow.id]),
+      rowUpdateStatus: {
+        ...state.rowUpdateStatus,
+        [targetRow.id]: { state: 'pending' },
+      },
+    }));
+
+    try {
+      await deleteIndustryAccount(selectedIndustry, accountNumber);
+      set(state => {
+        const nextStatus = { ...state.rowUpdateStatus };
+        delete nextStatus[targetRow.id];
+        return { rowUpdateStatus: nextStatus };
+      });
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Delete failed.';
+      // Restore the row
+      set(state => ({
+        rows: [...state.rows, targetRow],
+        deletedRowIds: new Set([...state.deletedRowIds].filter(id => id !== targetRow.id)),
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [targetRow.id]: { state: 'error', message },
+        },
+      }));
+      return { success: false, error: message };
+    }
+  },
+
+  undoRowChanges: async (rowId: string) => {
+    const { selectedIndustry, originalRows } = get();
+    if (!selectedIndustry) {
+      return;
+    }
+
+    const original = originalRows.find(r => r.id === rowId);
+    if (!original) {
+      return;
+    }
+
+    // Update local state immediately
+    set(state => ({
+      rows: state.rows.map(row => (row.id === rowId ? { ...original } : row)),
+      changedRowIds: new Set([...state.changedRowIds].filter(id => id !== rowId)),
+      rowUpdateStatus: {
+        ...state.rowUpdateStatus,
+        [rowId]: { state: 'pending' },
+      },
+      rowValidationErrors: {
+        ...state.rowValidationErrors,
+        [rowId]: null,
+      },
+    }));
+
+    // Persist the original values back to the database
+    try {
+      const parts = original.accountNumber.split('-');
+      const updates: CoaManagerAccountUpdateInput = {
+        coreAccount: parts[0] ?? null,
+        accountName: original.accountName,
+        laborGroup: original.laborGroup,
+        operationalGroup: original.operationalGroup,
+        category: original.category,
+        accountType: original.accountType,
+        subCategory: original.subCategory,
+      };
+      if (parts.length === 3) {
+        updates.operationalGroupCode = parts[1];
+        updates.laborGroupCode = parts[2];
+      }
+      await updateIndustryAccount(selectedIndustry, rowId, updates);
+      set(state => ({
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'success' },
+        },
+      }));
+      applyStatusReset(set, [rowId]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Undo failed.';
+      set(state => ({
+        rowUpdateStatus: {
+          ...state.rowUpdateStatus,
+          [rowId]: { state: 'error', message },
+        },
+      }));
+    }
+  },
+
+  undoAllChanges: async () => {
+    const { changedRowIds, originalRows, selectedIndustry } = get();
+    if (!selectedIndustry || changedRowIds.size === 0) {
+      return;
+    }
+
+    const idsToUndo = Array.from(changedRowIds);
+
+    // Update local state immediately
+    set(state => {
+      const originalLookup = new Map(originalRows.map(r => [r.id, r]));
+      return {
+        rows: state.rows.map(row => {
+          const original = originalLookup.get(row.id);
+          return original ? { ...original } : row;
+        }),
+        changedRowIds: new Set(),
+        rowUpdateStatus: idsToUndo.reduce(
+          (acc, id) => {
+            acc[id] = { state: 'pending' };
+            return acc;
+          },
+          { ...state.rowUpdateStatus },
+        ),
+        rowValidationErrors: {},
+      };
+    });
+
+    // Persist each undo
+    const results = await Promise.allSettled(
+      idsToUndo.map(async rowId => {
+        const original = originalRows.find(r => r.id === rowId);
+        if (!original) {
+          return;
+        }
+        const parts = original.accountNumber.split('-');
+        const updates: CoaManagerAccountUpdateInput = {
+          coreAccount: parts[0] ?? null,
+          accountName: original.accountName,
+          laborGroup: original.laborGroup,
+          operationalGroup: original.operationalGroup,
+          category: original.category,
+          accountType: original.accountType,
+          subCategory: original.subCategory,
+        };
+        if (parts.length === 3) {
+          updates.operationalGroupCode = parts[1];
+          updates.laborGroupCode = parts[2];
+        }
+        await updateIndustryAccount(selectedIndustry, rowId, updates);
+      }),
+    );
+
+    // Update status based on results
+    set(state => {
+      const nextStatus = { ...state.rowUpdateStatus };
+      results.forEach((result, index) => {
+        const rowId = idsToUndo[index];
+        if (result.status === 'fulfilled') {
+          nextStatus[rowId] = { state: 'success' };
+        } else {
+          nextStatus[rowId] = {
+            state: 'error',
+            message: result.reason instanceof Error ? result.reason.message : 'Undo failed.',
+          };
+        }
+      });
+      return { rowUpdateStatus: nextStatus };
+    });
+
+    applyStatusReset(set, idsToUndo);
+  },
+
+  hasUndoableChanges: (rowId: string) => {
+    const { changedRowIds } = get();
+    return changedRowIds.has(rowId);
+  },
+
+  hasAnyUndoableChanges: () => {
+    const { changedRowIds } = get();
+    return changedRowIds.size > 0;
+  },
+
+  validateField: async (
+    rowId: string,
+    field: 'accountNumber' | 'accountName',
+    value: string,
+  ) => {
+    const { selectedIndustry } = get();
+    if (!selectedIndustry) {
+      return { valid: false, message: 'No industry selected.' };
+    }
+
+    try {
+      const response = await validateAccountField(selectedIndustry, field, value, rowId);
+      if (!response.valid) {
+        const message =
+          field === 'accountNumber'
+            ? 'This account number already exists.'
+            : 'This account name already exists.';
+        set(state => ({
+          rowValidationErrors: {
+            ...state.rowValidationErrors,
+            [rowId]: { field, message },
+          },
+        }));
+        return { valid: false, message };
+      }
+      set(state => ({
+        rowValidationErrors: {
+          ...state.rowValidationErrors,
+          [rowId]: null,
+        },
+      }));
+      return { valid: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Validation failed.';
+      return { valid: false, message };
+    }
+  },
+
+  clearRowValidationError: (rowId: string) => {
+    set(state => ({
+      rowValidationErrors: {
+        ...state.rowValidationErrors,
+        [rowId]: null,
+      },
+    }));
   },
 }));

@@ -38,6 +38,7 @@ import {
   normalizeGlMonth,
 } from '../../utils/glMonth';
 import { getFirstStringValue } from '../../utils/requestParsers';
+import { initializeClientGlData } from '../../repositories/clientGlDataRepository';
 
 type HeaderMap = Record<string, string | null>;
 
@@ -852,6 +853,36 @@ export const ingestFileRecordsHandler = async (
     }
 
     const inserted = await insertFileRecords(resolvedPayload.fileUploadGuid, records);
+
+    // Initialize CLIENT_GL_DATA for all COA accounts × GL months × operations
+    // This ensures operational statistics can be stored for this client
+    if (resolvedPayload.clientId) {
+      const glMonths = Array.from(
+        new Set(
+          records
+            .map(r => r.glMonth)
+            .filter((m): m is string => m !== null && m !== undefined)
+        )
+      );
+
+      if (glMonths.length > 0) {
+        try {
+          const initResult = await initializeClientGlData(resolvedPayload.clientId, glMonths);
+          context.info('Initialized CLIENT_GL_DATA records', {
+            clientId: resolvedPayload.clientId,
+            glMonths,
+            created: initResult.created,
+            skipped: initResult.skipped,
+          });
+        } catch (initError) {
+          // Log but don't fail the import if initialization fails
+          context.warn('Failed to initialize CLIENT_GL_DATA records', {
+            clientId: resolvedPayload.clientId,
+            error: initError,
+          });
+        }
+      }
+    }
 
     return json({ items: inserted }, 201);
   } catch (error) {

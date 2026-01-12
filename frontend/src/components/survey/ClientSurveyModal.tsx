@@ -45,11 +45,37 @@ interface SurveySection {
 const buildValueKey = (operationCd: string, accountNumber: string): string =>
   `${operationCd}|||${accountNumber}`;
 
-const getCurrentMonthInput = (): string => {
+const getMostRecentCompletedMonth = (): string => {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
+  // Go back one month to get the most recent completed month
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const year = lastMonth.getFullYear();
+  const month = String(lastMonth.getMonth() + 1).padStart(2, '0');
   return `${year}-${month}`;
+};
+
+const generateGlMonthOptions = (): string[] => {
+  const months: string[] = [];
+  const now = new Date();
+  // Start from the most recent completed month (last month)
+  const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  for (let i = 0; i < 18; i++) {
+    const date = new Date(startDate.getFullYear(), startDate.getMonth() - i, 1);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    months.push(`${year}-${month}`);
+  }
+
+  return months;
+};
+
+const formatGlMonthLabel = (value: string): string => {
+  const [year, month] = value.split('-');
+  if (!year || !month) {
+    return value;
+  }
+  return `${year}-${month.padStart(2, '0')}-01`;
 };
 
 const toMonthInputValue = (normalizedMonth: string): string =>
@@ -102,7 +128,7 @@ export default function ClientSurveyModal({
   operations = [],
   onClose,
 }: ClientSurveyModalProps) {
-  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthInput());
+  const [selectedMonth, setSelectedMonth] = useState<string>(getMostRecentCompletedMonth());
   const [surveyAccounts, setSurveyAccounts] = useState<SurveyAccount[]>([]);
   const [dataOperations, setDataOperations] = useState<string[]>([]);
   const [activeOperation, setActiveOperation] = useState<string | null>(null);
@@ -120,6 +146,8 @@ export default function ClientSurveyModal({
   const saveTimersRef = useRef<Record<string, number>>({});
   const saveResetTimersRef = useRef<Record<string, number>>({});
   const savedValuesRef = useRef<SavedMap>({});
+
+  const glMonthOptions = useMemo(() => generateGlMonthOptions(), []);
 
   const normalizedMonth = useMemo(
     () => (selectedMonth ? normalizeGlMonth(selectedMonth) : ''),
@@ -268,7 +296,7 @@ export default function ClientSurveyModal({
       setSubCategoryQuery('');
       setFMRefreshMessage(null);
       if (!selectedMonth) {
-        setSelectedMonth(getCurrentMonthInput());
+        setSelectedMonth(getMostRecentCompletedMonth());
       }
     }
   }, [open, selectedMonth]);
@@ -622,13 +650,18 @@ export default function ClientSurveyModal({
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
                 GL month
-                <input
-                  type="month"
+                <select
                   value={selectedMonth}
                   onChange={event => setSelectedMonth(event.target.value)}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                   disabled={isLoading}
-                />
+                >
+                  {glMonthOptions.map(month => (
+                    <option key={month} value={month}>
+                      {formatGlMonthLabel(month)}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <div className="text-xs text-slate-500 dark:text-slate-400">
@@ -905,13 +938,13 @@ export default function ClientSurveyModal({
                 </div>
               ) : null}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col items-end gap-1">
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleRefreshFMStatistics}
                   disabled={!clientScac || isFMRefreshing || pendingSaveCount > 0}
-                  className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-indigo-400 dark:focus:ring-offset-slate-900"
+                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-blue-400 dark:focus:ring-offset-slate-900"
                 >
                   {isFMRefreshing ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -920,18 +953,18 @@ export default function ClientSurveyModal({
                   )}
                   Get FM Statistics
                 </button>
-                <span className="max-w-[200px] text-right text-[10px] leading-tight text-slate-500 dark:text-slate-400">
-                  Calculates FreightMath data: Miles, Loads, Driver Count Observed, Trailer Count Observed, etc.
-                </span>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={pendingSaveCount > 0}
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
+                >
+                  Close
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={pendingSaveCount > 0}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 dark:focus:ring-offset-slate-900"
-              >
-                Close
-              </button>
+              <span className="text-right text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+                Get FM Statistics calculates FreightMath data: Miles, Loads, Driver Count Observed, Trailer Count Observed, etc.
+              </span>
             </div>
           </footer>
         </div>

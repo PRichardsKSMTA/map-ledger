@@ -93,6 +93,7 @@ export default function SearchableSelect<TOption extends Option>({
   const previousValueRef = useRef<string | null>(null);
   const lastSyncedLabelRef = useRef<string>('');
   const hasKeyboardNavigatedRef = useRef(false);
+  const hasInitiallyScrolledRef = useRef(false);
   const [menuStyles, setMenuStyles] = useState<MenuStyles | null>(null);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -178,9 +179,20 @@ export default function SearchableSelect<TOption extends Option>({
     };
   }, [isOpen]);
 
+  // When the dropdown opens with no search term, highlight the selected option
+  // When searching, reset to the first result
   useEffect(() => {
-    setHighlightedIndex(0);
-  }, [normalizedSearch]);
+    if (normalizedSearch) {
+      setHighlightedIndex(0);
+    } else if (isOpen && selectedOption) {
+      const selectedIndex = filteredOptions.findIndex(
+        option => valueSelector(option) === value,
+      );
+      if (selectedIndex !== -1) {
+        setHighlightedIndex(selectedIndex);
+      }
+    }
+  }, [normalizedSearch, isOpen, selectedOption, filteredOptions, valueSelector, value]);
 
   const handleSelect = (option: TOption) => {
     const optionValue = valueSelector(option);
@@ -249,17 +261,59 @@ export default function SearchableSelect<TOption extends Option>({
     }
   };
 
+  // Reset initial scroll flag when dropdown closes
   useEffect(() => {
-    if (!isOpen || !listboxRef.current) {
+    if (!isOpen) {
+      hasInitiallyScrolledRef.current = false;
+    }
+  }, [isOpen]);
+
+  // Scroll to selected option once when dropdown first opens
+  useEffect(() => {
+    if (!isOpen || !menuStyles || hasInitiallyScrolledRef.current) {
       return;
     }
+
+    // Find selected option index directly (don't rely on highlightedIndex state)
+    const selectedIndex = selectedOption
+      ? filteredOptions.findIndex(option => valueSelector(option) === value)
+      : -1;
+
+    if (selectedIndex === -1) {
+      hasInitiallyScrolledRef.current = true;
+      return;
+    }
+
+    // Use requestAnimationFrame to ensure DOM is rendered
+    const frameId = requestAnimationFrame(() => {
+      if (!listboxRef.current) {
+        return;
+      }
+      const activeOption = listboxRef.current.querySelector<HTMLElement>(
+        `[data-option-index="${selectedIndex}"]`,
+      );
+      if (activeOption) {
+        activeOption.scrollIntoView({ block: 'nearest' });
+      }
+      hasInitiallyScrolledRef.current = true;
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [isOpen, menuStyles, selectedOption, filteredOptions, valueSelector, value]);
+
+  // Scroll to highlighted option during keyboard navigation
+  useEffect(() => {
+    if (!isOpen || !listboxRef.current || !hasKeyboardNavigatedRef.current) {
+      return;
+    }
+
     const activeOption = listboxRef.current.querySelector<HTMLElement>(
       `[data-option-index="${highlightedIndex}"]`,
     );
     if (activeOption) {
       activeOption.scrollIntoView({ block: 'nearest' });
     }
-  }, [highlightedIndex, isOpen, filteredOptions.length]);
+  }, [highlightedIndex, isOpen]);
 
   const activeOption = filteredOptions[highlightedIndex];
   const activeDescendant = activeOption ? `${resolvedId}-option-${valueSelector(activeOption)}` : undefined;

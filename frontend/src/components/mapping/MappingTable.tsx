@@ -53,6 +53,7 @@ import ModalBackdrop from '../ui/ModalBackdrop';
 import ApplyAcrossPeriodsModal, {
   type ApplyAcrossPeriodsScope,
 } from './ApplyAcrossPeriodsModal';
+import ApplyToFuturePeriodsModal from './ApplyToFuturePeriodsModal';
 
 type SortKey =
   | 'accountId'
@@ -229,6 +230,7 @@ export default function MappingTable() {
   const updatePolarity = useMappingStore((state) => state.updatePolarity);
   const applyBatchMapping = useMappingStore((state) => state.applyBatchMapping);
   const applyMappingsToAllPeriods = useMappingStore((state) => state.applyMappingsToAllPeriods);
+  const applyMappingsToFuturePeriods = useMappingStore((state) => state.applyMappingsToFuturePeriods);
   const applyPresetToAccounts = useMappingStore(
     (state) => state.applyPresetToAccounts
   );
@@ -278,6 +280,7 @@ export default function MappingTable() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
   const [isApplyAcrossOpen, setApplyAcrossOpen] = useState(false);
+  const [isApplyToFutureOpen, setApplyToFutureOpen] = useState(false);
 
   const latestPeriod = useMemo(() => {
     if (availablePeriods.length === 0) {
@@ -535,11 +538,26 @@ export default function MappingTable() {
     ],
   );
 
+  const handleApplyToFuturePeriods = useCallback(() => {
+    if (!selectedIdList.length || !activePeriod) {
+      return;
+    }
+    applyMappingsToFuturePeriods(selectedIdList, activePeriod);
+    clearSelection();
+    setApplyToFutureOpen(false);
+  }, [applyMappingsToFuturePeriods, clearSelection, selectedIdList, activePeriod]);
+
   const derivedSelectedPeriod = activePeriod ?? selectedPeriod ?? null;
   const showApplyAcrossPeriods = Boolean(activePeriod) && availablePeriods.length > 1;
   const canApplyAcrossPeriods =
     showApplyAcrossPeriods &&
     (selectedIdList.length > 0 || filteredAccountIds.length > 0);
+  const futurePeriodsCount = useMemo(() => {
+    if (!activePeriod) return 0;
+    return availablePeriods.filter(period => period > activePeriod).length;
+  }, [activePeriod, availablePeriods]);
+  const showApplyToFuturePeriods = Boolean(activePeriod) && futurePeriodsCount > 0;
+  const canApplyToFuturePeriods = showApplyToFuturePeriods && selectedIdList.length > 0;
   const expandedSelectedIdList = useMemo(
     () => (selectedIdList.length > 0 ? expandAccountIds(selectedIdList) : []),
     [expandAccountIds, selectedIdList],
@@ -651,6 +669,10 @@ export default function MappingTable() {
           showApplyAcrossPeriods ? () => setApplyAcrossOpen(true) : undefined
         }
         canApplyAcrossPeriods={canApplyAcrossPeriods}
+        onApplyToFuturePeriods={
+          showApplyToFuturePeriods ? () => setApplyToFutureOpen(true) : undefined
+        }
+        canApplyToFuturePeriods={canApplyToFuturePeriods}
       />
       <div className="table-scroll-x">
         <table
@@ -1214,6 +1236,17 @@ export default function MappingTable() {
           filteredCount={filteredAccountIds.length}
           onClose={() => setApplyAcrossOpen(false)}
           onConfirm={handleApplyAcrossPeriods}
+        />
+      )}
+      {showApplyToFuturePeriods && (
+        <ApplyToFuturePeriodsModal
+          open={isApplyToFutureOpen}
+          periodLabel={activePeriodLabel}
+          contextLabel="mappings"
+          selectedCount={selectedIdList.length}
+          futurePeriodsCount={futurePeriodsCount}
+          onClose={() => setApplyToFutureOpen(false)}
+          onConfirm={handleApplyToFuturePeriods}
         />
       )}
       {activeDynamicAccountId && (

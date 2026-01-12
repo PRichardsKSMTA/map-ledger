@@ -1115,6 +1115,7 @@ const buildOperationalBasisAccounts = (
       description: string;
       totalsByPeriod: Record<string, number>;
       valuesByOperation: Record<string, Record<string, number>>;
+      isSurvey: boolean;
     }
   >();
 
@@ -1129,6 +1130,7 @@ const buildOperationalBasisAccounts = (
       description: label,
       totalsByPeriod: {},
       valuesByOperation: {},
+      isSurvey: account.isSurvey === true,
     });
   });
 
@@ -1169,6 +1171,7 @@ const buildOperationalBasisAccounts = (
         Object.keys(record.totalsByPeriod).length > 0 ? record.totalsByPeriod : undefined,
       valuesByOperation:
         Object.keys(record.valuesByOperation).length > 0 ? record.valuesByOperation : undefined,
+      isSurvey: record.isSurvey,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 };
@@ -1963,6 +1966,7 @@ interface MappingState {
     }
   ) => void;
   applyMappingsToAllPeriods: (ids: string[]) => void;
+  applyMappingsToFuturePeriods: (ids: string[], currentPeriod: string) => void;
   applyMappingToMonths: (
     entityId: string,
     accountId: string,
@@ -3301,6 +3305,92 @@ export const useMappingStore = create<MappingState>((set, get) => {
       );
     }
   },
+  applyMappingsToFuturePeriods: (ids, currentPeriod) => {
+    const ratioUpdates: { accountId: string; presetId: string | null }[] = [];
+    set(state => {
+      const dirtyIds: string[] = [];
+      if (!ids.length || !currentPeriod) {
+        return state;
+      }
+
+      const selectedAccounts = state.accounts.filter(account => ids.includes(account.id));
+      if (selectedAccounts.length === 0) {
+        return state;
+      }
+
+      const snapshotByKey = new Map<string, GLAccountMappingRow>();
+      selectedAccounts.forEach(account => {
+        snapshotByKey.set(buildAccountIdentityKey(account), account);
+      });
+
+      const accounts = state.accounts.map(account => {
+        const source = snapshotByKey.get(buildAccountIdentityKey(account));
+        if (!source || source.id === account.id) {
+          return account;
+        }
+
+        // Only apply to future periods (glMonth > currentPeriod)
+        const accountPeriod = account.glMonth?.trim() ?? '';
+        if (!accountPeriod || accountPeriod <= currentPeriod) {
+          return account;
+        }
+
+        const resolvedOriginal = resolveOriginalPolarity(account);
+        let next: GLAccountMappingRow = {
+          ...account,
+          mappingType: source.mappingType,
+          manualCOAId: source.manualCOAId,
+          presetId: source.presetId,
+          polarity: source.polarity,
+          exclusionPct: source.exclusionPct ?? null,
+          notes: source.notes,
+          splitDefinitions: [],
+          dynamicExclusionAmount: undefined,
+        };
+        next = applyPolarityToAccount(next, source.polarity, resolvedOriginal);
+
+        if (source.mappingType === 'percentage') {
+          next.splitDefinitions = ensureMinimumPercentageSplits(
+            cloneSplitDefinitionsForSelection(source.splitDefinitions),
+          );
+        } else if (source.mappingType === 'dynamic') {
+          next.splitDefinitions = cloneSplitDefinitionsForSelection(source.splitDefinitions);
+        }
+
+        if (source.mappingType === 'exclude' || source.status === 'Excluded') {
+          next.mappingType = 'exclude';
+          next.manualCOAId = undefined;
+          next.presetId = undefined;
+          next.splitDefinitions = [];
+          next.dynamicExclusionAmount = undefined;
+        } else if (source.mappingType !== 'dynamic') {
+          next.dynamicExclusionAmount = undefined;
+        }
+
+        if (source.mappingType === 'dynamic') {
+          ratioUpdates.push({ accountId: account.id, presetId: source.presetId ?? null });
+        } else if (account.mappingType === 'dynamic') {
+          ratioUpdates.push({ accountId: account.id, presetId: null });
+        }
+
+        const updated = applyDerivedStatus(next);
+        dirtyIds.push(account.id);
+        return updated;
+      });
+
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      enqueueDirtyIds(dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
+    });
+
+    if (ratioUpdates.length > 0) {
+      const ratioState = useRatioAllocationStore.getState();
+      ratioUpdates.forEach(update =>
+        ratioState.setActivePresetForSource(update.accountId, update.presetId),
+      );
+    }
+  },
   applyMappingToMonths: (entityId, accountId, months, mapping) =>
     set(state => {
       const dirtyIds: string[] = [];
@@ -4560,7 +4650,7 @@ const selectEntityScopedAccounts = (
 const selectPeriodScopedAccounts = (state: MappingState): GLAccountMappingRow[] => {
   const scopedAccounts = selectEntityScopedAccounts(state);
   if (!state.activePeriod) {
-    return scopedAccounts;
+    return buildMostRecentAccounts(scopedAccounts);
   }
   const normalizedPeriod = normalizePeriod(state.activePeriod);
   return scopedAccounts.filter(account => normalizePeriod(account.glMonth) === normalizedPeriod);
@@ -4650,7 +4740,7 @@ const getEntityPeriodScopedAccounts = (
   const scopedAccounts = getAccountsForEntity(state.accounts, entityId);
   const resolvedPeriod = resolveActivePeriod(state.accounts, entityId, state.activePeriod);
   if (!resolvedPeriod) {
-    return scopedAccounts;
+    return buildMostRecentAccounts(scopedAccounts);
   }
   const normalizedPeriod = normalizePeriod(resolvedPeriod);
   return scopedAccounts.filter(account => normalizePeriod(account.glMonth) === normalizedPeriod);

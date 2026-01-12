@@ -1,14 +1,26 @@
 import { create } from 'zustand';
 import type { ClientProfile, UserClientAccess, UserClientCompany, UserClientOperation } from '../types';
+import { checkClientFMStatistics, refreshFMStatistics } from '../services/clientOperationalStatsService';
+
+type FMCheckStatus = 'idle' | 'checking' | 'refreshing' | 'completed' | 'error';
+
+interface FMCheckState {
+  status: FMCheckStatus;
+  hasFMStatistics: boolean;
+  error: string | null;
+}
 
 interface ClientState {
   clients: ClientProfile[];
   activeClientId: string | null;
   isLoading: boolean;
   error: string | null;
+  // FM statistics background check state
+  fmCheckState: Record<string, FMCheckState>;
   hydrateFromAccessList: (accessList: UserClientAccess[], activeClientId?: string | null) => void;
   setActiveClientId: (clientId: string | null) => void;
   upsertClient: (client: ClientProfile) => void;
+  checkAndRefreshFMStatistics: (clientId: string, scac: string | null | undefined) => void;
   reset: () => void;
 }
 
@@ -53,11 +65,12 @@ const persistActiveClientId = (clientId: string | null): void => {
   }
 };
 
-const initialState: Pick<ClientState, 'clients' | 'activeClientId' | 'isLoading' | 'error'> = {
+const initialState: Pick<ClientState, 'clients' | 'activeClientId' | 'isLoading' | 'error' | 'fmCheckState'> = {
   clients: [],
   activeClientId: getStoredActiveClientId(),
   isLoading: false,
   error: null,
+  fmCheckState: {},
 };
 
 const normalizeOperation = (operation: UserClientOperation): UserClientOperation => {
@@ -119,6 +132,17 @@ export const useClientStore = create<ClientState>((set, get) => ({
         error: null,
       });
       persistActiveClientId(resolvedActiveClientId);
+
+      // Trigger FM statistics check for the active client in the background
+      if (resolvedActiveClientId) {
+        const activeClient = mappedClients.find(c => c.clientId === resolvedActiveClientId);
+        if (activeClient) {
+          // Use setTimeout to ensure the state is fully set before triggering the check
+          setTimeout(() => {
+            get().checkAndRefreshFMStatistics(resolvedActiveClientId, activeClient.scac);
+          }, 0);
+        }
+      }
     } catch (error) {
       set({
         isLoading: false,
@@ -138,6 +162,17 @@ export const useClientStore = create<ClientState>((set, get) => ({
 
     set({ activeClientId: nextActiveClientId });
     persistActiveClientId(nextActiveClientId ?? null);
+
+    // Trigger FM statistics check for the newly selected client in the background
+    if (nextActiveClientId && nextActiveClientId !== activeClientId) {
+      const nextClient = clients.find(c => c.clientId === nextActiveClientId);
+      if (nextClient) {
+        // Use setTimeout to ensure the state is fully set before triggering the check
+        setTimeout(() => {
+          get().checkAndRefreshFMStatistics(nextActiveClientId, nextClient.scac);
+        }, 0);
+      }
+    }
   },
   upsertClient: (client) =>
     set((state) => {
@@ -150,8 +185,78 @@ export const useClientStore = create<ClientState>((set, get) => ({
       nextClients[existingIndex] = client;
       return { clients: nextClients };
     }),
+  checkAndRefreshFMStatistics: (clientId, scac) => {
+    // Need both clientId (for state tracking) and scac (for the actual check)
+    if (!clientId || !scac) {
+      return;
+    }
+
+    const currentState = get().fmCheckState[clientId];
+    // Skip if already checking, refreshing, or completed
+    if (currentState?.status === 'checking' || currentState?.status === 'refreshing' || currentState?.status === 'completed') {
+      return;
+    }
+
+    // Set status to checking
+    set((state) => ({
+      fmCheckState: {
+        ...state.fmCheckState,
+        [clientId]: { status: 'checking', hasFMStatistics: false, error: null },
+      },
+    }));
+
+    // Run the check in the background using SCAC
+    checkClientFMStatistics(scac)
+      .then((result) => {
+        if (result.hasFMStatistics) {
+          // Client already has FM statistics, mark as completed
+          set((state) => ({
+            fmCheckState: {
+              ...state.fmCheckState,
+              [clientId]: { status: 'completed', hasFMStatistics: true, error: null },
+            },
+          }));
+        } else {
+          // No FM statistics, need to refresh - update status and trigger refresh
+          set((state) => ({
+            fmCheckState: {
+              ...state.fmCheckState,
+              [clientId]: { status: 'refreshing', hasFMStatistics: false, error: null },
+            },
+          }));
+
+          refreshFMStatistics(scac)
+            .then(() => {
+              set((state) => ({
+                fmCheckState: {
+                  ...state.fmCheckState,
+                  [clientId]: { status: 'completed', hasFMStatistics: true, error: null },
+                },
+              }));
+            })
+            .catch((refreshError) => {
+              const message = refreshError instanceof Error ? refreshError.message : 'Failed to refresh FM statistics';
+              set((state) => ({
+                fmCheckState: {
+                  ...state.fmCheckState,
+                  [clientId]: { status: 'error', hasFMStatistics: false, error: message },
+                },
+              }));
+            });
+        }
+      })
+      .catch((checkError) => {
+        const message = checkError instanceof Error ? checkError.message : 'Failed to check FM statistics';
+        set((state) => ({
+          fmCheckState: {
+            ...state.fmCheckState,
+            [clientId]: { status: 'error', hasFMStatistics: false, error: message },
+          },
+        }));
+      });
+  },
   reset: () => {
     persistActiveClientId(null);
-    set({ ...initialState, activeClientId: null });
+    set({ ...initialState, activeClientId: null, fmCheckState: {} });
   },
 }));

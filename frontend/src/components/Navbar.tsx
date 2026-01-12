@@ -204,7 +204,7 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
           <div className="flex items-center justify-center gap-3">
             {clients.length > 0 && (
               <div className="flex items-center gap-3">
-                <div className="relative min-w-[18rem]">
+                <div className="relative min-w-[22rem]">
                   <label className="sr-only" htmlFor={clientSelectorId}>
                     Client
                   </label>
@@ -223,8 +223,8 @@ export default function Navbar({ isSidebarOpen, onToggleSidebar }: NavbarProps) 
                     placeholder="Select client"
                     onChange={handleClientChange}
                     noOptionsMessage="No clients available"
-                    className="min-w-[18rem]"
-                    inputClassName="min-w-[18rem] pr-24 font-medium text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-blue-500 focus:ring-blue-500/40"
+                    className="min-w-[22rem]"
+                    inputClassName="min-w-[22rem] pr-24 font-medium text-gray-900 dark:text-gray-100 border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:border-blue-500 focus:ring-blue-500/40"
                     allowClear={false}
                     allowEmptyValue={false}
                   />

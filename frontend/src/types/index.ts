@@ -392,6 +392,7 @@ export interface OperationalMetric {
 export interface OperationalStatAccount {
   accountNumber: string;
   description: string | null;
+  isSurvey?: boolean;
 }
 
 export interface OperationalStatValue {
@@ -437,6 +438,11 @@ export interface DynamicBasisAccount {
    * Optional map of operation codes to period-specific balances.
    */
   valuesByOperation?: Record<string, Record<string, number>>;
+  /**
+   * Whether this operational account is a survey-based data point.
+   * Survey data should always be shown even if the value is zero.
+   */
+  isSurvey?: boolean;
 }
 
 export type DynamicAllocationPresetContext = 'mapping' | 'distribution';

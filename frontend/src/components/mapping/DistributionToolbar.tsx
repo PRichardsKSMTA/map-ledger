@@ -79,31 +79,29 @@ export default function DistributionToolbar({
               />
             </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <div role="group" aria-label="Filter distribution by status" className="flex flex-wrap items-center gap-2">
-              {STATUS_DEFINITIONS.map(status => {
-                const isActive = statusFilters.includes(status.value);
-                return (
-                  <button
-                    key={status.value}
-                    type="button"
-                    onClick={() => toggleStatusFilter(status.value)}
-                    aria-pressed={isActive}
-                    className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
-                      isActive
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'border border-slate-200 text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {status.label}
-                  </button>
-                );
-              })}
-            </div>
+          <div role="group" aria-label="Filter distribution by status" className="flex flex-wrap items-center gap-2 lg:mt-6">
+            {STATUS_DEFINITIONS.map(status => {
+              const isActive = statusFilters.includes(status.value);
+              return (
+                <button
+                  key={status.value}
+                  type="button"
+                  onClick={() => toggleStatusFilter(status.value)}
+                  aria-pressed={isActive}
+                  className={`rounded-full px-3 py-1 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                    isActive
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'border border-slate-200 text-slate-600 hover:border-slate-300 dark:border-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {status.label}
+                </button>
+              );
+            })}
             <button
               type="button"
               onClick={clearStatusFilters}
-              className="self-start text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-blue-300 dark:hover:text-blue-200 dark:focus:ring-offset-slate-900"
             >
               Clear filters
             </button>

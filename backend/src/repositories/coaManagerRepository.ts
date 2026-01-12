@@ -704,4 +704,288 @@ ${withClause}
   return payload.rows.length;
 };
 
+export interface CoaManagerAccountUpdateInput {
+  coreAccount?: string | null;
+  accountName?: string | null;
+  laborGroup?: string | null;
+  laborGroupCode?: string | null;
+  operationalGroup?: string | null;
+  operationalGroupCode?: string | null;
+  category?: string | null;
+  accountType?: string | null;
+  subCategory?: string | null;
+}
+
+export interface GroupCodeMapping {
+  name: string;
+  code: string;
+}
+
+/**
+ * Update an account's editable fields by RECORD_ID.
+ * Automatically recalculates ACCOUNT_NUMBER if core/labor/operational codes change.
+ */
+export const updateIndustryAccount = async (
+  industryName: string,
+  recordId: string,
+  updates: CoaManagerAccountUpdateInput,
+): Promise<boolean> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  const setClauses: string[] = [];
+  const params: Record<string, unknown> = { recordId };
+
+  // Build the full account number from parts if any codes are being updated
+  let newAccountNumber: string | null = null;
+  if (
+    updates.coreAccount !== undefined ||
+    updates.laborGroupCode !== undefined ||
+    updates.operationalGroupCode !== undefined
+  ) {
+    // Need to fetch current values to merge with updates
+    const { recordset } = await runQuery<Record<string, unknown>>(
+      `SELECT * FROM ${tableName} WHERE RECORD_ID = @recordId`,
+      { recordId },
+    );
+    if (recordset.length === 0) {
+      return false;
+    }
+    const currentRow = recordset[0];
+
+    const currentCore = mapping.coreAccount
+      ? toNullableString(currentRow[mapping.coreAccount])
+      : null;
+    const currentOpCode = mapping.operationalGroupCode
+      ? toNullableString(currentRow[mapping.operationalGroupCode])
+      : null;
+    const currentLaborCode = mapping.laborGroupCode
+      ? toNullableString(currentRow[mapping.laborGroupCode])
+      : null;
+
+    const finalCore = updates.coreAccount !== undefined ? updates.coreAccount : currentCore;
+    const finalOpCode =
+      updates.operationalGroupCode !== undefined
+        ? updates.operationalGroupCode
+        : currentOpCode;
+    const finalLaborCode =
+      updates.laborGroupCode !== undefined ? updates.laborGroupCode : currentLaborCode;
+
+    if (finalCore && finalOpCode && finalLaborCode) {
+      newAccountNumber = `${finalCore}-${finalOpCode.padStart(3, '0')}-${finalLaborCode.padStart(3, '0')}`;
+    }
+  }
+
+  if (newAccountNumber && mapping.accountNumber) {
+    setClauses.push(`${escapeColumnName(mapping.accountNumber)} = @accountNumber`);
+    params.accountNumber = newAccountNumber;
+  }
+
+  if (updates.coreAccount !== undefined && mapping.coreAccount) {
+    setClauses.push(`${escapeColumnName(mapping.coreAccount)} = @coreAccount`);
+    params.coreAccount = normalizeText(updates.coreAccount);
+  }
+
+  if (updates.accountName !== undefined && mapping.accountName) {
+    setClauses.push(`${escapeColumnName(mapping.accountName)} = @accountName`);
+    params.accountName = normalizeText(updates.accountName);
+  }
+
+  if (updates.laborGroup !== undefined && mapping.laborGroup) {
+    setClauses.push(`${escapeColumnName(mapping.laborGroup)} = @laborGroup`);
+    params.laborGroup = normalizeText(updates.laborGroup);
+  }
+
+  if (updates.laborGroupCode !== undefined && mapping.laborGroupCode) {
+    setClauses.push(`${escapeColumnName(mapping.laborGroupCode)} = @laborGroupCode`);
+    params.laborGroupCode = normalizeText(updates.laborGroupCode);
+  }
+
+  if (updates.operationalGroup !== undefined && mapping.operationalGroup) {
+    setClauses.push(`${escapeColumnName(mapping.operationalGroup)} = @operationalGroup`);
+    params.operationalGroup = normalizeText(updates.operationalGroup);
+  }
+
+  if (updates.operationalGroupCode !== undefined && mapping.operationalGroupCode) {
+    setClauses.push(
+      `${escapeColumnName(mapping.operationalGroupCode)} = @operationalGroupCode`,
+    );
+    params.operationalGroupCode = normalizeText(updates.operationalGroupCode);
+  }
+
+  if (updates.category !== undefined && mapping.category) {
+    setClauses.push(`${escapeColumnName(mapping.category)} = @category`);
+    params.category = normalizeText(updates.category);
+  }
+
+  if (updates.accountType !== undefined && mapping.accountType) {
+    setClauses.push(`${escapeColumnName(mapping.accountType)} = @accountType`);
+    params.accountType = normalizeText(updates.accountType);
+  }
+
+  if (updates.subCategory !== undefined && mapping.subCategory) {
+    setClauses.push(`${escapeColumnName(mapping.subCategory)} = @subCategory`);
+    params.subCategory = normalizeText(updates.subCategory);
+  }
+
+  if (setClauses.length === 0) {
+    return true; // Nothing to update
+  }
+
+  const result = await runQuery(
+    `UPDATE ${tableName}
+    SET ${setClauses.join(', ')}
+    WHERE RECORD_ID = @recordId`,
+    params,
+  );
+
+  return (result.rowsAffected?.[0] ?? 0) > 0;
+};
+
+/**
+ * Delete an account by ACCOUNT_NUMBER.
+ */
+export const deleteIndustryAccount = async (
+  industryName: string,
+  accountNumber: string,
+): Promise<boolean> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  if (!mapping.accountNumber) {
+    return false;
+  }
+
+  const result = await runQuery(
+    `DELETE FROM ${tableName} WHERE ${escapeColumnName(mapping.accountNumber)} = @accountNumber`,
+    { accountNumber },
+  );
+
+  return (result.rowsAffected?.[0] ?? 0) > 0;
+};
+
+/**
+ * Check if an account number already exists (excluding a specific record).
+ */
+export const checkAccountNumberExists = async (
+  industryName: string,
+  accountNumber: string,
+  excludeRecordId?: string,
+): Promise<boolean> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  if (!mapping.accountNumber) {
+    return false;
+  }
+
+  const params: Record<string, unknown> = {
+    accountNumber: normalizeText(accountNumber),
+  };
+
+  let sql = `SELECT COUNT(*) as count FROM ${tableName} WHERE ${escapeColumnName(mapping.accountNumber)} = @accountNumber`;
+
+  if (excludeRecordId) {
+    sql += ' AND RECORD_ID != @excludeRecordId';
+    params.excludeRecordId = excludeRecordId;
+  }
+
+  const { recordset } = await runQuery<{ count: number }>(sql, params);
+  return (recordset[0]?.count ?? 0) > 0;
+};
+
+/**
+ * Check if an account name (description) already exists (excluding a specific record).
+ */
+export const checkAccountNameExists = async (
+  industryName: string,
+  accountName: string,
+  excludeRecordId?: string,
+): Promise<boolean> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  if (!mapping.accountName) {
+    return false;
+  }
+
+  const params: Record<string, unknown> = {
+    accountName: normalizeText(accountName),
+  };
+
+  let sql = `SELECT COUNT(*) as count FROM ${tableName} WHERE ${escapeColumnName(mapping.accountName)} = @accountName`;
+
+  if (excludeRecordId) {
+    sql += ' AND RECORD_ID != @excludeRecordId';
+    params.excludeRecordId = excludeRecordId;
+  }
+
+  const { recordset } = await runQuery<{ count: number }>(sql, params);
+  return (recordset[0]?.count ?? 0) > 0;
+};
+
+/**
+ * Get distinct labor groups with their codes.
+ */
+export const listLaborGroupCodes = async (
+  industryName: string,
+): Promise<GroupCodeMapping[]> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  if (!mapping.laborGroup || !mapping.laborGroupCode) {
+    return [];
+  }
+
+  const { recordset } = await runQuery<{ name: string; code: string }>(
+    `SELECT DISTINCT
+      ${escapeColumnName(mapping.laborGroup)} as name,
+      ${escapeColumnName(mapping.laborGroupCode)} as code
+    FROM ${tableName}
+    WHERE ${escapeColumnName(mapping.laborGroup)} IS NOT NULL
+      AND ${escapeColumnName(mapping.laborGroupCode)} IS NOT NULL
+    ORDER BY ${escapeColumnName(mapping.laborGroup)}`,
+  );
+
+  return recordset.map((row) => ({
+    name: toRequiredString(row.name),
+    code: toRequiredString(row.code),
+  }));
+};
+
+/**
+ * Get distinct operational groups with their codes.
+ */
+export const listOperationalGroupCodes = async (
+  industryName: string,
+): Promise<GroupCodeMapping[]> => {
+  const tableName = await resolveIndustryTableName(industryName);
+  const tableColumns = await listTableColumns(tableName);
+  const mapping = buildColumnMapping(tableColumns);
+
+  if (!mapping.operationalGroup || !mapping.operationalGroupCode) {
+    return [];
+  }
+
+  const { recordset } = await runQuery<{ name: string; code: string }>(
+    `SELECT DISTINCT
+      ${escapeColumnName(mapping.operationalGroup)} as name,
+      ${escapeColumnName(mapping.operationalGroupCode)} as code
+    FROM ${tableName}
+    WHERE ${escapeColumnName(mapping.operationalGroup)} IS NOT NULL
+      AND ${escapeColumnName(mapping.operationalGroupCode)} IS NOT NULL
+    ORDER BY ${escapeColumnName(mapping.operationalGroup)}`,
+  );
+
+  return recordset.map((row) => ({
+    name: toRequiredString(row.name),
+    code: toRequiredString(row.code),
+  }));
+};
+
 export default listIndustryCoaData;

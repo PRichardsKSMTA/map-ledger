@@ -447,3 +447,98 @@ export const importIndustryCoaFile = async (
     throw new Error(message || 'Unable to import COA file.');
   }
 };
+
+// ============================================================================
+// Account Update/Delete/Validate Functions
+// ============================================================================
+
+export interface CoaManagerAccountUpdateInput {
+  coreAccount?: string | null;
+  accountName?: string | null;
+  laborGroup?: string | null;
+  laborGroupCode?: string | null;
+  operationalGroup?: string | null;
+  operationalGroupCode?: string | null;
+  category?: string | null;
+  accountType?: string | null;
+  subCategory?: string | null;
+}
+
+export interface GroupCodeMapping {
+  name: string;
+  code: string;
+}
+
+export interface GroupCodesResponse {
+  laborGroups: GroupCodeMapping[];
+  operationalGroups: GroupCodeMapping[];
+}
+
+export interface ValidateFieldResponse {
+  exists: boolean;
+  valid: boolean;
+}
+
+export const updateIndustryAccount = async (
+  industry: string,
+  rowId: string,
+  updates: CoaManagerAccountUpdateInput,
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/account`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rowId, ...updates }),
+  });
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, 'Unable to update account.');
+    throw new Error(message || 'Unable to update account.');
+  }
+};
+
+export const deleteIndustryAccount = async (
+  industry: string,
+  accountNumber: string,
+): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/account`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountNumber }),
+  });
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, 'Unable to delete account.');
+    throw new Error(message || 'Unable to delete account.');
+  }
+};
+
+export const validateAccountField = async (
+  industry: string,
+  field: 'accountNumber' | 'accountName',
+  value: string,
+  excludeRecordId?: string,
+): Promise<ValidateFieldResponse> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ field, value, excludeRecordId }),
+  });
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, 'Unable to validate field.');
+    throw new Error(message || 'Unable to validate field.');
+  }
+
+  return (await response.json()) as ValidateFieldResponse;
+};
+
+export const fetchGroupCodes = async (industry: string): Promise<GroupCodesResponse> => {
+  const response = await fetch(`${API_BASE_URL}/coa-manager/industry/${industry}/group-codes`);
+
+  if (!response.ok) {
+    const message = await extractErrorMessage(response, 'Unable to fetch group codes.');
+    throw new Error(message || 'Unable to fetch group codes.');
+  }
+
+  return (await response.json()) as GroupCodesResponse;
+};

@@ -109,8 +109,8 @@ export default function IndustryImportModal({
   };
 
   const dropzoneClasses = isDragActive
-    ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300'
-    : 'border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/40';
+    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-300'
+    : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 hover:border-blue-300 dark:hover:border-blue-500 hover:bg-blue-50/40 dark:hover:bg-blue-900/20';
 
   return (
     <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
@@ -118,16 +118,16 @@ export default function IndustryImportModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="industry-import-title"
-        className="w-full max-w-lg rounded-xl bg-white shadow-xl"
+        className="w-full max-w-lg rounded-xl bg-white dark:bg-slate-800 shadow-xl"
         onClick={event => event.stopPropagation()}
       >
         <form onSubmit={handleSubmit} className="space-y-5 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 id="industry-import-title" className="text-lg font-semibold text-slate-900">
+              <h2 id="industry-import-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">
                 Add an industry
               </h2>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
                 Create a new industry and import its chart of accounts.
               </p>
             </div>
@@ -135,14 +135,14 @@ export default function IndustryImportModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="rounded-full p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed"
+              className="rounded-full p-1 text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-700 dark:hover:text-slate-200 disabled:cursor-not-allowed"
               aria-label="Close modal"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700 dark:text-slate-300">
             Industry name
             <input
               type="text"
@@ -152,14 +152,14 @@ export default function IndustryImportModal({
                 setError(null);
               }}
               placeholder="e.g., Construction"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isSubmitting}
               autoFocus
             />
           </label>
 
           <div className="space-y-2">
-            <div className="text-sm font-medium text-slate-700">COA file</div>
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-300">COA file</div>
             <div
               className={`cursor-pointer rounded-lg border-2 border-dashed px-4 py-6 text-center transition ${dropzoneClasses}`}
               onClick={() => fileInputRef.current?.click()}
@@ -188,37 +188,37 @@ export default function IndustryImportModal({
               />
               {file ? (
                 <div className="flex flex-col items-center gap-2">
-                  <div className="flex items-center gap-2 text-slate-900">
-                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                  <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                     <span className="text-sm font-medium">{file.name}</span>
                   </div>
-                  <span className="text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">{formatFileSize(file.size)}</span>
                   <button
                     type="button"
                     onClick={event => {
                       event.stopPropagation();
                       handleFileSelect(null);
                     }}
-                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                    className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                   >
                     Remove file
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-2 text-slate-600">
+                <div className="flex flex-col items-center gap-2 text-slate-600 dark:text-slate-300">
                   <UploadCloud className="h-6 w-6" />
                   <p className="text-sm">
-                    <span className="font-semibold text-blue-600">Click to upload</span> or drag
+                    <span className="font-semibold text-blue-600 dark:text-blue-400">Click to upload</span> or drag
                     and drop
                   </p>
-                  <p className="text-xs text-slate-500">CSV or Excel files (.csv, .xlsx, .xls)</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">CSV or Excel files (.csv, .xlsx, .xls)</p>
                 </div>
               )}
             </div>
           </div>
 
           {error ? (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 px-3 py-2 text-sm text-red-700 dark:text-red-400">
               {error}
             </div>
           ) : null}
@@ -228,7 +228,7 @@ export default function IndustryImportModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+              className="rounded-md border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
