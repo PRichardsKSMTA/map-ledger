@@ -19,12 +19,17 @@ interface SearchableSelectProps<TOption extends Option> {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  inputClassName?: string;
   getOptionValue?: (option: TOption) => string;
   getOptionLabel?: (option: TOption) => string;
+  getOptionSecondaryLabel?: (option: TOption) => string;
+  getOptionSecondaryClassName?: (option: TOption) => string;
   noOptionsMessage?: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
   selectOnTab?: boolean;
+  allowClear?: boolean;
+  allowEmptyValue?: boolean;
 }
 
 const baseInputClasses =
@@ -45,12 +50,17 @@ export default function SearchableSelect<TOption extends Option>({
   placeholder = 'Search and select',
   disabled = false,
   className = '',
+  inputClassName = '',
   getOptionValue,
   getOptionLabel,
+  getOptionSecondaryLabel,
+  getOptionSecondaryClassName,
   noOptionsMessage = 'No matches found',
   onChange,
   onBlur,
   selectOnTab = false,
+  allowClear = true,
+  allowEmptyValue = true,
 }: SearchableSelectProps<TOption>) {
   const inputId = useId();
   const listboxId = `${inputId}-listbox`;
@@ -63,6 +73,15 @@ export default function SearchableSelect<TOption extends Option>({
     (option: TOption) => (getOptionLabel ? getOptionLabel(option) : option.label),
     [getOptionLabel],
   );
+  const secondaryLabelSelector = useCallback(
+    (option: TOption) =>
+      getOptionSecondaryLabel ? getOptionSecondaryLabel(option) : valueSelector(option),
+    [getOptionSecondaryLabel, valueSelector],
+  );
+  const secondaryClassSelector = useCallback(
+    (option: TOption) => (getOptionSecondaryClassName ? getOptionSecondaryClassName(option) : ''),
+    [getOptionSecondaryClassName],
+  );
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -70,6 +89,7 @@ export default function SearchableSelect<TOption extends Option>({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const listboxRef = useRef<HTMLUListElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const previousValueRef = useRef<string | null>(null);
   const lastSyncedLabelRef = useRef<string>('');
   const hasKeyboardNavigatedRef = useRef(false);
@@ -167,6 +187,7 @@ export default function SearchableSelect<TOption extends Option>({
     setSearchTerm(labelSelector(option));
     setIsOpen(false);
     hasKeyboardNavigatedRef.current = false;
+    inputRef.current?.blur();
     onChange(optionValue);
   };
 
@@ -176,7 +197,7 @@ export default function SearchableSelect<TOption extends Option>({
     setIsOpen(true);
     hasKeyboardNavigatedRef.current = false;
 
-    if (!nextValue.trim()) {
+    if (!nextValue.trim() && allowEmptyValue) {
       onChange('');
     }
   };
@@ -270,6 +291,7 @@ export default function SearchableSelect<TOption extends Option>({
             filteredOptions.map((option, index) => {
               const optionId = `${resolvedId}-option-${valueSelector(option)}`;
               const isActive = index === highlightedIndex;
+              const secondaryLabel = secondaryLabelSelector(option);
 
               return (
                 <li key={optionId} role="option" id={optionId} aria-selected={valueSelector(option) === value}>
@@ -285,7 +307,13 @@ export default function SearchableSelect<TOption extends Option>({
                     }`}
                   >
                     <span className="flex-1">{labelSelector(option)}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400">{valueSelector(option)}</span>
+                    {secondaryLabel ? (
+                      <span
+                        className={`text-xs ${secondaryClassSelector(option) || 'text-slate-500 dark:text-slate-400'}`}
+                      >
+                        {secondaryLabel}
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );
@@ -300,9 +328,11 @@ export default function SearchableSelect<TOption extends Option>({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <input
+        ref={inputRef}
         id={resolvedId}
         type="text"
         role="combobox"
+        autoComplete="off"
         aria-expanded={isOpen}
         aria-controls={listboxId}
         aria-activedescendant={isOpen ? activeDescendant : undefined}
@@ -310,6 +340,7 @@ export default function SearchableSelect<TOption extends Option>({
         placeholder={placeholder}
         onFocus={() => {
           hasKeyboardNavigatedRef.current = false;
+          setSearchTerm('');
           setIsOpen(true);
         }}
         onChange={handleInputChange}
@@ -317,12 +348,15 @@ export default function SearchableSelect<TOption extends Option>({
         onBlur={() => {
           hasKeyboardNavigatedRef.current = false;
           setIsOpen(false);
+          if (!allowEmptyValue && selectedOption) {
+            setSearchTerm(labelSelector(selectedOption));
+          }
           onBlur?.();
         }}
         disabled={disabled}
-        className={`${baseInputClasses} ${disabled ? 'cursor-not-allowed opacity-75' : ''}`}
+        className={`${baseInputClasses} ${inputClassName} ${disabled ? 'cursor-not-allowed opacity-75' : ''}`}
       />
-      {value && !disabled ? (
+      {allowClear && value && !disabled ? (
         <button
           type="button"
           aria-label="Clear selection"

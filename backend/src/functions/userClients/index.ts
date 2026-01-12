@@ -1,10 +1,6 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 import { json, getClientPrincipal } from '../../http';
-import {
-  fetchUserClientAccess,
-  isUserClientFallbackAllowed,
-} from '../../repositories/userClientRepository';
-import createFallbackUserClientAccess from '../../repositories/userClientRepositoryFallback';
+import { fetchUserClientAccess } from '../../repositories/userClientRepository';
 
 const logPrefix = '[userClients]';
 
@@ -512,17 +508,10 @@ export async function userClientsHandler(
       });
       return json(data);
     } catch (err) {
-      logger.warn('Repository lookup failed for user clients; evaluating fallback', {
+      logger.error('Repository lookup failed for user clients', {
         normalizedEmail: email,
         errorMessage: err instanceof Error ? err.message : 'unknown',
       });
-      if (isUserClientFallbackAllowed()) {
-        logger.info('Fallback enabled; returning synthetic user client access payload', {
-          normalizedEmail: email,
-        });
-        return json(createFallbackUserClientAccess(email));
-      }
-      logger.error('Repository lookup failed and fallback disabled', err);
       return json({ message: 'Failed to load clients for user' }, 500);
     }
   } catch (err) {

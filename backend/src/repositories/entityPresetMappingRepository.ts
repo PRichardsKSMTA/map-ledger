@@ -244,7 +244,7 @@ export const updateEntityPresetMappingRecord = async (
     SET
       BASIS_DATAPOINT = ISNULL(@basisDatapoint, BASIS_DATAPOINT),
       TARGET_DATAPOINT = ISNULL(@targetDatapoint, TARGET_DATAPOINT),
-      APPLIED_PCT = ISNULL(@appliedPct, APPLIED_PCT),
+      APPLIED_PCT = ISNULL(CAST(@appliedPct AS DECIMAL(10,3)), APPLIED_PCT),
       UPDATED_BY = @updatedBy,
       UPDATED_DTTM = SYSUTCDATETIME()
     WHERE RECORD_ID = @recordId`,

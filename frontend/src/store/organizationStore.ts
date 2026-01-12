@@ -244,6 +244,10 @@ export const deriveCompaniesFromAccessList = (
   return Array.from(companyMap.values());
 };
 
+// Track in-flight requests to prevent duplicate API calls.
+// This is outside the store to avoid re-renders and race conditions.
+let inFlightRequest: { email: string; promise: Promise<void> } | null = null;
+
 export const useOrganizationStore = create<OrganizationState>((set, get) => ({
   companies: [],
   clientAccess: [],
@@ -260,17 +264,24 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
       currentEmail: state.currentEmail,
       isLoading: state.isLoading,
       cachedAccessCount: state.clientAccess.length,
+      hasInFlightRequest: inFlightRequest !== null,
     });
-    if (
-      (state.isLoading && state.currentEmail === normalizedEmail) ||
-      (state.currentEmail === normalizedEmail && state.clientAccess.length > 0)
-    ) {
-      logInfo('Skipping fetch because data is already loading or cached', {
+
+    // If we already have cached data for this email, skip the fetch
+    if (state.currentEmail === normalizedEmail && state.clientAccess.length > 0) {
+      logInfo('Skipping fetch because data is already cached', {
         normalizedEmail,
-        isLoading: state.isLoading,
         cachedAccessCount: state.clientAccess.length,
       });
       return;
+    }
+
+    // If there's already an in-flight request for this email, await that instead of starting a new one
+    if (inFlightRequest && inFlightRequest.email === normalizedEmail) {
+      logInfo('Awaiting existing in-flight request instead of starting a new one', {
+        normalizedEmail,
+      });
+      return inFlightRequest.promise;
     }
 
     logInfo('Starting fetch for user clients', {
@@ -282,114 +293,127 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
         prod: import.meta.env.PROD,
       },
     });
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, currentEmail: normalizedEmail, error: null });
 
-    try {
-      const requestUrl = `${API_BASE_URL}/user-clients?email=${encodeURIComponent(
-        normalizedEmail
-      )}`;
-      const requestHeaders: Record<string, string> = {
-        Accept: 'application/json',
-        'X-User-Email': normalizedEmail,
-      };
-      logInfo('Requesting user clients from API', {
-        normalizedEmail,
-        requestUrl,
-        headers: requestHeaders,
-      });
-
-      const requestStartedAt = performance.now();
-      const response = await fetch(requestUrl, {
-        headers: requestHeaders,
-        credentials: 'include',
-      });
-
-      const responseTimeMs = performance.now() - requestStartedAt;
-
-      logDebug('Received response from user-clients endpoint', {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText,
-        responseTimeMs,
-      });
-
-      if (!response.ok) {
-        logWarn('User clients fetch returned a non-OK status', {
-          status: response.status,
-          statusText: response.statusText,
+    // Create a promise for the actual fetch and store it to deduplicate concurrent calls
+    const fetchPromise = (async () => {
+      try {
+        const requestUrl = `${API_BASE_URL}/user-clients?email=${encodeURIComponent(
+          normalizedEmail
+        )}`;
+        const requestHeaders: Record<string, string> = {
+          Accept: 'application/json',
+          'X-User-Email': normalizedEmail,
+        };
+        logInfo('Requesting user clients from API', {
+          normalizedEmail,
+          requestUrl,
+          headers: requestHeaders,
         });
-        throw new Error(`Failed to load clients (${response.status})`);
+
+        const requestStartedAt = performance.now();
+        const response = await fetch(requestUrl, {
+          headers: requestHeaders,
+          credentials: 'include',
+        });
+
+        const responseTimeMs = performance.now() - requestStartedAt;
+
+        logDebug('Received response from user-clients endpoint', {
+          status: response.status,
+          ok: response.ok,
+          statusText: response.statusText,
+          responseTimeMs,
+        });
+
+        if (!response.ok) {
+          logWarn('User clients fetch returned a non-OK status', {
+            status: response.status,
+            statusText: response.statusText,
+          });
+          throw new Error(`Failed to load clients (${response.status})`);
+        }
+
+        const responseClone = response.clone();
+        const rawPayload = await responseClone
+          .text()
+          .catch(() => '<unavailable>');
+
+        logDebug('Raw payload from user-clients endpoint', {
+          rawPayload,
+        });
+
+        const data = (await response.json()) as {
+          clients?: UserClientAccess[];
+          userEmail?: string;
+          userName?: string | null;
+        };
+
+        logDebug('Parsed user clients payload', {
+          hasClientsArray: Array.isArray(data.clients),
+          clientCount: Array.isArray(data.clients) ? data.clients.length : 0,
+          userEmail: data.userEmail,
+          userName: data.userName,
+        });
+
+        const accessList = Array.isArray(data.clients) ? data.clients : [];
+        if (!Array.isArray(data.clients)) {
+          logWarn('User clients payload did not include a clients array; defaulting to empty list');
+        }
+
+        const derivedCompanies = deriveCompaniesFromAccessList(accessList);
+        logInfo('User clients loaded successfully', {
+          normalizedEmail,
+          clientAccessCount: accessList.length,
+          companyCount: derivedCompanies.length,
+        });
+        logDebug('Derived companies for dropdown', {
+          companyIds: derivedCompanies.map((company) => company.id),
+        });
+
+        set({
+          companies: derivedCompanies,
+          clientAccess: accessList,
+          currentEmail: normalizedEmail,
+          isLoading: false,
+          error: null,
+        });
+        const latestState = get();
+        logInfo('Organization store state updated after successful fetch', {
+          companyIds: derivedCompanies.map((company) => company.id),
+          clientIds: accessList.map((client) => client.clientId),
+          configsTracked: Object.keys(latestState.configsByClient).length,
+        });
+      } catch (error) {
+        logError('Failed to fetch user clients', {
+          error,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined,
+          normalizedEmail,
+          apiBaseUrl: API_BASE_URL,
+        });
+        set({
+          companies: [],
+          clientAccess: [],
+          isLoading: false,
+          currentEmail: null,
+          error: error instanceof Error ? error.message : 'Failed to load clients',
+        });
+        logWarn('Organization store state reset after failed fetch', {
+          normalizedEmail,
+        });
+      } finally {
+        // Clear the in-flight request tracker when done
+        if (inFlightRequest?.email === normalizedEmail) {
+          inFlightRequest = null;
+        }
       }
+    })();
 
-      const responseClone = response.clone();
-      const rawPayload = await responseClone
-        .text()
-        .catch(() => '<unavailable>');
+    // Store the promise for deduplication
+    inFlightRequest = { email: normalizedEmail, promise: fetchPromise };
 
-      logDebug('Raw payload from user-clients endpoint', {
-        rawPayload,
-      });
-
-      const data = (await response.json()) as {
-        clients?: UserClientAccess[];
-        userEmail?: string;
-        userName?: string | null;
-      };
-
-      logDebug('Parsed user clients payload', {
-        hasClientsArray: Array.isArray(data.clients),
-        clientCount: Array.isArray(data.clients) ? data.clients.length : 0,
-        userEmail: data.userEmail,
-        userName: data.userName,
-      });
-
-      const accessList = Array.isArray(data.clients) ? data.clients : [];
-      if (!Array.isArray(data.clients)) {
-        logWarn('User clients payload did not include a clients array; defaulting to empty list');
-      }
-
-      const derivedCompanies = deriveCompaniesFromAccessList(accessList);
-      logInfo('User clients loaded successfully', {
-        normalizedEmail,
-        clientAccessCount: accessList.length,
-        companyCount: derivedCompanies.length,
-      });
-      logDebug('Derived companies for dropdown', {
-        companyIds: derivedCompanies.map((company) => company.id),
-      });
-
-      set({
-        companies: derivedCompanies,
-        clientAccess: accessList,
-        currentEmail: normalizedEmail,
-        isLoading: false,
-        error: null,
-      });
-      const latestState = get();
-      logInfo('Organization store state updated after successful fetch', {
-        companyIds: derivedCompanies.map((company) => company.id),
-        clientIds: accessList.map((client) => client.clientId),
-        configsTracked: Object.keys(latestState.configsByClient).length,
-      });
-    } catch (error) {
-      logError('Failed to fetch user clients', {
-        error,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        normalizedEmail,
-        apiBaseUrl: API_BASE_URL,
-      });
-      set({
-        companies: [],
-        clientAccess: [],
-        isLoading: false,
-        currentEmail: null,
-        error: error instanceof Error ? error.message : 'Failed to load clients',
-      });
-      logWarn('Organization store state reset after failed fetch', {
-        normalizedEmail,
-      });
-    }
+    return fetchPromise;
   },
   setClientConfigurations: (clientId, configs) => {
     set((state) => ({

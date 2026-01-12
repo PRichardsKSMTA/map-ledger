@@ -184,47 +184,72 @@ const normalizeImport = (item: RawImport): Import => {
   };
 };
 
+// Track in-flight requests to prevent duplicate API calls
+let inFlightImportRequest: { key: string; promise: Promise<void> } | null = null;
+
 export const useImportStore = create<ImportState>((set, get) => ({
   ...initialState,
   setPage: (page) => set({ page }),
   fetchImports: async ({ userId, clientId, page, pageSize }) => {
-    set({ isLoading: true, error: null });
     const currentPage = page ?? get().page;
     const currentPageSize = pageSize ?? get().pageSize;
 
-    try {
-      const query = buildQueryString({
-        userId,
-        clientId,
-        page: currentPage,
-        pageSize: currentPageSize,
-      });
+    // Create a cache key based on query parameters
+    const requestKey = `${userId}|${clientId ?? ''}|${currentPage}|${currentPageSize}`;
 
-      const response = await fetch(`${API_BASE_URL}/client-files?${query}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch import history (${response.status})`);
-      }
-
-      const payload = (await response.json()) as ImportHistoryResponse;
-      logDebug('Fetched import history', payload);
-
-      const normalizedItems = (payload.items ?? []).map((item) => normalizeImport(item as RawImport));
-
-      set({
-        imports: normalizedItems,
-        total: payload.total ?? 0,
-        page: payload.page ?? currentPage,
-        pageSize: payload.pageSize ?? currentPageSize,
-        isLoading: false,
-        error: null,
-      });
-    } catch (error) {
-      logError('Unable to load import history', error);
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load imports',
-      });
+    // If there's already an in-flight request for these exact parameters, await that instead
+    if (inFlightImportRequest && inFlightImportRequest.key === requestKey) {
+      logDebug('Awaiting existing in-flight import request', { requestKey });
+      return inFlightImportRequest.promise;
     }
+
+    set({ isLoading: true, error: null });
+
+    const fetchPromise = (async () => {
+      try {
+        const query = buildQueryString({
+          userId,
+          clientId,
+          page: currentPage,
+          pageSize: currentPageSize,
+        });
+
+        const response = await fetch(`${API_BASE_URL}/client-files?${query}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch import history (${response.status})`);
+        }
+
+        const payload = (await response.json()) as ImportHistoryResponse;
+        logDebug('Fetched import history', payload);
+
+        const normalizedItems = (payload.items ?? []).map((item) => normalizeImport(item as RawImport));
+
+        set({
+          imports: normalizedItems,
+          total: payload.total ?? 0,
+          page: payload.page ?? currentPage,
+          pageSize: payload.pageSize ?? currentPageSize,
+          isLoading: false,
+          error: null,
+        });
+      } catch (error) {
+        logError('Unable to load import history', error);
+        set({
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to load imports',
+        });
+      } finally {
+        // Clear the in-flight request tracker when done
+        if (inFlightImportRequest?.key === requestKey) {
+          inFlightImportRequest = null;
+        }
+      }
+    })();
+
+    // Store the promise for deduplication
+    inFlightImportRequest = { key: requestKey, promise: fetchPromise };
+
+    return fetchPromise;
   },
   recordImport: async (payload) => {
     try {

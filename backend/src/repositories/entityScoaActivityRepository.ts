@@ -190,7 +190,11 @@ export const insertEntityScoaActivity = async (
   return (result.recordset ?? []).map(mapRow);
 };
 
-export const upsertEntityScoaActivity = async (
+// SQL Server has a 2100 parameter limit. Each row uses 5 parameters,
+// so we can safely fit 400 rows per batch (400 * 5 = 2000 params).
+const UPSERT_BATCH_SIZE = 400;
+
+const upsertEntityScoaActivityBatch = async (
   activities: EntityScoaActivityInput[],
 ): Promise<EntityScoaActivityRow[]> => {
   if (!activities.length) {
@@ -261,6 +265,29 @@ export const upsertEntityScoaActivity = async (
   );
 
   return (result.recordset ?? []).map(mapRow);
+};
+
+export const upsertEntityScoaActivity = async (
+  activities: EntityScoaActivityInput[],
+): Promise<EntityScoaActivityRow[]> => {
+  if (!activities.length) {
+    return [];
+  }
+
+  // If under batch size, process directly
+  if (activities.length <= UPSERT_BATCH_SIZE) {
+    return upsertEntityScoaActivityBatch(activities);
+  }
+
+  // Process in batches to avoid parameter limit
+  const results: EntityScoaActivityRow[] = [];
+  for (let i = 0; i < activities.length; i += UPSERT_BATCH_SIZE) {
+    const batch = activities.slice(i, i + UPSERT_BATCH_SIZE);
+    const batchResults = await upsertEntityScoaActivityBatch(batch);
+    results.push(...batchResults);
+  }
+
+  return results;
 };
 
 export const updateEntityScoaActivity = async (

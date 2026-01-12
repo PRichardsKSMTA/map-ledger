@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 import EntityManager from '../components/entities/EntityManager';
 import ClientSurveyModal from '../components/survey/ClientSurveyModal';
@@ -8,11 +9,21 @@ export default function Clients() {
   const clients = useClientStore(state => state.clients);
   const activeClientId = useClientStore(state => state.activeClientId);
   const [isSurveyOpen, setIsSurveyOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const activeClient = useMemo(
     () => clients.find(client => client.clientId === activeClientId) ?? clients[0] ?? null,
     [activeClientId, clients],
   );
+
+  useEffect(() => {
+    const rawFlag = searchParams.get('openSurvey');
+    const shouldOpen =
+      rawFlag === '1' || rawFlag?.toLowerCase() === 'true';
+    if (shouldOpen && !isSurveyOpen) {
+      setIsSurveyOpen(true);
+    }
+  }, [isSurveyOpen, searchParams]);
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
@@ -64,8 +75,16 @@ export default function Clients() {
         open={isSurveyOpen}
         clientId={activeClientId}
         clientName={activeClient?.name ?? null}
+        clientScac={activeClient?.scac ?? null}
         operations={activeClient?.operations ?? []}
-        onClose={() => setIsSurveyOpen(false)}
+        onClose={() => {
+          setIsSurveyOpen(false);
+          if (searchParams.get('openSurvey')) {
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete('openSurvey');
+            setSearchParams(nextParams, { replace: true });
+          }
+        }}
       />
     </div>
   );

@@ -27,9 +27,11 @@ const MappingMonthHelper = () => {
                   Currently viewing: <strong>{activePeriodLabel}</strong>
                 </p>
                 <p>
-                  Changes you make will apply to <strong>this month only</strong>. To apply mappings across all months:
+                  Changes you make will apply to <strong>this month only</strong>. To apply
+                  mappings across all months, you can:
                 </p>
                 <ol className="list-decimal list-inside ml-4 mt-2 space-y-1">
+                  <li>Use the "Apply to all periods" button in the mapping toolbar</li>
                   <li>Select "All Periods" from the dropdown above</li>
                   <li>Choose the account rows you want to map</li>
                   <li>Apply your mapping (it will apply to all months of those accounts)</li>

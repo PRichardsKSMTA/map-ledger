@@ -21,6 +21,9 @@ export interface ClientHeaderMappingSaveInput {
   updatedBy?: string | null;
 }
 
+// Track in-flight requests to prevent duplicate API calls per client
+const inFlightHeaderMappingRequests = new Map<string, Promise<ClientHeaderMapping[]>>();
+
 export const fetchClientHeaderMappings = async (
   clientId: string
 ): Promise<ClientHeaderMapping[]> => {
@@ -29,20 +32,38 @@ export const fetchClientHeaderMappings = async (
     return [];
   }
 
-  const response = await fetch(
-    `${API_BASE_URL}/client-header-mappings?clientId=${encodeURIComponent(normalizedClientId)}`
-  );
-
-  if (response.status === 404) {
-    return [];
+  // If there's already an in-flight request for this client, await that instead
+  const existingRequest = inFlightHeaderMappingRequests.get(normalizedClientId);
+  if (existingRequest) {
+    return existingRequest;
   }
 
-  if (!response.ok) {
-    throw new Error(`Failed to load header mappings (${response.status})`);
-  }
+  const fetchPromise = (async (): Promise<ClientHeaderMapping[]> => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/client-header-mappings?clientId=${encodeURIComponent(normalizedClientId)}`
+      );
 
-  const payload = (await response.json()) as ClientHeaderMappingResponse;
-  return payload.items ?? [];
+      if (response.status === 404) {
+        return [];
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load header mappings (${response.status})`);
+      }
+
+      const payload = (await response.json()) as ClientHeaderMappingResponse;
+      return payload.items ?? [];
+    } finally {
+      // Clear the in-flight request tracker when done
+      inFlightHeaderMappingRequests.delete(normalizedClientId);
+    }
+  })();
+
+  // Store the promise for deduplication
+  inFlightHeaderMappingRequests.set(normalizedClientId, fetchPromise);
+
+  return fetchPromise;
 };
 
 export const saveClientHeaderMappings = async (

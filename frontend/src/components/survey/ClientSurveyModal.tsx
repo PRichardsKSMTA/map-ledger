@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, Loader2, X } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, RefreshCw, X } from 'lucide-react';
 import ModalBackdrop from '../ui/ModalBackdrop';
 import type { UserClientOperation } from '../../types';
 import { normalizeGlMonth } from '../../utils/extractDateFromText';
@@ -9,11 +9,13 @@ import type {
   SurveyAccount,
 } from '../../services/clientSurveyService';
 import { fetchClientSurveyData, updateClientSurveyValues } from '../../services/clientSurveyService';
+import { refreshFMStatistics } from '../../services/clientOperationalStatsService';
 
 interface ClientSurveyModalProps {
   open: boolean;
   clientId: string | null;
   clientName?: string | null;
+  clientScac?: string | null;
   operations?: UserClientOperation[];
   onClose: () => void;
 }
@@ -96,6 +98,7 @@ export default function ClientSurveyModal({
   open,
   clientId,
   clientName,
+  clientScac,
   operations = [],
   onClose,
 }: ClientSurveyModalProps) {
@@ -111,6 +114,8 @@ export default function ClientSurveyModal({
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [subCategoryQuery, setSubCategoryQuery] = useState('');
+  const [isFMRefreshing, setIsFMRefreshing] = useState(false);
+  const [fmRefreshMessage, setFMRefreshMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const saveTimersRef = useRef<Record<string, number>>({});
   const saveResetTimersRef = useRef<Record<string, number>>({});
@@ -261,6 +266,7 @@ export default function ClientSurveyModal({
       setError(null);
       setSaveError(null);
       setSubCategoryQuery('');
+      setFMRefreshMessage(null);
       if (!selectedMonth) {
         setSelectedMonth(getCurrentMonthInput());
       }
@@ -541,6 +547,26 @@ export default function ClientSurveyModal({
       clearTimeout(saveTimersRef.current[key]);
     }
     void saveValue(operationCd, accountNumber, nextValue);
+  };
+
+  const handleRefreshFMStatistics = async () => {
+    if (!clientScac) {
+      setFMRefreshMessage({ type: 'error', text: 'Client SCAC is required to refresh FreightMath statistics.' });
+      return;
+    }
+
+    setIsFMRefreshing(true);
+    setFMRefreshMessage(null);
+
+    try {
+      const result = await refreshFMStatistics(clientScac);
+      setFMRefreshMessage({ type: 'success', text: result.message });
+    } catch (refreshError) {
+      const message = refreshError instanceof Error ? refreshError.message : 'Failed to refresh FreightMath statistics.';
+      setFMRefreshMessage({ type: 'error', text: message });
+    } finally {
+      setIsFMRefreshing(false);
+    }
   };
 
   const numberFormatter = useMemo(
@@ -863,10 +889,41 @@ export default function ClientSurveyModal({
           </div>
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-700">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Autosave updates client survey data for {normalizedMonth || 'the selected month'}.
+            <div className="flex flex-col gap-1">
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Autosave updates client survey data for {normalizedMonth || 'the selected month'}.
+              </div>
+              {fmRefreshMessage ? (
+                <div
+                  className={`text-xs ${
+                    fmRefreshMessage.type === 'success'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-red-600 dark:text-red-400'
+                  }`}
+                >
+                  {fmRefreshMessage.text}
+                </div>
+              ) : null}
             </div>
             <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={handleRefreshFMStatistics}
+                  disabled={!clientScac || isFMRefreshing || pendingSaveCount > 0}
+                  className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-indigo-400 dark:focus:ring-offset-slate-900"
+                >
+                  {isFMRefreshing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Get FM Statistics
+                </button>
+                <span className="max-w-[200px] text-right text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+                  Calculates FreightMath data: Miles, Loads, Driver Count Observed, Trailer Count Observed, etc.
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={onClose}

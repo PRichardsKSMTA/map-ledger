@@ -92,7 +92,12 @@ const buildGroupMembers = (
 ): DynamicAllocationGroupMember[] =>
   preset.rows.map(row => {
     const basisAccount = basisAccounts.find(account => account.id === row.dynamicAccountId);
-    const basisValue = basisAccount ? getBasisValue(basisAccount, periodId) : 0;
+    const resolvedContext = preset.context ?? DEFAULT_PRESET_CONTEXT;
+    const operationId =
+      resolvedContext === 'distribution' ? row.targetAccountId : null;
+    const basisValue = basisAccount
+      ? getBasisValue(basisAccount, periodId, operationId)
+      : 0;
     return {
       accountId: row.dynamicAccountId,
       accountName: basisAccount?.name ?? row.dynamicAccountId,
@@ -208,7 +213,12 @@ const buildPresetTargetDatapoint = (
   const dynamicAccountId = normalizeAccountId(row.dynamicAccountId);
   const targetAccountId = normalizeAccountId(row.targetAccountId);
   const basisAccount = basisAccounts.find(account => account.id === dynamicAccountId) ?? null;
-  const ratioValue = basisAccount ? getBasisValue(basisAccount, periodId) : 0;
+  const resolvedContext = preset.context ?? DEFAULT_PRESET_CONTEXT;
+  const operationId =
+    resolvedContext === 'distribution' ? targetAccountId : null;
+  const ratioValue = basisAccount
+    ? getBasisValue(basisAccount, periodId, operationId)
+    : 0;
   const ratioName = basisAccount?.name ?? (dynamicAccountId || `${preset.name} basis`);
   const datapointId = targetAccountId || `${preset.id}:${dynamicAccountId || createId()}`;
   return {
@@ -766,7 +776,9 @@ export const useRatioAllocationStore = create<RatioAllocationState>((set, get) =
         // Check if preset has any rows with zero basis
         const presetBasisValues = preset.rows.map(row => {
           const basisAccount = basisAccounts.find(acc => acc.id === row.dynamicAccountId);
-          return basisAccount ? getBasisValue(basisAccount, periodId) : 0;
+          return basisAccount
+            ? getBasisValue(basisAccount, periodId)
+            : 0;
         });
 
         const presetTotal = presetBasisValues.reduce((sum, val) => sum + val, 0);

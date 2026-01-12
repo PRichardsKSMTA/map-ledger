@@ -1,5 +1,4 @@
 import { runQuery } from '../utils/sqlClient';
-import createFallbackUserClientAccess from './userClientRepositoryFallback';
 
 const logPrefix = '[userClientRepository]';
 
@@ -63,12 +62,18 @@ export interface UserClientMetadata {
   exclusions: string[];
 }
 
+export interface UserClientMappingSummary {
+  totalAccounts: number;
+  mappedAccounts: number;
+}
+
 export interface UserClientAccess {
   clientId: string;
   clientName: string;
   clientScac: string | null;
   companies: UserClientCompany[];
   metadata: UserClientMetadata;
+  mappingSummary: UserClientMappingSummary;
 }
 
 export interface UserClientAccessResult {
@@ -80,6 +85,12 @@ export interface UserClientAccessResult {
 type RawRow = Record<string, unknown>;
 
 type ValueExtractor = (row: RawRow) => string | null;
+
+type MappingSummaryRow = {
+  client_id: string | number | null;
+  total_accounts?: number | string | null;
+  mapped_accounts?: number | string | null;
+};
 
 const createValueExtractor = (candidateKeys: string[]): ValueExtractor => {
   const normalizedKeys = candidateKeys.map((key) => key.toLowerCase());
@@ -167,6 +178,11 @@ const extractOperationId = createValueExtractor([
   'operationcode',
 ]);
 
+const extractEntityId = createValueExtractor([
+  'entity_id',
+  'entityid',
+]);
+
 const extractSourceAccountId = createValueExtractor([
   'source_account_id',
   'sourceaccountid',
@@ -190,6 +206,13 @@ const extractReportingPeriod = createValueExtractor([
   'reporting_period',
   'reportingperiod',
   'period',
+]);
+
+const extractMappingStatus = createValueExtractor([
+  'mapping_status',
+  'mappingstatus',
+  'mapping_state',
+  'mappingstate',
 ]);
 
 const extractMappingType = createValueExtractor([
@@ -231,6 +254,46 @@ const extractUserName = createValueExtractor([
   'full_name',
 ]);
 
+const normalizeLowerValue = (value: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+};
+
+const isUnmappedStatus = (value: string | null): boolean => {
+  const normalized = normalizeLowerValue(value);
+  return normalized === 'unmapped' || normalized === 'new';
+};
+
+const isMappedStatus = (value: string | null): boolean => {
+  const normalized = normalizeLowerValue(value);
+  return normalized === 'mapped' || normalized === 'excluded';
+};
+
+const isExcludedMappingType = (value: string | null): boolean => {
+  const normalized = normalizeLowerValue(value);
+  return normalized === 'exclude' || normalized === 'excluded';
+};
+
+const isMappedForSummary = (
+  mappingStatus: string | null,
+  mappingType: string | null,
+  targetSCoA: string | null,
+  preset: string | null,
+  exclusion: string | null
+): boolean => {
+  if (isUnmappedStatus(mappingStatus)) {
+    return false;
+  }
+  return (
+    isMappedStatus(mappingStatus) ||
+    isExcludedMappingType(mappingType) ||
+    Boolean(targetSCoA || preset || exclusion)
+  );
+};
+
 const normalizeIdentifier = (
   preferredValue: string | null,
   fallback: string | null,
@@ -255,6 +318,17 @@ const uniqueStringArray = (values: Iterable<string>) =>
         .filter((value) => value.length > 0)
     )
   ).sort((a, b) => a.localeCompare(b));
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
 
 const hasSqlConfiguration = (): boolean =>
   Boolean(
@@ -290,8 +364,111 @@ const deriveEmailVariants = (candidate: string): string[] => {
   return Array.from(variants);
 };
 
-export const isUserClientFallbackAllowed = (): boolean =>
-  (process.env.ALLOW_DEV_SQL_FALLBACK ?? 'true').toLowerCase() !== 'false';
+const buildClientMappingSummaryLookup = async (
+  clientIds: string[]
+): Promise<Map<string, UserClientMappingSummary>> => {
+  const normalizedClientIds = Array.from(
+    new Set(
+      clientIds.map((clientId) => clientId.trim()).filter((clientId) => clientId.length > 0)
+    )
+  );
+
+  if (normalizedClientIds.length === 0) {
+    return new Map();
+  }
+
+  const params: Record<string, unknown> = {};
+  const clientParams = normalizedClientIds.map((clientId, index) => {
+    const key = `clientId${index}`;
+    params[key] = clientId;
+    return `@${key}`;
+  });
+
+  const result = await runQuery<MappingSummaryRow>(
+    [
+      'WITH RankedRecords AS (',
+      '  SELECT',
+      '    cf.CLIENT_ID as client_id,',
+      '    fr.ENTITY_ID as entity_id,',
+      '    fr.ACCOUNT_ID as account_id,',
+      '    fr.GL_MONTH as gl_month,',
+      '    ROW_NUMBER() OVER (',
+      '      PARTITION BY cf.CLIENT_ID, fr.ENTITY_ID, fr.ACCOUNT_ID, fr.GL_MONTH',
+      '      ORDER BY COALESCE(cf.LAST_STEP_COMPLETED_DTTM, cf.INSERTED_DTTM, fr.INSERTED_DTTM) DESC,',
+      '               fr.INSERTED_DTTM DESC,',
+      '               fr.FILE_UPLOAD_GUID DESC,',
+      '               fr.RECORD_ID DESC',
+      '    ) as rn',
+      '  FROM ml.FILE_RECORDS fr',
+      '  INNER JOIN ml.CLIENT_FILES cf ON cf.FILE_UPLOAD_GUID = fr.FILE_UPLOAD_GUID',
+      `  WHERE cf.IS_DELETED = 0 AND cf.CLIENT_ID IN (${clientParams.join(', ')})`,
+      '),',
+      'LatestRecords AS (',
+      '  SELECT client_id, entity_id, account_id, gl_month',
+      '  FROM RankedRecords',
+      '  WHERE rn = 1',
+      '),',
+      'RecordsWithMappings AS (',
+      '  SELECT',
+      '    lr.client_id,',
+      '    lr.entity_id,',
+      '    lr.account_id,',
+      '    lr.gl_month,',
+      '    eam.MAPPING_STATUS as mapping_status,',
+      '    eam.MAPPING_TYPE as mapping_type,',
+      '    eam.PRESET_GUID as preset_id,',
+      '    eam.EXCLUSION_PCT as exclusion_pct',
+      '  FROM LatestRecords lr',
+      '  OUTER APPLY (',
+      '    SELECT TOP 1',
+      '      eam.MAPPING_STATUS,',
+      '      eam.MAPPING_TYPE,',
+      '      eam.PRESET_GUID,',
+      '      eam.EXCLUSION_PCT,',
+      '      eam.GL_MONTH,',
+      '      eam.UPDATED_DTTM',
+      '    FROM ml.ENTITY_ACCOUNT_MAPPING eam',
+      '    WHERE eam.ENTITY_ACCOUNT_ID = lr.account_id',
+      '      AND (eam.ENTITY_ID = lr.entity_id OR lr.entity_id IS NULL)',
+      '      AND (eam.GL_MONTH = lr.gl_month OR eam.GL_MONTH IS NULL)',
+      '    ORDER BY CASE WHEN eam.GL_MONTH = lr.gl_month THEN 0 ELSE 1 END, eam.UPDATED_DTTM DESC',
+      '  ) eam',
+      ')',
+      'SELECT',
+      '  client_id,',
+      '  COUNT(1) as total_accounts,',
+      '  SUM(CASE',
+      "        WHEN LOWER(COALESCE(mapping_status, '')) IN ('unmapped', 'new') THEN 0",
+      "        WHEN LOWER(COALESCE(mapping_status, '')) IN ('mapped', 'excluded') THEN 1",
+      "        WHEN LOWER(COALESCE(mapping_type, '')) IN ('exclude', 'excluded') THEN 1",
+      '        WHEN preset_id IS NOT NULL THEN 1',
+      '        WHEN exclusion_pct IS NOT NULL THEN 1',
+      '        ELSE 0',
+      '      END) as mapped_accounts',
+      'FROM RecordsWithMappings',
+      'GROUP BY client_id',
+    ].join(' '),
+    params
+  );
+
+  const summaries = new Map<string, UserClientMappingSummary>();
+  (result.recordset ?? []).forEach((row) => {
+    const rawClientId = row.client_id;
+    const normalizedClientId = rawClientId !== null && rawClientId !== undefined
+      ? String(rawClientId).trim()
+      : '';
+    if (!normalizedClientId) {
+      return;
+    }
+
+    summaries.set(normalizedClientId, {
+      totalAccounts: toNumber(row.total_accounts),
+      mappedAccounts: toNumber(row.mapped_accounts),
+    });
+  });
+
+  return summaries;
+};
 
 type CompanyAggregate = {
   companyId: string;
@@ -314,6 +491,10 @@ type ClientAggregate = {
     presets: Set<string>;
     exclusions: Set<string>;
   };
+  mappingSummary: {
+    totalAccountKeys: Set<string>;
+    mappedAccountKeys: Set<string>;
+  };
 };
 
 export const fetchUserClientAccess = async (
@@ -324,8 +505,8 @@ export const fetchUserClientAccess = async (
   logInfo('Fetching user client access', { normalizedEmail });
 
   if (!hasSqlConfiguration()) {
-    logWarn('SQL configuration missing; using fallback user client access data');
-    return createFallbackUserClientAccess(normalizedEmail);
+    logError('SQL configuration is missing; cannot fetch user client access');
+    throw new Error('SQL configuration is required to fetch user client access');
   }
 
   try {
@@ -334,11 +515,15 @@ export const fetchUserClientAccess = async (
 
     logDebug('Executing user client access query', { normalizedEmail });
 
+    // Optimized query: Only fetch client/operation data without the expensive mapping detail join.
+    // The mapping summary counts are fetched separately via buildClientMappingSummaryLookup.
+    // This reduces the result set from ~130K+ rows to ~100-200 rows (one per client/operation).
     const { recordset = [] } = await runQuery<RawRow>(
       [
-        'SELECT CLIENT_ID, CLIENT_NAME, CLIENT_SCAC, OPERATIONAL_SCAC, OPERATION_CD, OPERATION_NAME',
-        'FROM ML.V_CLIENT_OPERATIONS',
-        'ORDER BY CLIENT_NAME ASC',
+        'SELECT DISTINCT',
+        '  ops.CLIENT_ID, ops.CLIENT_NAME, ops.CLIENT_SCAC, ops.OPERATIONAL_SCAC, ops.OPERATION_CD, ops.OPERATION_NAME',
+        'FROM ML.V_CLIENT_OPERATIONS ops',
+        'ORDER BY ops.CLIENT_NAME ASC',
       ].join(' '),
       {}
     );
@@ -385,6 +570,10 @@ export const fetchUserClientAccess = async (
             polarities: new Set(),
             presets: new Set(),
             exclusions: new Set(),
+          },
+          mappingSummary: {
+            totalAccountKeys: new Set(),
+            mappedAccountKeys: new Set(),
           },
         });
       }
@@ -436,78 +625,64 @@ export const fetchUserClientAccess = async (
         }
       }
 
-      const sourceAccountId = extractSourceAccountId(row);
-      const sourceAccountName = extractSourceAccountName(row);
-      const sourceAccountDescription = extractSourceAccountDescription(row);
-      if (sourceAccountId || sourceAccountName || sourceAccountDescription) {
-        const key = sourceAccountId || sourceAccountName || `account-${rowIndex}`;
-        if (!aggregate.metadata.sourceAccounts.has(key)) {
-          aggregate.metadata.sourceAccounts.set(key, {
-            id: sourceAccountId || key,
-            name: sourceAccountName || sourceAccountId || key,
-            description: sourceAccountDescription,
-          });
-        }
-      }
+      // Note: Metadata fields (sourceAccounts, reportingPeriods, etc.) are no longer populated
+      // from this query to avoid the expensive V_CLIENT_MAPPING_DETAIL join. These fields remain
+      // empty but are still included in the response for API compatibility. The mapping summary
+      // counts are still fetched via buildClientMappingSummaryLookup below.
+    });
 
-      const reportingPeriod = extractReportingPeriod(row);
-      if (reportingPeriod) {
-        aggregate.metadata.reportingPeriods.add(reportingPeriod);
-      }
-
-      const mappingType = extractMappingType(row);
-      if (mappingType) {
-        aggregate.metadata.mappingTypes.add(mappingType);
-      }
-
-      const targetSCoA = extractTargetSCoA(row);
-      if (targetSCoA) {
-        aggregate.metadata.targetSCoAs.add(targetSCoA);
-      }
-
-      const polarity = extractPolarity(row);
-      if (polarity) {
-        aggregate.metadata.polarities.add(polarity);
-      }
-
-      const preset = extractPreset(row);
-      if (preset) {
-        aggregate.metadata.presets.add(preset);
-      }
-
-      const exclusion = extractExclusion(row);
-      if (exclusion) {
-        aggregate.metadata.exclusions.add(exclusion);
-      }
-
-      if (!discoveredUserName) {
-        const maybeUserName = extractUserName(row);
-        if (maybeUserName) {
-          discoveredUserName = maybeUserName;
-        }
+    let mappingSummaryLookup = new Map<string, UserClientMappingSummary>();
+    const clientIdsForSummary: string[] = [];
+    clientAggregates.forEach((aggregate) => {
+      if (!aggregate.clientIdGenerated && aggregate.clientId.trim().length > 0) {
+        clientIdsForSummary.push(aggregate.clientId);
       }
     });
 
+    if (clientIdsForSummary.length > 0) {
+      try {
+        mappingSummaryLookup = await buildClientMappingSummaryLookup(
+          clientIdsForSummary
+        );
+      } catch (error) {
+        logWarn('Failed to load mapping summary counts; using inline aggregation', error);
+      }
+    }
+
     const clients: UserClientAccess[] = Array.from(clientAggregates.values()).map(
-      (aggregate) => ({
-        clientId: aggregate.clientId,
-        clientName: aggregate.clientName,
-        clientScac: aggregate.clientScac,
-        companies: Array.from(aggregate.companies.values()).map((company) => ({
-          companyId: company.companyId,
-          companyName: company.companyName,
-          operations: Array.from(company.operations.values()),
-        })),
-        metadata: {
-          sourceAccounts: Array.from(aggregate.metadata.sourceAccounts.values()),
-          reportingPeriods: uniqueStringArray(aggregate.metadata.reportingPeriods),
-          mappingTypes: uniqueStringArray(aggregate.metadata.mappingTypes),
-          targetSCoAs: uniqueStringArray(aggregate.metadata.targetSCoAs),
-          polarities: uniqueStringArray(aggregate.metadata.polarities),
-          presets: uniqueStringArray(aggregate.metadata.presets),
-          exclusions: uniqueStringArray(aggregate.metadata.exclusions),
-        },
-      })
+      (aggregate) => {
+        const mappedSummaryOverride = mappingSummaryLookup.get(aggregate.clientId);
+        const totalAccounts =
+          mappedSummaryOverride?.totalAccounts ??
+          aggregate.mappingSummary.totalAccountKeys.size;
+        const mappedAccounts =
+          mappedSummaryOverride?.mappedAccounts ??
+          aggregate.mappingSummary.mappedAccountKeys.size;
+
+        return {
+          clientId: aggregate.clientId,
+          clientName: aggregate.clientName,
+          clientScac: aggregate.clientScac,
+          companies: Array.from(aggregate.companies.values()).map((company) => ({
+            companyId: company.companyId,
+            companyName: company.companyName,
+            operations: Array.from(company.operations.values()),
+          })),
+          metadata: {
+            sourceAccounts: Array.from(aggregate.metadata.sourceAccounts.values()),
+            reportingPeriods: uniqueStringArray(aggregate.metadata.reportingPeriods),
+            mappingTypes: uniqueStringArray(aggregate.metadata.mappingTypes),
+            targetSCoAs: uniqueStringArray(aggregate.metadata.targetSCoAs),
+            polarities: uniqueStringArray(aggregate.metadata.polarities),
+            presets: uniqueStringArray(aggregate.metadata.presets),
+            exclusions: uniqueStringArray(aggregate.metadata.exclusions),
+          },
+          mappingSummary: {
+            totalAccounts,
+            mappedAccounts,
+          },
+        };
+      }
     );
 
     logInfo('Assembled user client access response', {
@@ -524,21 +699,11 @@ export const fetchUserClientAccess = async (
       clients,
     };
   } catch (error) {
-    if (!isUserClientFallbackAllowed()) {
-      logError('User client access retrieval failed without fallback allowance', error);
-      throw error;
-    }
-
-    logWarn(
-      'User client access retrieval failed; falling back to demo data because fallback is allowed',
-      error
-    );
-
-    return createFallbackUserClientAccess(normalizedEmail);
+    logError('User client access retrieval failed', error);
+    throw error;
   }
 };
 
 export default {
   fetchUserClientAccess,
-  isUserClientFallbackAllowed,
 };

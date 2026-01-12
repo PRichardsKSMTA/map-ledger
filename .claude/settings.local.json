@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npm test:*)",
+      "Bash(npx jest --listTests)",
+      "Bash(npx jest:*)",
+      "Bash(npm run build:*)",
+      "Bash(cd:*)",
+      "Bash(cat:*)",
+      "Bash(dir:*)",
+      "Bash(node node_modules/jest/bin/jest.js:*)"
+    ]
+  }
+}

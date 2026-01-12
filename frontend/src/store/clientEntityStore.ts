@@ -94,6 +94,9 @@ const toClientEntity = (item: ClientEntityResponseItem): ClientEntity => {
   };
 };
 
+// Track in-flight requests to prevent duplicate API calls per client
+const inFlightEntityRequests = new Map<string, Promise<ClientEntity[]>>();
+
 export const useClientEntityStore = create<ClientEntityState>((set, get) => ({
   entitiesByClient: {},
   isLoading: false,
@@ -109,41 +112,58 @@ export const useClientEntityStore = create<ClientEntityState>((set, get) => ({
       return cached;
     }
 
+    // If there's already an in-flight request for this client, await that instead
+    const existingRequest = inFlightEntityRequests.get(clientId);
+    if (existingRequest && !options?.force) {
+      logDebug('Awaiting existing in-flight entity request for client', clientId);
+      return existingRequest;
+    }
+
     set({ isLoading: true, error: null });
 
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/client-entities?clientId=${encodeURIComponent(clientId)}`,
-        {
-          headers: { Accept: 'application/json' },
-        },
-      );
+    const fetchPromise = (async (): Promise<ClientEntity[]> => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/client-entities?clientId=${encodeURIComponent(clientId)}`,
+          {
+            headers: { Accept: 'application/json' },
+          },
+        );
 
-      if (!response.ok) {
-        throw new Error(`Failed to load client entities (${response.status})`);
+        if (!response.ok) {
+          throw new Error(`Failed to load client entities (${response.status})`);
+        }
+
+        const payload = (await response.json()) as ClientEntityResponse;
+        const entities = (payload.items ?? [])
+          .filter((item) => !item.isDeleted)
+          .map(toClientEntity);
+
+        set((state) => ({
+          entitiesByClient: { ...state.entitiesByClient, [clientId]: entities },
+          isLoading: false,
+          error: null,
+        }));
+
+        logDebug('Fetched client entities', { clientId, count: entities.length });
+        return entities;
+      } catch (error) {
+        logError('Unable to load client entities', error);
+        set({
+          isLoading: false,
+          error: error instanceof Error ? error.message : 'Failed to load entities',
+        });
+        return [];
+      } finally {
+        // Clear the in-flight request tracker when done
+        inFlightEntityRequests.delete(clientId);
       }
+    })();
 
-      const payload = (await response.json()) as ClientEntityResponse;
-      const entities = (payload.items ?? [])
-        .filter((item) => !item.isDeleted)
-        .map(toClientEntity);
+    // Store the promise for deduplication
+    inFlightEntityRequests.set(clientId, fetchPromise);
 
-      set((state) => ({
-        entitiesByClient: { ...state.entitiesByClient, [clientId]: entities },
-        isLoading: false,
-        error: null,
-      }));
-
-      logDebug('Fetched client entities', { clientId, count: entities.length });
-      return entities;
-    } catch (error) {
-      logError('Unable to load client entities', error);
-      set({
-        isLoading: false,
-        error: error instanceof Error ? error.message : 'Failed to load entities',
-      });
-      return [];
-    }
+    return fetchPromise;
   },
   async createEntity(payload) {
     if (!payload.clientId || !payload.entityName) {

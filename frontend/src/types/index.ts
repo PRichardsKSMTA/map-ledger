@@ -58,6 +58,11 @@ export interface UserClientMetadata {
   exclusions: string[];
 }
 
+export interface ClientMappingSummary {
+  totalAccounts: number;
+  mappedAccounts: number;
+}
+
 export interface UserClientAccess {
   clientId: string;
   clientName: string;
@@ -65,6 +70,7 @@ export interface UserClientAccess {
   operations?: UserClientOperation[];
   companies: UserClientCompany[];
   metadata: UserClientMetadata;
+  mappingSummary?: ClientMappingSummary;
 }
 
 export interface DatapointConfiguration {
@@ -383,6 +389,20 @@ export interface OperationalMetric {
   period: string;
 }
 
+export interface OperationalStatAccount {
+  accountNumber: string;
+  description: string | null;
+}
+
+export interface OperationalStatValue {
+  operationCd: string;
+  glMonth: string;
+  accountNumber: string;
+  glValue: number;
+}
+
+export type BasisCategory = 'financial' | 'operational';
+
 export interface DynamicSourceAccount {
   id: string;
   name: string;
@@ -408,10 +428,15 @@ export interface DynamicBasisAccount {
    */
   value: number;
   mappedTargetId: string;
+  basisCategory?: BasisCategory;
   /**
    * Optional map of period identifier to balance for dynamic ratios.
    */
   valuesByPeriod?: Record<string, number>;
+  /**
+   * Optional map of operation codes to period-specific balances.
+   */
+  valuesByOperation?: Record<string, Record<string, number>>;
 }
 
 export type DynamicAllocationPresetContext = 'mapping' | 'distribution';
@@ -631,6 +656,7 @@ export interface GLAccountMappingRow {
   aiConfidence?: number;
   manualCOAId?: string;
   polarity: MappingPolarity;
+  originalPolarity?: MappingPolarity | null;
   presetId?: string;
   exclusionPct?: number | null;
   notes?: string;
@@ -649,6 +675,8 @@ export interface MappingSaveInput {
   entityAccountId: string;
   accountName?: string | null;
   polarity?: MappingPolarity | null;
+  originalPolarity?: MappingPolarity | null;
+  modifiedPolarity?: MappingPolarity | null;
   mappingType?: MappingType | null;
   mappingStatus?: MappingStatus | null;
   presetId?: string | null;

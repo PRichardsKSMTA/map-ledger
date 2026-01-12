@@ -15,6 +15,8 @@ import type {
   MappingSplitDefinition,
   MappingStatus,
   MappingType,
+  OperationalStatAccount,
+  OperationalStatValue,
   ReconciliationAccountBreakdown,
   EntityReconciliationGroup,
   ReconciliationSourceMapping,
@@ -27,12 +29,14 @@ import type {
 import { buildMappingRowsFromImport } from '../utils/buildMappingRowsFromImport';
 import { slugify } from '../utils/slugify';
 import { normalizeGlMonth } from '../utils/extractDateFromText';
+import { applyPolarityToAmount, derivePolarityFromAmount } from '../utils/polarity';
 import { getSourceValue } from '../utils/dynamicAllocation';
 import { computeDynamicExclusionSummaries } from '../utils/dynamicExclusions';
 import { trackMappingSaveAttempt } from '../utils/telemetry';
 import { createDistributionRowId } from '../utils/distributionRowId';
 import { useRatioAllocationStore, type RatioAllocationHydrationPayload } from './ratioAllocationStore';
 import { useOrganizationStore } from './organizationStore';
+import { fetchClientOperationalStats } from '../services/clientOperationalStatsService';
 import {
   findChartOfAccountOption,
   getChartOfAccountOptions,
@@ -114,6 +118,8 @@ type SavedMappingRow = {
   status: MappingStatus;
   mappingType: MappingType;
   polarity: MappingPolarity;
+  originalPolarity?: MappingPolarity | null;
+  modifiedPolarity?: MappingPolarity | null;
   presetId?: string | null;
   exclusionPct?: number | null;
   splitDefinitions?: MappingSplitDefinition[];
@@ -275,6 +281,41 @@ const cloneMappingRow = (row: GLAccountMappingRow): GLAccountMappingRow => ({
   splitDefinitions: row.splitDefinitions.map(split => ({ ...split })),
 });
 
+const resolveOriginalPolarity = (
+  account: GLAccountMappingRow,
+  fallback?: MappingPolarity | null,
+): MappingPolarity => {
+  if (account.originalPolarity) {
+    return account.originalPolarity;
+  }
+  if (fallback) {
+    return fallback;
+  }
+  return derivePolarityFromAmount(account.netChange);
+};
+
+const applyPolarityToAccount = (
+  account: GLAccountMappingRow,
+  polarity: MappingPolarity,
+  originalPolarity?: MappingPolarity | null,
+): GLAccountMappingRow => {
+  const baseAmount = Number.isFinite(account.netChange) ? Math.abs(account.netChange) : 0;
+  const signedAmount = applyPolarityToAmount(baseAmount, polarity);
+  const nextEntities = account.entities.map(entity => {
+    const baseBalance = Number.isFinite(entity.balance) ? Math.abs(entity.balance) : 0;
+    return { ...entity, balance: applyPolarityToAmount(baseBalance, polarity) };
+  });
+
+  return {
+    ...account,
+    polarity,
+    originalPolarity: originalPolarity ?? account.originalPolarity ?? derivePolarityFromAmount(account.netChange),
+    netChange: signedAmount,
+    activity: signedAmount,
+    entities: nextEntities,
+  };
+};
+
 const getSignedAmountForAccount = (
   account: GLAccountMappingRow,
   amount: number,
@@ -422,6 +463,13 @@ const isDynamicAccountNonFinancial = (account: GLAccountMappingRow): boolean => 
 
 const isEffectivelyZero = (value: number, tolerance = 0.0001): boolean =>
   Math.abs(value) <= tolerance;
+
+const isZeroValueAccount = (account: GLAccountMappingRow): boolean => {
+  if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+    return false;
+  }
+  return isEffectivelyZero(Math.abs(account.netChange));
+};
 
 const deriveEntitySummaries = (accounts: GLAccountMappingRow[]): EntitySummary[] => {
   const entities = new Map<string, EntitySummary>();
@@ -1042,9 +1090,119 @@ const buildBasisAccountsFromMappings = (
       description: label,
       value,
       mappedTargetId: id,
+      basisCategory: 'financial',
       valuesByPeriod: Object.keys(valuesByPeriod).length > 0 ? valuesByPeriod : undefined,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const normalizeOperationCode = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed.toUpperCase() : null;
+};
+
+const buildOperationalBasisAccounts = (
+  accounts: OperationalStatAccount[],
+  values: OperationalStatValue[],
+): DynamicBasisAccount[] => {
+  const lookup = new Map<
+    string,
+    {
+      name: string;
+      description: string;
+      totalsByPeriod: Record<string, number>;
+      valuesByOperation: Record<string, Record<string, number>>;
+    }
+  >();
+
+  accounts.forEach(account => {
+    const id = account.accountNumber?.trim() ?? '';
+    if (!id) {
+      return;
+    }
+    const label = account.description?.trim() || id;
+    lookup.set(id, {
+      name: label,
+      description: label,
+      totalsByPeriod: {},
+      valuesByOperation: {},
+    });
+  });
+
+  values.forEach(value => {
+    const accountId = value.accountNumber?.trim() ?? '';
+    if (!accountId || !lookup.has(accountId)) {
+      return;
+    }
+    const operationCd = normalizeOperationCode(value.operationCd);
+    if (!operationCd) {
+      return;
+    }
+    const normalizedPeriod = normalizeGlMonth(value.glMonth ?? '');
+    if (!normalizedPeriod) {
+      return;
+    }
+    const record = lookup.get(accountId);
+    if (!record) {
+      return;
+    }
+    const operationValues = record.valuesByOperation[operationCd] ?? {};
+    const numericValue = Number.isFinite(value.glValue) ? value.glValue : 0;
+    operationValues[normalizedPeriod] = numericValue;
+    record.valuesByOperation[operationCd] = operationValues;
+    record.totalsByPeriod[normalizedPeriod] =
+      (record.totalsByPeriod[normalizedPeriod] ?? 0) + numericValue;
+  });
+
+  return Array.from(lookup.entries())
+    .map(([id, record]) => ({
+      id,
+      name: record.name,
+      description: record.description,
+      value: Object.values(record.totalsByPeriod).reduce((sum, amount) => sum + amount, 0),
+      mappedTargetId: id,
+      basisCategory: 'operational',
+      valuesByPeriod:
+        Object.keys(record.totalsByPeriod).length > 0 ? record.totalsByPeriod : undefined,
+      valuesByOperation:
+        Object.keys(record.valuesByOperation).length > 0 ? record.valuesByOperation : undefined,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+const mergeBasisAccounts = (
+  baseAccounts: DynamicBasisAccount[],
+  operationalAccounts: DynamicBasisAccount[] = [],
+): DynamicBasisAccount[] => {
+  if (!operationalAccounts.length) {
+    return baseAccounts;
+  }
+
+  const merged = new Map<string, DynamicBasisAccount>();
+  baseAccounts.forEach(account => {
+    merged.set(account.id, account);
+  });
+
+  operationalAccounts.forEach(account => {
+    const existing = merged.get(account.id);
+    if (!existing) {
+      merged.set(account.id, account);
+      return;
+    }
+    merged.set(account.id, {
+      ...existing,
+      name: existing.name || account.name,
+      description: existing.description || account.description,
+      basisCategory: existing.basisCategory ?? account.basisCategory,
+      valuesByOperation: account.valuesByOperation ?? existing.valuesByOperation,
+      valuesByPeriod: existing.valuesByPeriod ?? account.valuesByPeriod,
+    });
+  });
+
+  return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
 };
 
 export const buildStandardScoaSummaries = (
@@ -1154,9 +1312,13 @@ export const buildDistributionSourceSummaries = (
   return summaries;
 };
 
-const updateDynamicBasisAccounts = (accounts: GLAccountMappingRow[]) => {
+const updateDynamicBasisAccounts = (
+  accounts: GLAccountMappingRow[],
+  operationalAccounts: DynamicBasisAccount[] = [],
+) => {
   const basisAccounts = buildBasisAccountsFromMappings(accounts);
-  useRatioAllocationStore.getState().setBasisAccounts(basisAccounts);
+  const merged = mergeBasisAccounts(basisAccounts, operationalAccounts);
+  useRatioAllocationStore.getState().setBasisAccounts(merged);
 };
 
 type RatioAllocationStoreState = ReturnType<typeof useRatioAllocationStore.getState>;
@@ -1260,6 +1422,11 @@ const buildSaveInputFromAccount = (
     netChange: account.netChange,
     glMonth: account.glMonth ?? null,
   };
+
+  const resolvedOriginalPolarity = resolveOriginalPolarity(account);
+  payload.originalPolarity = resolvedOriginalPolarity;
+  payload.modifiedPolarity =
+    resolvedOriginalPolarity === account.polarity ? null : account.polarity;
 
   payload.updatedBy = updatedBy ?? null;
 
@@ -1468,8 +1635,12 @@ const syncDynamicAllocationState = (
   accounts: GLAccountMappingRow[],
   rows: TrialBalanceRow[] = [],
   requestedPeriod?: string | null,
+  operationalAccounts: DynamicBasisAccount[] = [],
 ) => {
-  const basisAccounts = buildBasisAccountsFromMappings(accounts);
+  const basisAccounts = mergeBasisAccounts(
+    buildBasisAccountsFromMappings(accounts),
+    operationalAccounts,
+  );
 
   const accountSourceAccounts: DynamicSourceAccount[] = accounts.map(account => ({
     id: account.id,
@@ -1747,6 +1918,7 @@ interface MappingState {
   rowSaveStatuses: Record<string, RowSaveMetadata>;
   removedPresetDetailRecordIds: Set<number>;
   presetLibrary: MappingPresetLibraryEntry[];
+  operationalBasisAccounts: DynamicBasisAccount[];
   setActiveClientId: (clientId: string | null) => void;
   setSearchTerm: (term: string) => void;
   setActiveEntityId: (entityId: string | null) => void;
@@ -1790,6 +1962,7 @@ interface MappingState {
       status?: MappingStatus;
     }
   ) => void;
+  applyMappingsToAllPeriods: (ids: string[]) => void;
   applyMappingToMonths: (
     entityId: string,
     accountId: string,
@@ -2137,6 +2310,31 @@ export const useMappingStore = create<MappingState>((set, get) => {
     autoSaveDelay = AUTO_SAVE_DEBOUNCE_MS;
   };
 
+  const loadOperationalStats = async (
+    clientId: string | null,
+    period?: string | null,
+  ) => {
+    if (!clientId) {
+      set({ operationalBasisAccounts: [] });
+      updateDynamicBasisAccounts(get().accounts, []);
+      return;
+    }
+
+    try {
+      const payload = await fetchClientOperationalStats(clientId, period ?? undefined);
+      const operationalBasisAccounts = buildOperationalBasisAccounts(
+        payload.accounts ?? [],
+        payload.items ?? [],
+      );
+      set({ operationalBasisAccounts });
+      updateDynamicBasisAccounts(get().accounts, operationalBasisAccounts);
+    } catch (error) {
+      logError('Unable to load operational stats', error);
+      set({ operationalBasisAccounts: [] });
+      updateDynamicBasisAccounts(get().accounts, []);
+    }
+  };
+
   return {
   accounts: initialAccounts,
   dirtyMappingIds: new Set<string>(),
@@ -2158,8 +2356,9 @@ export const useMappingStore = create<MappingState>((set, get) => {
   rowSaveStatuses: {},
   removedPresetDetailRecordIds: new Set<number>(),
   presetLibrary: [],
+  operationalBasisAccounts: [],
   setActiveClientId: clientId =>
-    set({ activeClientId: normalizeClientId(clientId) }),
+    set({ activeClientId: normalizeClientId(clientId), operationalBasisAccounts: [] }),
   setSearchTerm: term => set({ searchTerm: term }),
   setActiveEntityId: entityId => {
     set(state => {
@@ -2256,6 +2455,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       rowSaveStatuses: {},
       removedPresetDetailRecordIds: new Set<number>(),
       presetLibrary: [],
+      operationalBasisAccounts: [],
     });
   },
   refreshPresetLibrary: async entityIds => {
@@ -2314,21 +2514,27 @@ export const useMappingStore = create<MappingState>((set, get) => {
 
       const accounts = state.accounts.map(account => {
         const isSameAccount = buildAccountIdentityKey(account) === targetAccountKey;
-        const shouldUpdate = shouldApplyToAll
-          ? isSameAccount && account.mappingType === 'direct'
-          : account.id === id;
+        const shouldUpdate = shouldApplyToAll ? isSameAccount : account.id === id;
 
         if (!shouldUpdate) {
           return account;
         }
 
-        const next = applyDerivedStatus({ ...account, manualCOAId: coaId || undefined });
+        // When applying a direct target, convert the account to direct mapping type
+        // and clear any existing split definitions or dynamic allocations
+        const next = applyDerivedStatus({
+          ...account,
+          mappingType: 'direct',
+          manualCOAId: coaId || undefined,
+          splitDefinitions: [],
+          dynamicExclusionAmount: undefined,
+        });
         if (next !== account) {
           dirtyIds.push(account.id);
         }
         return next;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2358,7 +2564,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return next;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2404,7 +2610,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return updated;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2458,7 +2664,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return updated;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2483,8 +2689,10 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
 
         dirtyIds.push(account.id);
-        return { ...account, polarity };
+        const resolvedOriginal = resolveOriginalPolarity(account);
+        return applyPolarityToAccount(account, polarity, resolvedOriginal);
       });
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2550,7 +2758,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2609,7 +2817,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2669,7 +2877,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2734,7 +2942,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -2786,7 +2994,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return {
@@ -2857,7 +3065,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updated;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return {
@@ -2934,7 +3142,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
           return account;
         }
 
-        const updatedEntry: GLAccountMappingRow = next ?? { ...account };
+        let updatedEntry: GLAccountMappingRow = next ?? { ...account };
 
         if (updates.mappingType) {
           updatedEntry.mappingType = updates.mappingType;
@@ -2964,7 +3172,8 @@ export const useMappingStore = create<MappingState>((set, get) => {
           }
         }
         if (updates.polarity) {
-          updatedEntry.polarity = updates.polarity;
+          const resolvedOriginal = resolveOriginalPolarity(updatedEntry);
+          updatedEntry = applyPolarityToAccount(updatedEntry, updates.polarity, resolvedOriginal);
         }
         if (updates.status) {
           updatedEntry.status = updates.status;
@@ -3000,11 +3209,98 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return updated;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
     }),
+  applyMappingsToAllPeriods: ids => {
+    const ratioUpdates: { accountId: string; presetId: string | null }[] = [];
+    set(state => {
+      const dirtyIds: string[] = [];
+      if (!ids.length) {
+        return state;
+      }
+
+      const selectedAccounts = state.accounts.filter(account => ids.includes(account.id));
+      if (selectedAccounts.length === 0) {
+        return state;
+      }
+
+      const snapshotByKey = new Map<string, GLAccountMappingRow>();
+      selectedAccounts.forEach(account => {
+        snapshotByKey.set(buildAccountIdentityKey(account), account);
+      });
+
+      const accounts = state.accounts.map(account => {
+        const source = snapshotByKey.get(buildAccountIdentityKey(account));
+        if (!source || source.id === account.id) {
+          return account;
+        }
+
+        // Skip accounts that already have a mapping in this GL month
+        // This prevents unnecessary updates for accounts that already exist in the database
+        const alreadyMapped = account.status === 'Mapped' || account.status === 'Excluded';
+        if (alreadyMapped) {
+          return account;
+        }
+
+        const resolvedOriginal = resolveOriginalPolarity(account);
+        let next: GLAccountMappingRow = {
+          ...account,
+          mappingType: source.mappingType,
+          manualCOAId: source.manualCOAId,
+          presetId: source.presetId,
+          polarity: source.polarity,
+          exclusionPct: source.exclusionPct ?? null,
+          notes: source.notes,
+          splitDefinitions: [],
+          dynamicExclusionAmount: undefined,
+        };
+        next = applyPolarityToAccount(next, source.polarity, resolvedOriginal);
+
+        if (source.mappingType === 'percentage') {
+          next.splitDefinitions = ensureMinimumPercentageSplits(
+            cloneSplitDefinitionsForSelection(source.splitDefinitions),
+          );
+        } else if (source.mappingType === 'dynamic') {
+          next.splitDefinitions = cloneSplitDefinitionsForSelection(source.splitDefinitions);
+        }
+
+        if (source.mappingType === 'exclude' || source.status === 'Excluded') {
+          next.mappingType = 'exclude';
+          next.manualCOAId = undefined;
+          next.presetId = undefined;
+          next.splitDefinitions = [];
+          next.dynamicExclusionAmount = undefined;
+        } else if (source.mappingType !== 'dynamic') {
+          next.dynamicExclusionAmount = undefined;
+        }
+
+        if (source.mappingType === 'dynamic') {
+          ratioUpdates.push({ accountId: account.id, presetId: source.presetId ?? null });
+        } else if (account.mappingType === 'dynamic') {
+          ratioUpdates.push({ accountId: account.id, presetId: null });
+        }
+
+        const updated = applyDerivedStatus(next);
+        dirtyIds.push(account.id);
+        return updated;
+      });
+
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
+      const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
+      enqueueDirtyIds(dirtyIds);
+      return { accounts, dirtyMappingIds, rowSaveStatuses };
+    });
+
+    if (ratioUpdates.length > 0) {
+      const ratioState = useRatioAllocationStore.getState();
+      ratioUpdates.forEach(update =>
+        ratioState.setActivePresetForSource(update.accountId, update.presetId),
+      );
+    }
+  },
   applyMappingToMonths: (entityId, accountId, months, mapping) =>
     set(state => {
       const dirtyIds: string[] = [];
@@ -3024,7 +3320,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
           return account;
         }
 
-        const next: GLAccountMappingRow = { ...account };
+        let next: GLAccountMappingRow = { ...account };
 
         if ('target' in mapping) {
           next.manualCOAId = mapping.target || undefined;
@@ -3057,7 +3353,8 @@ export const useMappingStore = create<MappingState>((set, get) => {
           }
         }
         if (mapping.polarity) {
-          next.polarity = mapping.polarity;
+          const resolvedOriginal = resolveOriginalPolarity(next);
+          next = applyPolarityToAccount(next, mapping.polarity, resolvedOriginal);
         }
         if (mapping.status) {
           next.status = mapping.status;
@@ -3086,7 +3383,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return updated;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -3224,7 +3521,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         return updatedAccount;
       });
 
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -3259,7 +3556,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
         }
         return updated;
       });
-      updateDynamicBasisAccounts(accounts);
+      updateDynamicBasisAccounts(accounts, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts, dirtyMappingIds, rowSaveStatuses };
@@ -3311,7 +3608,7 @@ export const useMappingStore = create<MappingState>((set, get) => {
       });
 
       const resolved = resolveEntityConflicts(accounts, state.activeEntities);
-      updateDynamicBasisAccounts(resolved);
+      updateDynamicBasisAccounts(resolved, state.operationalBasisAccounts);
       const { dirtyMappingIds, rowSaveStatuses } = applyDirtyStatusUpdates(state, dirtyIds);
       enqueueDirtyIds(dirtyIds);
       return { accounts: resolved, dirtyMappingIds, rowSaveStatuses };
@@ -3384,21 +3681,52 @@ export const useMappingStore = create<MappingState>((set, get) => {
         mode,
       });
 
-      if (aggregated.length === 0) {
-        return;
-      }
-
       set(state => {
-      const merged = mergeSavedMappings(state.accounts, aggregated, mode);
-      updateDynamicBasisAccounts(merged);
-      return {
-        accounts: merged,
-        dirtyMappingIds: new Set<string>(),
-        rowSaveStatuses: {},
-        removedPresetDetailRecordIds: new Set<number>(),
-      };
-    });
-  } catch (error) {
+        const { accounts: mergedAccounts, inheritedMappingIds } = aggregated.length > 0
+          ? mergeSavedMappings(state.accounts, aggregated, mode)
+          : { accounts: state.accounts, inheritedMappingIds: [] };
+
+        if (aggregated.length > 0) {
+          updateDynamicBasisAccounts(mergedAccounts, state.operationalBasisAccounts);
+        }
+
+        // Mark accounts with inherited mappings as dirty so they get saved
+        // This ensures a database record exists for each account+glMonth combination
+        const dirtyMappingIds = new Set<string>(inheritedMappingIds);
+
+        // Also mark zero-value accounts as dirty if they haven't been saved yet
+        // This ensures $0 accounts get persisted with Mapped status
+        const savedAccountKeys = new Set(
+          aggregated.map(row => `${row.entityId}__${row.accountId}__${row.glMonth ?? ''}`)
+        );
+        mergedAccounts.forEach(account => {
+          if (
+            isZeroValueAccount(account) &&
+            account.entityId &&
+            !savedAccountKeys.has(`${account.entityId}__${account.accountId}__${account.glMonth ?? ''}`)
+          ) {
+            dirtyMappingIds.add(account.id);
+          }
+        });
+
+        if (dirtyMappingIds.size === 0 && aggregated.length === 0) {
+          return state;
+        }
+
+        return {
+          accounts: mergedAccounts,
+          dirtyMappingIds,
+          rowSaveStatuses: aggregated.length > 0 ? {} : state.rowSaveStatuses,
+          removedPresetDetailRecordIds: aggregated.length > 0 ? new Set<number>() : state.removedPresetDetailRecordIds,
+        };
+      });
+
+      // Queue inherited mappings for auto-save to ensure database records are created
+      const { dirtyMappingIds } = get();
+      if (dirtyMappingIds.size > 0) {
+        get().queueAutoSave(Array.from(dirtyMappingIds));
+      }
+    } catch (error) {
       logError('Unable to hydrate saved mappings', error);
     }
   },
@@ -3606,7 +3934,12 @@ export const useMappingStore = create<MappingState>((set, get) => {
       userDefinedHeaders: userDefinedHeaders ?? [],
     });
 
-    syncDynamicAllocationState(resolvedAccounts, rows, normalizedPeriod);
+    syncDynamicAllocationState(
+      resolvedAccounts,
+      rows,
+      normalizedPeriod,
+      get().operationalBasisAccounts,
+    );
     await get().refreshPresetLibrary(resolvedEntityIds);
   },
   fetchFileRecords: async (uploadGuid, options) => {
@@ -3718,6 +4051,8 @@ export const useMappingStore = create<MappingState>((set, get) => {
       const hydrateEntityIds =
         normalizedEntityIds ?? resolvedEntities.map(entity => entity.id);
       await get().hydrateFromHistory(uploadGuid, hydrateMode, hydrateEntityIds, 'file');
+
+      await loadOperationalStats(normalizedClientId);
 
       set({ isLoadingFromApi: false, apiError: null });
     } catch (error) {
@@ -3833,6 +4168,8 @@ export const useMappingStore = create<MappingState>((set, get) => {
         normalizedEntityIds ?? resolvedEntities.map(entity => entity.id);
       await get().hydrateFromHistory(null, hydrateMode, hydrateEntityIds);
 
+      await loadOperationalStats(normalizedClientId);
+
       set({ isLoadingFromApi: false, apiError: null });
     } catch (error) {
       logError('Unable to load client file records', error);
@@ -3846,7 +4183,12 @@ export const useMappingStore = create<MappingState>((set, get) => {
 };
 });
 
-syncDynamicAllocationState(useMappingStore.getState().accounts);
+syncDynamicAllocationState(
+  useMappingStore.getState().accounts,
+  [],
+  null,
+  useMappingStore.getState().operationalBasisAccounts,
+);
 
 const createId = (): string => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -4024,13 +4366,18 @@ const buildMappingKey = (
   glMonth?: string | null,
 ) => `${entityId ?? ''}__${accountId ?? ''}__${normalizePeriod(glMonth) ?? ''}`;
 
+interface MergeSavedMappingsResult {
+  accounts: GLAccountMappingRow[];
+  inheritedMappingIds: string[];
+}
+
 const mergeSavedMappings = (
   accounts: GLAccountMappingRow[],
   saved: SavedMappingRow[],
   mode: HydrationMode,
-): GLAccountMappingRow[] => {
+): MergeSavedMappingsResult => {
   if (!saved.length) {
-    return accounts;
+    return { accounts, inheritedMappingIds: [] };
   }
 
   const lookup = new Map<string, SavedMappingRow>();
@@ -4043,16 +4390,29 @@ const mergeSavedMappings = (
     }
   });
 
-  return accounts.map(account => {
+  // Track accounts that receive a mapping from a different GL month (inherited mappings)
+  // These need to be saved to ensure a record exists for each account+glMonth combination
+  const inheritedMappingIds: string[] = [];
+
+  const mergedAccounts = accounts.map(account => {
     if (!account.entityId) {
       return account;
     }
 
     const keyWithPeriod = buildMappingKey(account.entityId, account.accountId, account.glMonth ?? null);
-    const match = lookup.get(keyWithPeriod) ?? lookup.get(buildMappingKey(account.entityId, account.accountId, null));
+    const exactMatch = lookup.get(keyWithPeriod);
+    const fallbackMatch = lookup.get(buildMappingKey(account.entityId, account.accountId, null));
+    const match = exactMatch ?? fallbackMatch;
 
     if (!match) {
       return account;
+    }
+
+    // If the mapping was inherited from a fallback (no exact GL month match),
+    // mark this account as needing to be saved so a record exists for this GL month
+    const isInheritedMapping = !exactMatch && fallbackMatch;
+    if (isInheritedMapping && account.glMonth) {
+      inheritedMappingIds.push(account.id);
     }
 
     const shouldResetStatus = mode === 'restart' && match.status !== 'Excluded';
@@ -4063,11 +4423,14 @@ const mergeSavedMappings = (
         : match.mappingType;
 
     const exclusionPct = match.exclusionPct ?? null;
-    const next: GLAccountMappingRow = {
+    const resolvedOriginalPolarity =
+      match.originalPolarity ?? account.originalPolarity ?? derivePolarityFromAmount(account.netChange);
+    const resolvedPolarity = match.modifiedPolarity ?? match.polarity;
+    let next: GLAccountMappingRow = {
       ...account,
       mappingType: resolvedType,
       presetId: match.presetId ?? undefined,
-      polarity: match.polarity,
+      polarity: resolvedPolarity,
       exclusionPct,
       splitDefinitions:
         resolvedType === 'percentage'
@@ -4080,6 +4443,7 @@ const mergeSavedMappings = (
           ? match.splitDefinitions?.[0]?.targetId ?? match.presetId ?? account.manualCOAId
           : undefined,
     };
+    next = applyPolarityToAccount(next, resolvedPolarity, resolvedOriginalPolarity);
 
     if (resolvedType === 'exclude') {
       next.status = 'Excluded';
@@ -4109,6 +4473,8 @@ const mergeSavedMappings = (
 
     return applyDerivedStatus(next);
   });
+
+  return { accounts: mergedAccounts, inheritedMappingIds };
 };
 
 const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
@@ -4133,16 +4499,55 @@ const getSplitValidationIssues = (accounts: GLAccountMappingRow[]) => {
 };
 
 const isAccountResolvedForSummary = (account: GLAccountMappingRow): boolean => {
-  const derivedStatus = deriveMappingStatus(account);
-  if (derivedStatus === 'Mapped' || derivedStatus === 'Excluded') {
+  // Check for exclusion first - this is always considered resolved
+  if (account.mappingType === 'exclude' || account.status === 'Excluded') {
     return true;
   }
 
-  if (account.mappingType === 'direct') {
-    const hasManualTarget = typeof account.manualCOAId === 'string' && account.manualCOAId.trim().length > 0;
-    const hasSuggestedTarget =
-      typeof account.suggestedCOAId === 'string' && account.suggestedCOAId.trim().length > 0;
-    return hasManualTarget || hasSuggestedTarget;
+  // Zero-value accounts are considered resolved - no mapping needed
+  if (isZeroValueAccount(account)) {
+    return true;
+  }
+
+  // For dynamic allocations, check if there are actual target datapoints configured
+  if (account.mappingType === 'dynamic') {
+    const ratioState = useRatioAllocationStore.getState();
+    const allocation = ratioState.allocations.find(
+      alloc => alloc.sourceAccount.id === account.id,
+    );
+    const hasDynamicTargets =
+      allocation?.targetDatapoints?.length ||
+      account.splitDefinitions.some(split => split.allocationType === 'dynamic');
+    return hasDynamicTargets;
+  }
+
+  // For percentage splits, check if all splits are properly configured
+  if (account.mappingType === 'percentage') {
+    if (account.splitDefinitions.length === 0) {
+      return false;
+    }
+    const allSplitsConfigured = account.splitDefinitions.every(split => {
+      if (split.isExclusion) {
+        return true;
+      }
+      const targetId = typeof split.targetId === 'string' ? split.targetId.trim() : '';
+      return targetId.length > 0 && isKnownChartOfAccount(targetId);
+    });
+    if (!allSplitsConfigured) {
+      return false;
+    }
+    const totalPercentage = account.splitDefinitions.reduce(
+      (sum, split) => sum + getSplitPercentage(account, split),
+      0,
+    );
+    return Math.abs(totalPercentage - 100) <= 0.01;
+  }
+
+  // For direct mapping, check if there's a valid target COA
+  // Note: We require a known COA to match backend logic - 'New' accounts are not counted as mapped
+  const manualTarget = account.manualCOAId?.trim();
+  if (manualTarget && isKnownChartOfAccount(manualTarget)) {
+    return true;
   }
 
   return false;

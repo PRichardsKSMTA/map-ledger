@@ -256,17 +256,53 @@ export const updateEntityMappingPreset = async (
   params.updatedBy = updates.updatedBy ?? null;
 
   if (assignments.length) {
-    await runQuery(
+    const result = await runQuery<{
+      preset_guid: string;
+      entity_id: string;
+      preset_type: string;
+      preset_description?: string | null;
+      inserted_dttm?: Date | string | null;
+      updated_dttm?: Date | string | null;
+      updated_by?: string | null;
+    }>(
       `UPDATE ${TABLE_NAME}
       SET
         ${assignments.join(',\n        ')}
+      OUTPUT
+        INSERTED.PRESET_GUID as preset_guid,
+        INSERTED.ENTITY_ID as entity_id,
+        INSERTED.PRESET_TYPE as preset_type,
+        INSERTED.PRESET_DESCRIPTION as preset_description,
+        INSERTED.INSERTED_DTTM as inserted_dttm,
+        INSERTED.UPDATED_DTTM as updated_dttm,
+        INSERTED.UPDATED_BY as updated_by
       WHERE PRESET_GUID = @presetGuid`,
       params
     );
+
+    const row = result.recordset?.[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      presetGuid: row.preset_guid,
+      entityId: row.entity_id,
+      presetType: normalizePresetTypeValue(row.preset_type),
+      presetDescription: row.preset_description ?? null,
+      insertedDttm:
+        row.inserted_dttm instanceof Date
+          ? row.inserted_dttm.toISOString()
+          : row.inserted_dttm ?? null,
+      updatedDttm:
+        row.updated_dttm instanceof Date
+          ? row.updated_dttm.toISOString()
+          : row.updated_dttm ?? null,
+      updatedBy: row.updated_by ?? null,
+    };
   }
 
-  const updatedRows = await listEntityMappingPresets();
-  return updatedRows.find((preset) => preset.presetGuid === normalizedPresetGuid) ?? null;
+  return null;
 };
 
 export default listEntityMappingPresets;

@@ -22,6 +22,8 @@ interface MappingSuggestionRow {
   status: MappingStatus;
   mappingType: MappingType;
   polarity: MappingPolarity;
+  originalPolarity?: MappingPolarity | null;
+  modifiedPolarity?: MappingPolarity | null;
   presetId?: string | null;
   exclusionPct?: number | null;
   splitDefinitions: {
@@ -39,11 +41,26 @@ interface MappingSuggestionRow {
   glMonth?: string | null;
 }
 
-const derivePolarity = (amount?: number | null, fallback?: string | null): MappingPolarity => {
-  if (fallback && ['debit', 'credit', 'absolute'].includes(fallback.toLowerCase())) {
-    return fallback.charAt(0).toUpperCase() === 'A'
-      ? 'Absolute'
-      : (fallback.charAt(0).toUpperCase() + fallback.slice(1).toLowerCase()) as MappingPolarity;
+const normalizePolarity = (value?: string | null): MappingPolarity | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'debit') {
+    return 'Debit';
+  }
+  if (normalized === 'credit') {
+    return 'Credit';
+  }
+  if (normalized === 'absolute') {
+    return 'Absolute';
+  }
+  return null;
+};
+
+const derivePolarity = (amount?: number | null, override?: MappingPolarity | null): MappingPolarity => {
+  if (override) {
+    return override;
   }
 
   if ((amount ?? 0) > 0) {
@@ -53,6 +70,17 @@ const derivePolarity = (amount?: number | null, fallback?: string | null): Mappi
     return 'Credit';
   }
   return 'Absolute';
+};
+
+const applyPolarityToAmount = (amount: number, polarity: MappingPolarity): number => {
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+  const absolute = Math.abs(amount);
+  if (polarity === 'Credit') {
+    return -absolute;
+  }
+  return absolute;
 };
 
 const normalizeStatus = (status?: string | null, mappingType?: string | null): MappingStatus => {
@@ -86,28 +114,34 @@ const mapToSuggestion = (
     : 'direct';
   const presetId = row.presetId ?? null;
   const details = presetId ? row.presetDetails ?? [] : [];
-  const polarity = derivePolarity(row.activityAmount, row.polarity);
+  const baseActivity = Number.isFinite(row.activityAmount ?? NaN) ? (row.activityAmount as number) : 0;
+  const originalPolarity = normalizePolarity(row.originalPolarity ?? null);
+  const modifiedPolarity = normalizePolarity(row.modifiedPolarity ?? null);
+  const overridePolarity = modifiedPolarity ?? normalizePolarity(row.polarity ?? null);
+  const polarity = derivePolarity(baseActivity, overridePolarity);
   const status = normalizeStatus(row.mappingStatus, mappingType);
   const entityId = row.entityId?.trim() || 'unknown-entity';
-  const activity = row.activityAmount ?? 0;
+  const activity = overridePolarity ? applyPolarityToAmount(baseActivity, overridePolarity) : baseActivity;
   const hydratedDetails = details.filter(
     (detail): detail is EntityMappingPresetDetailRow & { targetDatapoint: string } =>
       Boolean(detail.targetDatapoint),
   );
 
-    return {
-      id: `${fileUploadGuid}-${row.recordId ?? row.entityAccountId}`,
-      entityId,
-      entityName: entityId,
+  return {
+    id: `${fileUploadGuid}-${row.recordId ?? row.entityAccountId}`,
+    entityId,
+    entityName: entityId,
     accountId: row.entityAccountId,
     accountName: row.accountName ?? row.entityAccountId,
     activity,
     netChange: activity,
-      status,
-      mappingType,
-      polarity,
-      presetId,
-      exclusionPct: row.exclusionPct ?? null,
+    status,
+    mappingType,
+    polarity,
+    originalPolarity,
+    modifiedPolarity,
+    presetId,
+    exclusionPct: row.exclusionPct ?? null,
     splitDefinitions: hydratedDetails.map((detail, index) => {
       const isExclusionSplit = detail.targetDatapoint.toLowerCase() === 'excluded';
       const isDynamicSplit = detail.isCalculated === true;

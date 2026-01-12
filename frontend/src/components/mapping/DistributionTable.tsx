@@ -3,6 +3,7 @@ import { ArrowUpDown, Check, ChevronRight, Filter, HelpCircle, Loader2, Minus, X
 import type { LucideIcon } from 'lucide-react';
 import RatioAllocationManager from './RatioAllocationManager';
 import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
+import ClientSurveyModal from '../survey/ClientSurveyModal';
 import {
   useDistributionStore,
   type DistributionOperationCatalogItem,
@@ -14,6 +15,8 @@ import {
 import {
   selectActiveEntityId,
   selectAccounts,
+  selectActivePeriod,
+  selectAvailablePeriods,
   selectDistributionTargets,
   useMappingStore,
 } from '../../store/mappingStore';
@@ -41,6 +44,10 @@ import type {
 import { getOperationLabel } from '../../utils/operationLabel';
 import { getBasisValue } from '../../utils/dynamicAllocation';
 import { normalizeDistributionStatus } from '../../utils/distributionStatus';
+import { formatPeriodDate } from '../../utils/period';
+import ApplyAcrossPeriodsModal, {
+  type ApplyAcrossPeriodsScope,
+} from './ApplyAcrossPeriodsModal';
 
 interface DistributionTableProps {
   focusMappingId?: string | null;
@@ -268,9 +275,12 @@ const areSegmentFiltersEqual = (
 const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const distributionTargets = useMappingStore(selectDistributionTargets);
   const mappedAccounts = useMappingStore(selectAccounts);
+  const activePeriod = useMappingStore(selectActivePeriod);
+  const availablePeriods = useMappingStore(selectAvailablePeriods);
   const userDefinedHeaders = useMappingStore(state => state.userDefinedHeaders);
   const activeEntityId = useMappingStore(selectActiveEntityId);
   const activeClientId = useClientStore(state => state.activeClientId);
+  const clients = useClientStore(state => state.clients);
   const companies = useOrganizationStore(state => state.companies);
   const currentEmail = useOrganizationStore(state => state.currentEmail);
   const summarySignature = useMemo(
@@ -301,6 +311,10 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     });
     return Array.from(map.values()).sort((a, b) => a.id.localeCompare(b.id));
   }, [companies, activeClientId]);
+  const activeClient = useMemo(
+    () => clients.find(client => client.clientId === activeClientId) ?? null,
+    [activeClientId, clients],
+  );
   const {
     rows,
     operationsCatalog,
@@ -312,6 +326,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowPreset,
     applyOperationsToRows,
     applyBatchDistribution,
+    applyDistributionsToAllPeriods,
     applyPresetToRows,
     queueAutoSave,
     setSaveContext,
@@ -328,6 +343,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     updateRowPreset: state.updateRowPreset,
     applyOperationsToRows: state.applyOperationsToRows,
     applyBatchDistribution: state.applyBatchDistribution,
+    applyDistributionsToAllPeriods: state.applyDistributionsToAllPeriods,
     applyPresetToRows: state.applyPresetToRows,
     queueAutoSave: state.queueAutoSave,
     setSaveContext: state.setSaveContext,
@@ -347,6 +363,8 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   const [activeDynamicAccountId, setActiveDynamicAccountId] = useState<string | null>(null);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
+  const [isApplyAcrossOpen, setApplyAcrossOpen] = useState(false);
+  const [isClientSurveyOpen, setIsClientSurveyOpen] = useState(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const segmentFilterMenuRef = useRef<HTMLDivElement | null>(null);
   const segmentSelectAllRefs = useRef<Record<number, HTMLInputElement | null>>({});
@@ -410,6 +428,8 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
       ),
     [presets],
   );
+  const activePeriodLabel = activePeriod ? formatPeriodDate(activePeriod) || activePeriod : '';
+  const showApplyAcrossPeriods = Boolean(activePeriod) && availablePeriods.length > 1;
 
   const normalizeOperationId = useCallback((value?: string | null): string => {
     if (!value) {
@@ -442,7 +462,9 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
 
       const rowsWithBasis = preset.rows.map(presetRow => {
         const basisAccount = basisAccounts.find(acc => acc.id === presetRow.dynamicAccountId);
-        const basisValue = basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
+        const basisValue = basisAccount
+          ? getBasisValue(basisAccount, selectedPeriod, presetRow.targetAccountId)
+          : 0;
         return { presetRow, basisValue };
       });
       const totalBasis = rowsWithBasis.reduce((sum, item) => sum + item.basisValue, 0);
@@ -960,6 +982,28 @@ const buildDistributionPresetLibraryEntries = (
       });
     });
   }, [baseFilteredRows, getGlSegmentsForRow, hasSegmentFilters, segmentFilters]);
+  const filteredRowIds = useMemo(() => filteredRows.map(row => row.id), [filteredRows]);
+  const canApplyAcrossPeriods =
+    showApplyAcrossPeriods &&
+    (selectedIdList.length > 0 || filteredRowIds.length > 0);
+
+  const handleApplyAcrossPeriods = useCallback(
+    (scope: ApplyAcrossPeriodsScope) => {
+      const ids = scope === 'selected' ? selectedIdList : filteredRowIds;
+      if (!ids.length) {
+        return;
+      }
+      applyDistributionsToAllPeriods(ids);
+      clearSelection();
+      setApplyAcrossOpen(false);
+    },
+    [
+      applyDistributionsToAllPeriods,
+      clearSelection,
+      filteredRowIds,
+      selectedIdList,
+    ],
+  );
 
   const getRowSortValue = useCallback(
     (row: DistributionRow, key: SortKey): string | number => {
@@ -1406,7 +1450,12 @@ const buildDistributionPresetLibraryEntries = (
 
   return (
     <div className="space-y-6">
-      <DistributionToolbar />
+      <DistributionToolbar
+        onApplyAcrossPeriods={
+          showApplyAcrossPeriods ? () => setApplyAcrossOpen(true) : undefined
+        }
+        canApplyAcrossPeriods={canApplyAcrossPeriods}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -1811,6 +1860,17 @@ const buildDistributionPresetLibraryEntries = (
           </div>
         </div>
       )}
+      {showApplyAcrossPeriods && (
+        <ApplyAcrossPeriodsModal
+          open={isApplyAcrossOpen}
+          periodLabel={activePeriodLabel}
+          contextLabel="distributions"
+          selectedCount={selectedIdList.length}
+          filteredCount={filteredRowIds.length}
+          onClose={() => setApplyAcrossOpen(false)}
+          onConfirm={handleApplyAcrossPeriods}
+        />
+      )}
 
       {activeDynamicAccountId && (
         <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
@@ -1840,6 +1900,7 @@ const buildDistributionPresetLibraryEntries = (
                 initialSourceAccountId={activeDynamicAccountId}
                 applyToSourceAccountIds={dynamicPresetAccountIds}
                 onPresetApplied={handleDynamicPresetApplied}
+                onOpenClientSurvey={() => setIsClientSurveyOpen(true)}
                 onDone={() => setActiveDynamicAccountId(null)}
                 targetCatalog={operationTargetCatalog}
                 resolveCanonicalTargetId={resolveOperationCanonicalTargetId}
@@ -1852,6 +1913,15 @@ const buildDistributionPresetLibraryEntries = (
           </div>
         </ModalBackdrop>
       )}
+
+      <ClientSurveyModal
+        open={isClientSurveyOpen}
+        clientId={activeClientId}
+        clientName={activeClient?.name ?? null}
+        clientScac={activeClient?.scac ?? null}
+        operations={activeClient?.operations ?? []}
+        onClose={() => setIsClientSurveyOpen(false)}
+      />
     </div>
   );
 };

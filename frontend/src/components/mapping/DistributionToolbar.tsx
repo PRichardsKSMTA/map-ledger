@@ -11,13 +11,21 @@ import type {
   DistributionStatus,
 } from '../../types';
 
+interface DistributionToolbarProps {
+  onApplyAcrossPeriods?: () => void;
+  canApplyAcrossPeriods?: boolean;
+}
+
 const STATUS_DEFINITIONS: { value: DistributionStatus; label: string }[] = [
   { value: 'Undistributed', label: 'Undistributed' },
   { value: 'Distributed', label: 'Distributed' },
   { value: 'No balance', label: 'No balance' },
 ];
 
-export default function DistributionToolbar() {
+export default function DistributionToolbar({
+  onApplyAcrossPeriods,
+  canApplyAcrossPeriods = false,
+}: DistributionToolbarProps) {
   const searchTerm = useDistributionStore(state => state.searchTerm);
   const statusFilters = useDistributionStore(state => state.statusFilters);
   const setSearchTerm = useDistributionStore(state => state.setSearchTerm);
@@ -30,6 +38,7 @@ export default function DistributionToolbar() {
   const [isPresetModalOpen, setPresetModalOpen] = useState(false);
   const hasSelection = selectedIds.size > 0;
   const selectedCount = selectedIds.size;
+  const showApplyAcrossPeriods = Boolean(onApplyAcrossPeriods);
 
   const searchLabelId = 'distribution-search';
 
@@ -119,6 +128,20 @@ export default function DistributionToolbar() {
             >
               Apply preset
             </button>
+            {showApplyAcrossPeriods && (
+              <button
+                type="button"
+                onClick={onApplyAcrossPeriods}
+                disabled={!canApplyAcrossPeriods}
+                className={`rounded-md px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-900 ${
+                  canApplyAcrossPeriods
+                    ? 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700'
+                    : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400 focus:ring-0 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500'
+                }`}
+              >
+                Apply to all periods
+              </button>
+            )}
 
           </div>
           {saveError && (

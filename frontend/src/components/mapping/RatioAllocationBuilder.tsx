@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, Trash2, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import SearchableSelect from '../ui/SearchableSelect';
@@ -9,15 +10,32 @@ import {
   DEFAULT_PRESET_CONTEXT,
 } from '../../store/ratioAllocationStore';
 import type {
+  BasisCategory,
   DynamicAllocationPresetContext,
   DynamicAllocationPresetRow,
+  DynamicBasisAccount,
 } from '../../types';
 import { getBasisValue, getGroupMembersWithValues } from '../../utils/dynamicAllocation';
 
 const formatCurrency = (value: number): string =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+const formatNumber = (value: number): string =>
+  new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
+
+const hasNonZeroValue = (
+  account: DynamicBasisAccount,
+  periodId?: string | null,
+): boolean => {
+  const periodKey = typeof periodId === 'string' ? periodId.trim() : '';
+  const periodValue =
+    periodKey && account.valuesByPeriod
+      ? account.valuesByPeriod[periodKey]
+      : account.value;
+  return typeof periodValue === 'number' && Number.isFinite(periodValue) && Math.abs(periodValue) > 0;
+};
 
 const normalizeAccountId = (value?: string | null): string => (value ?? '').trim();
+const normalizeAccountLabel = (value?: string | null): string => (value ?? '').trim();
 
 const compareAccountIds = (left: string, right: string): number =>
   normalizeAccountId(left).localeCompare(normalizeAccountId(right), undefined, {
@@ -28,6 +46,25 @@ const compareAccountIds = (left: string, right: string): number =>
 const sortByAccountId = <T extends { id: string },>(options: T[]): T[] =>
   [...options].sort((a, b) => compareAccountIds(a.id, b.id));
 
+const compareAccountLabels = <T extends { id: string; name?: string | null }>(
+  left: T,
+  right: T,
+): number => {
+  const leftLabel = normalizeAccountLabel(left.name) || normalizeAccountId(left.id);
+  const rightLabel = normalizeAccountLabel(right.name) || normalizeAccountId(right.id);
+  const labelComparison = leftLabel.localeCompare(rightLabel, undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  });
+  if (labelComparison !== 0) {
+    return labelComparison;
+  }
+  return compareAccountIds(left.id, right.id);
+};
+
+const sortByAccountLabel = <T extends { id: string; name?: string | null }>(options: T[]): T[] =>
+  [...options].sort(compareAccountLabels);
+
 export type RatioAllocationTargetCatalogOption = {
   id: string;
   label: string;
@@ -37,29 +74,36 @@ interface RatioAllocationBuilderProps {
   initialSourceAccountId?: string | null;
   applyToSourceAccountIds?: string[];
   onPresetApplied?: (presetId: string, sourceAccountIds: string[]) => void;
+  onOpenClientSurvey?: () => void;
   targetCatalog?: RatioAllocationTargetCatalogOption[];
   resolveCanonicalTargetId?: (targetId?: string | null) => string | null;
   targetLabel?: string;
   targetPlaceholder?: string;
   targetEmptyLabel?: string;
   presetContext?: DynamicAllocationPresetContext;
+  basisCategory?: BasisCategory;
+  /** Called when basis datapoints are selected/deselected to report the locked category */
+  onBasisCategoryLock?: (lockedCategory: BasisCategory | null) => void;
 }
 
 const RatioAllocationBuilder = ({
   initialSourceAccountId,
   applyToSourceAccountIds,
   onPresetApplied,
+  onOpenClientSurvey,
   targetCatalog,
   resolveCanonicalTargetId,
   targetLabel = 'Target account',
   targetPlaceholder = 'Select target account',
   targetEmptyLabel = 'No target accounts available',
   presetContext,
+  basisCategory = 'financial',
+  onBasisCategoryLock,
 }: RatioAllocationBuilderProps) => {
   const {
     allocations,
     presets: allPresets,
-    basisAccounts,
+    basisAccounts: allBasisAccounts,
     selectedPeriod,
     createPreset,
     updatePreset,
@@ -72,6 +116,45 @@ const RatioAllocationBuilder = ({
   } = useRatioAllocationStore();
 
   const resolvedPresetContext = presetContext ?? DEFAULT_PRESET_CONTEXT;
+  const useOperationBasis = resolvedPresetContext === 'distribution';
+  const resolvedBasisCategory = basisCategory ?? 'financial';
+  const basisCategoryLookup = useMemo(() => {
+    const lookup = new Map<string, BasisCategory>();
+    allBasisAccounts.forEach(account => {
+      lookup.set(account.id, account.basisCategory ?? 'financial');
+    });
+    return lookup;
+  }, [allBasisAccounts]);
+  const operationalAccounts = useMemo(
+    () =>
+      allBasisAccounts.filter(
+        account => (account.basisCategory ?? 'financial') === 'operational',
+      ),
+    [allBasisAccounts],
+  );
+  const operationalAccountsWithValue = useMemo(
+    () => operationalAccounts.filter(account => hasNonZeroValue(account, selectedPeriod)),
+    [operationalAccounts, selectedPeriod],
+  );
+  const basisAccounts = useMemo(
+    () => {
+      if (resolvedPresetContext !== 'distribution') {
+        return allBasisAccounts;
+      }
+      if (resolvedBasisCategory === 'operational') {
+        return operationalAccountsWithValue;
+      }
+      return allBasisAccounts.filter(
+        account => (account.basisCategory ?? 'financial') === 'financial',
+      );
+    },
+    [
+      allBasisAccounts,
+      operationalAccountsWithValue,
+      resolvedBasisCategory,
+      resolvedPresetContext,
+    ],
+  );
   const contextPresets = useMemo(
     () =>
       allPresets.filter(
@@ -79,6 +162,26 @@ const RatioAllocationBuilder = ({
       ),
     [allPresets, resolvedPresetContext],
   );
+  const visiblePresets = useMemo(() => {
+    if (resolvedPresetContext !== 'distribution') {
+      return contextPresets;
+    }
+    return contextPresets.filter(preset =>
+      preset.rows.every(row => {
+        const basisId = row.dynamicAccountId?.trim();
+        if (!basisId) {
+          return false;
+        }
+        return (basisCategoryLookup.get(basisId) ?? 'financial') === resolvedBasisCategory;
+      }),
+    );
+  }, [basisCategoryLookup, contextPresets, resolvedBasisCategory, resolvedPresetContext]);
+
+  const showOperationalSurveyCta =
+    useOperationBasis &&
+    resolvedBasisCategory === 'operational' &&
+    operationalAccounts.length > 0 &&
+    operationalAccountsWithValue.length === 0;
 
   const [selectedAllocationId, setSelectedAllocationId] = useState<string | null>(null);
   const [isCreatingPreset, setIsCreatingPreset] = useState(false);
@@ -86,6 +189,31 @@ const RatioAllocationBuilder = ({
   const [isNewPresetNameEdited, setIsNewPresetNameEdited] = useState(false);
   const [newPresetRows, setNewPresetRows] = useState<DynamicAllocationPresetRow[]>([]);
   const { options: chartOfAccountOptions } = useChartOfAccountsStore();
+
+  useEffect(() => {
+    setNewPresetRows([]);
+    setIsCreatingPreset(false);
+  }, [resolvedBasisCategory]);
+
+  // Report locked category when basis datapoints are selected in new preset rows
+  useEffect(() => {
+    if (!onBasisCategoryLock) {
+      return;
+    }
+    // Find all selected basis datapoints in new preset rows
+    const selectedBasisIds = newPresetRows
+      .map(row => row.dynamicAccountId?.trim())
+      .filter((id): id is string => Boolean(id));
+
+    if (selectedBasisIds.length === 0) {
+      onBasisCategoryLock(null);
+      return;
+    }
+
+    // Determine the category of the first selected basis datapoint
+    const firstCategory = basisCategoryLookup.get(selectedBasisIds[0]) ?? 'financial';
+    onBasisCategoryLock(firstCategory);
+  }, [newPresetRows, basisCategoryLookup, onBasisCategoryLock]);
 
   const newPresetNameId = useId();
   const newPresetBasisHeaderId = useId();
@@ -225,7 +353,7 @@ const RatioAllocationBuilder = ({
           );
         });
 
-      return sortByAccountId(availableAccounts)
+      return sortByAccountLabel(availableAccounts)
         .map(account => ({ id: account.id, value: account.id, label: account.name }));
     },
     [
@@ -403,24 +531,54 @@ const RatioAllocationBuilder = ({
   }, [selectedAllocation]);
 
   const resolveBasisValue = useCallback(
-    (accountId: string): number => {
+    (accountId: string, operationId?: string | null): number => {
       const basisAccount = basisAccounts.find(account => account.id === accountId);
-      return basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
+      const resolvedOperation = useOperationBasis ? operationId : null;
+      return basisAccount ? getBasisValue(basisAccount, selectedPeriod, resolvedOperation) : 0;
     },
-    [basisAccounts, selectedPeriod],
+    [basisAccounts, selectedPeriod, useOperationBasis],
+  );
+
+  const formatBasisValue = useCallback(
+    (value: number) =>
+      useOperationBasis && resolvedBasisCategory === 'operational'
+        ? formatNumber(value)
+        : formatCurrency(value),
+    [resolvedBasisCategory, useOperationBasis],
   );
 
   // Wrapper to filter out source account from existing preset basis options (prevents circular reference)
   const getFilteredPresetDynamicAccounts = useCallback(
     (presetId: string, rowIndex?: number) => {
       const options = getPresetAvailableDynamicAccounts(presetId, rowIndex);
+      const preset = contextPresets.find(item => item.id === presetId);
+      const currentId =
+        typeof rowIndex === 'number'
+          ? preset?.rows[rowIndex]?.dynamicAccountId?.trim() ?? null
+          : null;
       const sourceAccountId = selectedAllocation?.sourceAccount.id;
       const filtered = sourceAccountId
         ? options.filter(account => account.id !== sourceAccountId)
         : options;
-      return sortByAccountId(filtered);
+      return sortByAccountLabel(
+        filtered.filter(
+          account =>
+            account.id === currentId ||
+            ((account.basisCategory ?? 'financial') === resolvedBasisCategory &&
+              (!useOperationBasis ||
+                resolvedBasisCategory !== 'operational' ||
+                hasNonZeroValue(account, selectedPeriod))),
+        ),
+      );
     },
-    [getPresetAvailableDynamicAccounts, selectedAllocation?.sourceAccount.id],
+    [
+      contextPresets,
+      getPresetAvailableDynamicAccounts,
+      resolvedBasisCategory,
+      selectedAllocation?.sourceAccount.id,
+      selectedPeriod,
+      useOperationBasis,
+    ],
   );
 
   const addNewPresetRow = useCallback(() => {
@@ -502,7 +660,30 @@ const RatioAllocationBuilder = ({
 
           {basisAccounts.length === 0 && (
             <p className="rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-300">
-              Complete your direct and percentage mappings to add basis datapoints before creating presets.
+              {showOperationalSurveyCta ? (
+                <>
+                  No operational basis datapoints have values for the selected period.{' '}
+                  {onOpenClientSurvey ? (
+                    <button
+                      type="button"
+                      onClick={onOpenClientSurvey}
+                      className="font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      Click here to provide operational survey data
+                    </button>
+                  ) : (
+                    <Link
+                      to="/clients?openSurvey=1"
+                      className="font-semibold text-blue-600 hover:text-blue-700"
+                    >
+                      Click here to provide operational survey data
+                    </Link>
+                  )}
+                  .
+                </>
+              ) : (
+                'Complete your direct and percentage mappings to add basis datapoints before creating presets.'
+              )}
             </p>
           )}
 
@@ -612,8 +793,10 @@ const RatioAllocationBuilder = ({
                           <td className="border-y border-l border-slate-200 bg-white px-3 py-3 align-top text-sm dark:border-slate-700 dark:bg-slate-950">
                             <div aria-labelledby={newPresetAmountHeaderId} className="text-sm font-medium text-slate-700 dark:text-slate-200">
                               {row.dynamicAccountId
-                                ? formatCurrency(resolveBasisValue(row.dynamicAccountId))
-                                : formatCurrency(0)}
+                                ? formatBasisValue(
+                                    resolveBasisValue(row.dynamicAccountId, row.targetAccountId),
+                                  )
+                                : formatBasisValue(0)}
                             </div>
                           </td>
                           <td className="rounded-r-md border-y border-l border-r border-slate-200 bg-white px-3 py-3 align-top text-right text-sm dark:border-slate-700 dark:bg-slate-950">
@@ -664,10 +847,24 @@ const RatioAllocationBuilder = ({
           )}
 
           <div className="space-y-4">
-            {contextPresets.map(preset => {
+            {visiblePresets.map(preset => {
               const isSelected = selectedPresetIds.has(preset.id);
               const isExcludedForAllocation = excludedPresetIds.has(preset.id);
-              const members = getGroupMembersWithValues(preset, basisAccounts, selectedPeriod);
+              const members = useOperationBasis
+                ? preset.rows.map(row => {
+                    const basisAccount = basisAccounts.find(
+                      account => account.id === row.dynamicAccountId,
+                    );
+                    const value = basisAccount
+                      ? getBasisValue(basisAccount, selectedPeriod, row.targetAccountId)
+                      : 0;
+                    return {
+                      accountId: row.dynamicAccountId,
+                      accountName: basisAccount?.name ?? row.dynamicAccountId,
+                      value,
+                    };
+                  })
+                : getGroupMembersWithValues(preset, basisAccounts, selectedPeriod);
               const basisTotalValue = members.reduce((sum, member) => sum + member.value, 0);
 
               return (
@@ -716,7 +913,7 @@ const RatioAllocationBuilder = ({
                     </div>
                     <div className="flex flex-col items-start gap-2 text-sm md:items-end">
                       <div className="font-medium text-blue-700 dark:text-blue-400">
-                        Basis total: {formatCurrency(basisTotalValue)}
+                        Basis total: {formatBasisValue(basisTotalValue)}
                       </div>
                       <label className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-300">
                         <input
@@ -776,7 +973,9 @@ const RatioAllocationBuilder = ({
                             </tr>
                           ) : (
                             preset.rows.map((row, index) => {
-                              const basisValue = formatCurrency(resolveBasisValue(row.dynamicAccountId));
+                              const basisValue = formatBasisValue(
+                                resolveBasisValue(row.dynamicAccountId, row.targetAccountId),
+                              );
                               const dynamicOptions = getFilteredPresetDynamicAccounts(preset.id, index);
                               const targetOptions = getPresetTargetOptions(preset.id);
 

@@ -91,7 +91,27 @@ export const normalizePercentages = (ratios: number[]): number[] => {
 export const getBasisValue = (
   account: DynamicBasisAccount,
   periodId?: string | null,
+  operationId?: string | null,
 ): number => {
+  const normalizedOperation =
+    typeof operationId === 'string' && operationId.trim().length > 0
+      ? operationId.trim().toUpperCase()
+      : null;
+
+  if (normalizedOperation && account.valuesByOperation) {
+    const valuesForOperation = account.valuesByOperation[normalizedOperation];
+    if (!valuesForOperation) {
+      return 0;
+    }
+    if (periodId && periodId in valuesForOperation) {
+      const value = valuesForOperation[periodId];
+      if (typeof value === 'number') {
+        return value;
+      }
+    }
+    return 0;
+  }
+
   if (periodId && account.valuesByPeriod && periodId in account.valuesByPeriod) {
     const value = account.valuesByPeriod[periodId];
     if (typeof value === 'number') {

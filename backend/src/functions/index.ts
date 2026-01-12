@@ -22,6 +22,7 @@ import './clientEntities';
 import './clientHeaderMappings';
 import './fileRecords';
 import './clientSurvey';
+import './clientOperationalStats';
 import './entityDistributionPresetDetails';
 import './entityDistributions';
 import './entityDistributionPresets';

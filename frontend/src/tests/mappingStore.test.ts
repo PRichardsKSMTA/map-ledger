@@ -240,6 +240,38 @@ describe('mappingStore selectors', () => {
     expect(summary.netTotal).toBe(565000);
   });
 
+  it('flips activity and net change when polarity changes', () => {
+    const account = buildMappingAccount({
+      id: 'acct-polarity',
+      netChange: -500,
+      activity: -500,
+      polarity: 'Credit',
+      entities: [{ id: 'ent-1', entity: 'Entity One', balance: -500 }],
+    });
+
+    act(() => {
+      useMappingStore.setState(state => ({
+        ...state,
+        accounts: [account],
+        activeEntityId: 'ent-1',
+        activeEntities: [{ id: 'ent-1', name: 'Entity One' }],
+        activeEntityIds: ['ent-1'],
+        activePeriod: null,
+      }));
+    });
+
+    act(() => {
+      useMappingStore.getState().updatePolarity('acct-polarity', 'Debit');
+    });
+
+    const updated = useMappingStore.getState().accounts[0];
+    expect(updated?.polarity).toBe('Debit');
+    expect(updated?.netChange).toBe(500);
+    expect(updated?.activity).toBe(500);
+    expect(updated?.originalPolarity).toBe('Credit');
+    expect(updated?.entities[0]?.balance).toBe(500);
+  });
+
   it('calculates exclusions from percentage splits marked as excluded', () => {
     act(() => {
       useMappingStore

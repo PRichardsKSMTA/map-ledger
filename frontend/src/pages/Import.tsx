@@ -35,18 +35,14 @@ export default function Import() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const companies = useOrganizationStore((state) => state.companies);
-  const fetchOrganizations = useOrganizationStore((state) => state.fetchForUser);
   const orgLoading = useOrganizationStore((state) => state.isLoading);
   const orgError = useOrganizationStore((state) => state.error);
   const fetchClientRecords = useMappingStore((state) => state.fetchClientRecords);
   const activeClientId = useClientStore((state) => state.activeClientId);
   const setActiveClientId = useClientStore((state) => state.setActiveClientId);
 
-  useEffect(() => {
-    if (user?.email) {
-      fetchOrganizations(user.email);
-    }
-  }, [fetchOrganizations, user?.email]);
+  // Note: fetchOrganizations is handled by Navbar component which mounts before pages.
+  // Removed duplicate call here to prevent redundant API requests on startup.
 
   const clientSummaries = useMemo(() => {
     const map = new Map<string, { id: string; name: string }>();

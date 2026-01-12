@@ -50,6 +50,9 @@ import { computeDynamicExclusionSummaries } from '../../utils/dynamicExclusions'
 import { formatPeriodDate } from '../../utils/period';
 import SearchableSelect from '../ui/SearchableSelect';
 import ModalBackdrop from '../ui/ModalBackdrop';
+import ApplyAcrossPeriodsModal, {
+  type ApplyAcrossPeriodsScope,
+} from './ApplyAcrossPeriodsModal';
 
 type SortKey =
   | 'accountId'
@@ -225,6 +228,7 @@ export default function MappingTable() {
   const updateMappingType = useMappingStore((state) => state.updateMappingType);
   const updatePolarity = useMappingStore((state) => state.updatePolarity);
   const applyBatchMapping = useMappingStore((state) => state.applyBatchMapping);
+  const applyMappingsToAllPeriods = useMappingStore((state) => state.applyMappingsToAllPeriods);
   const applyPresetToAccounts = useMappingStore(
     (state) => state.applyPresetToAccounts
   );
@@ -257,6 +261,7 @@ export default function MappingTable() {
   );
   const { selectedIds, toggleSelection, setSelection, clearSelection } =
     useMappingSelectionStore();
+  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const splitValidationIssues = useMappingStore(selectSplitValidationIssues);
   const [sortConfig, setSortConfig] = useState<{
     key: SortKey;
@@ -272,6 +277,7 @@ export default function MappingTable() {
   );
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
+  const [isApplyAcrossOpen, setApplyAcrossOpen] = useState(false);
 
   const latestPeriod = useMemo(() => {
     if (availablePeriods.length === 0) {
@@ -293,6 +299,7 @@ export default function MappingTable() {
     }
     return 'Unspecified GL month';
   };
+  const activePeriodLabel = activePeriod ? formatPeriodDate(activePeriod) || activePeriod : '';
 
   const splitIssueIds = useMemo(
     () => new Set(splitValidationIssues.map((issue) => issue.accountId)),
@@ -438,6 +445,10 @@ export default function MappingTable() {
       return matchesSearch && matchesStatus;
     });
   }, [accounts, searchTerm, activeStatuses, getDisplayStatus]);
+  const filteredAccountIds = useMemo(
+    () => filteredAccounts.map(account => account.id),
+    [filteredAccounts],
+  );
 
   const sortedAccounts = useMemo(() => {
     if (!sortConfig) {
@@ -506,8 +517,29 @@ export default function MappingTable() {
     updateMappingType(accountId, nextType);
   };
 
+  const handleApplyAcrossPeriods = useCallback(
+    (scope: ApplyAcrossPeriodsScope) => {
+      const ids = scope === 'selected' ? selectedIdList : filteredAccountIds;
+      if (!ids.length) {
+        return;
+      }
+      applyMappingsToAllPeriods(ids);
+      clearSelection();
+      setApplyAcrossOpen(false);
+    },
+    [
+      applyMappingsToAllPeriods,
+      clearSelection,
+      filteredAccountIds,
+      selectedIdList,
+    ],
+  );
+
   const derivedSelectedPeriod = activePeriod ?? selectedPeriod ?? null;
-  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const showApplyAcrossPeriods = Boolean(activePeriod) && availablePeriods.length > 1;
+  const canApplyAcrossPeriods =
+    showApplyAcrossPeriods &&
+    (selectedIdList.length > 0 || filteredAccountIds.length > 0);
   const expandedSelectedIdList = useMemo(
     () => (selectedIdList.length > 0 ? expandAccountIds(selectedIdList) : []),
     [expandAccountIds, selectedIdList],
@@ -614,7 +646,12 @@ export default function MappingTable() {
 
   return (
     <div className="space-y-4">
-      <MappingToolbar />
+      <MappingToolbar
+        onApplyAcrossPeriods={
+          showApplyAcrossPeriods ? () => setApplyAcrossOpen(true) : undefined
+        }
+        canApplyAcrossPeriods={canApplyAcrossPeriods}
+      />
       <div className="table-scroll-x">
         <table
           className="min-w-full table-compact divide-y divide-slate-200 text-sm dark:divide-slate-700"
@@ -1167,6 +1204,17 @@ export default function MappingTable() {
             </div>
           </div>
         </div>
+      )}
+      {showApplyAcrossPeriods && (
+        <ApplyAcrossPeriodsModal
+          open={isApplyAcrossOpen}
+          periodLabel={activePeriodLabel}
+          contextLabel="mappings"
+          selectedCount={selectedIdList.length}
+          filteredCount={filteredAccountIds.length}
+          onClose={() => setApplyAcrossOpen(false)}
+          onConfirm={handleApplyAcrossPeriods}
+        />
       )}
       {activeDynamicAccountId && (
         <ModalBackdrop className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">

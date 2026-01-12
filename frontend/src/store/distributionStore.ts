@@ -59,6 +59,7 @@ interface DistributionState {
       operation?: DistributionOperationShare | null;
     },
   ) => void;
+  applyDistributionsToAllPeriods: (ids: string[]) => void;
   applyPresetToRows: (ids: string[], presetId: string | null) => void;
   isSavingDistributions: boolean;
   saveError: string | null;
@@ -783,6 +784,51 @@ const persistActivityForRows = async (
         };
       });
       queueRowsForAutoSave(ids);
+    },
+    applyDistributionsToAllPeriods: ids => {
+      if (!ids.length) {
+        return;
+      }
+      set(state => {
+        const rowLookup = new Map(state.rows.map(row => [row.id, row]));
+        const historyByAccount = { ...state.historyByAccount };
+        let changed = false;
+
+        const sanitizeOperations = (operations: DistributionOperationShare[]) =>
+          cloneOperations(operations).filter(
+            operation => (operation.id ?? operation.code ?? '').trim().length > 0,
+          );
+
+        ids.forEach(id => {
+          const row = rowLookup.get(id);
+          if (!row) {
+            return;
+          }
+          const key = buildDistributionKey(row.entityAccountId ?? null, row.accountId);
+          if (!key) {
+            return;
+          }
+          historyByAccount[key] = {
+            entityAccountId: row.entityAccountId ?? null,
+            accountId: row.accountId,
+            type: row.type,
+            status: normalizeDistributionStatus(row.status),
+            presetId: row.presetId ?? null,
+            operations: sanitizeOperations(row.operations),
+          };
+          changed = true;
+        });
+
+        if (!changed) {
+          return state;
+        }
+
+        const nextHistoryEntityId = state.historyEntityId ?? state.currentEntityId;
+        return {
+          historyByAccount,
+          ...(nextHistoryEntityId ? { historyEntityId: nextHistoryEntityId } : {}),
+        };
+      });
     },
     applyPresetToRows: (ids, presetId) => {
       if (!ids.length) {

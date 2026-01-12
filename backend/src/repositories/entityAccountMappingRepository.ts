@@ -6,6 +6,8 @@ export interface EntityAccountMappingUpsertInput {
   entityAccountId: string;
   glMonth?: string | null;
   polarity?: string | null;
+  originalPolarity?: string | null;
+  modifiedPolarity?: string | null;
   mappingType?: string | null;
   presetId?: string | null;
   mappingStatus?: string | null;
@@ -103,6 +105,8 @@ const mapRow = (row: {
   entity_account_id: string;
   gl_month?: string | Date | null;
   polarity?: string | null;
+  original_polarity?: string | null;
+  modified_polarity?: string | null;
   mapping_type?: string | null;
   preset_id?: string | null;
   mapping_status?: string | null;
@@ -123,6 +127,8 @@ const mapRow = (row: {
     entityAccountId: row.entity_account_id,
     glMonth: normalizedGlMonth,
     polarity: row.polarity ?? null,
+    originalPolarity: row.original_polarity ?? null,
+    modifiedPolarity: row.modified_polarity ?? null,
     mappingType: row.mapping_type ?? null,
     presetId: row.preset_id ?? null,
     mappingStatus: row.mapping_status ?? null,
@@ -154,6 +160,8 @@ export const listEntityAccountMappings = async (
     entity_account_id: string;
     gl_month?: string | null;
     polarity?: string | null;
+    original_polarity?: string | null;
+    modified_polarity?: string | null;
     mapping_type?: string | null;
     preset_id?: string | null;
     mapping_status?: string | null;
@@ -167,6 +175,8 @@ export const listEntityAccountMappings = async (
       ENTITY_ACCOUNT_ID as entity_account_id,
       GL_MONTH as gl_month,
       POLARITY as polarity,
+      ORIGINAL_POLARITY as original_polarity,
+      MODIFIED_POLARITY as modified_polarity,
       MAPPING_TYPE as mapping_type,
       PRESET_GUID as preset_id,
       MAPPING_STATUS as mapping_status,
@@ -246,6 +256,8 @@ export const listEntityAccountMappingsWithPresets = async (
       entity_account_id: string;
       gl_month?: string | null;
       polarity?: string | null;
+      original_polarity?: string | null;
+      modified_polarity?: string | null;
       mapping_type?: string | null;
       preset_id?: string | null;
       mapping_status?: string | null;
@@ -266,6 +278,8 @@ export const listEntityAccountMappingsWithPresets = async (
       eam.ENTITY_ACCOUNT_ID as entity_account_id,
       eam.GL_MONTH as gl_month,
       eam.POLARITY as polarity,
+      eam.ORIGINAL_POLARITY as original_polarity,
+      eam.MODIFIED_POLARITY as modified_polarity,
       eam.MAPPING_TYPE as mapping_type,
       eam.PRESET_GUID as preset_id,
       eam.MAPPING_STATUS as mapping_status,
@@ -322,6 +336,8 @@ export const listEntityAccountMappingsByFileUpload = async (
     activity_amount: number | null;
     gl_month: string | null;
     polarity?: string | null;
+    original_polarity?: string | null;
+    modified_polarity?: string | null;
     mapping_type?: string | null;
     preset_id?: string | null;
     mapping_status?: string | null;
@@ -345,6 +361,8 @@ export const listEntityAccountMappingsByFileUpload = async (
       fr.ACTIVITY_AMOUNT as activity_amount,
       fr.GL_MONTH as gl_month,
       eam.POLARITY as polarity,
+      eam.ORIGINAL_POLARITY as original_polarity,
+      eam.MODIFIED_POLARITY as modified_polarity,
       eam.MAPPING_TYPE as mapping_type,
       eam.PRESET_GUID as preset_id,
       eam.MAPPING_STATUS as mapping_status,
@@ -413,12 +431,14 @@ export const listEntityAccountMappingsWithActivityForEntity = async (
     ),
   );
 
-  const monthFilters = normalizedMonths.map((month, index) => {
+  const monthParams = normalizedMonths.map((month, index) => {
     params[`glMonth${index}`] = month;
-    return `fr.GL_MONTH = @glMonth${index}`;
+    return `@glMonth${index}`;
   });
 
-  const monthClause = monthFilters.length ? ` AND (${monthFilters.join(' OR ')})` : '';
+  const monthClause = monthParams.length
+    ? ` AND fr.GL_MONTH IN (${monthParams.join(', ')})`
+    : '';
 
   const result = await runQuery<{
     file_upload_guid: string | null;
@@ -429,6 +449,8 @@ export const listEntityAccountMappingsWithActivityForEntity = async (
     activity_amount: number | null;
     gl_month: string | null;
     polarity?: string | null;
+    original_polarity?: string | null;
+    modified_polarity?: string | null;
     mapping_type?: string | null;
     preset_id?: string | null;
     mapping_status?: string | null;
@@ -475,6 +497,8 @@ export const listEntityAccountMappingsWithActivityForEntity = async (
       fr.ACTIVITY_AMOUNT as activity_amount,
       fr.GL_MONTH as gl_month,
       eam.POLARITY as polarity,
+      eam.ORIGINAL_POLARITY as original_polarity,
+      eam.MODIFIED_POLARITY as modified_polarity,
       eam.MAPPING_TYPE as mapping_type,
       eam.PRESET_GUID as preset_id,
       eam.MAPPING_STATUS as mapping_status,
@@ -526,7 +550,11 @@ export const listEntityAccountMappingsWithActivityForEntity = async (
   }));
 };
 
-export const upsertEntityAccountMappings = async (
+// SQL Server has a 2100 parameter limit. Each row uses 13 parameters,
+// so we can safely fit 150 rows per batch (150 * 13 = 1950 params).
+const UPSERT_BATCH_SIZE = 150;
+
+const upsertEntityAccountMappingsBatch = async (
   inputs: EntityAccountMappingUpsertInput[],
 ): Promise<EntityAccountMappingRow[]> => {
   if (!inputs.length) {
@@ -537,18 +565,24 @@ export const upsertEntityAccountMappings = async (
   const valueRows = inputs.map((input, index) => {
     const presetId = normalizePresetId(input.presetId);
     const glMonth = normalizeGlMonthValue(input.glMonth ?? null);
+    const hasOriginalPolarity = Object.prototype.hasOwnProperty.call(input, 'originalPolarity');
+    const hasModifiedPolarity = Object.prototype.hasOwnProperty.call(input, 'modifiedPolarity');
 
     params[`entityId${index}`] = input.entityId;
     params[`entityAccountId${index}`] = input.entityAccountId;
     params[`glMonth${index}`] = glMonth;
     params[`polarity${index}`] = normalizeText(input.polarity);
+    params[`originalPolarity${index}`] = hasOriginalPolarity ? normalizeText(input.originalPolarity) : null;
+    params[`originalPolaritySet${index}`] = hasOriginalPolarity ? 1 : 0;
+    params[`modifiedPolarity${index}`] = hasModifiedPolarity ? normalizeText(input.modifiedPolarity) : null;
+    params[`modifiedPolaritySet${index}`] = hasModifiedPolarity ? 1 : 0;
     params[`mappingType${index}`] = normalizeText(input.mappingType);
     params[`presetId${index}`] = presetId;
     params[`mappingStatus${index}`] = normalizeText(input.mappingStatus);
     params[`exclusionPct${index}`] = normalizeExclusionPct(input.exclusionPct);
     params[`updatedBy${index}`] = normalizeText(input.updatedBy);
 
-    return `(@entityId${index}, @entityAccountId${index}, @glMonth${index}, @polarity${index}, @mappingType${index}, @presetId${index}, @mappingStatus${index}, @exclusionPct${index}, @updatedBy${index})`;
+    return `(@entityId${index}, @entityAccountId${index}, @glMonth${index}, @polarity${index}, @originalPolarity${index}, @originalPolaritySet${index}, @modifiedPolarity${index}, @modifiedPolaritySet${index}, @mappingType${index}, @presetId${index}, @mappingStatus${index}, @exclusionPct${index}, @updatedBy${index})`;
   });
 
   const valuesClause = valueRows.join(', ');
@@ -558,6 +592,8 @@ export const upsertEntityAccountMappings = async (
     entity_account_id: string;
     gl_month?: string | null;
     polarity?: string | null;
+    original_polarity?: string | null;
+    modified_polarity?: string | null;
     mapping_type?: string | null;
     preset_id?: string | null;
     mapping_status?: string | null;
@@ -573,6 +609,10 @@ export const upsertEntityAccountMappings = async (
         entity_account_id varchar(36),
         gl_month date,
         polarity varchar(50),
+        original_polarity varchar(50),
+        original_polarity_set bit,
+        modified_polarity varchar(50),
+        modified_polarity_set bit,
         mapping_type varchar(50),
         preset_id varchar(36),
         mapping_status varchar(50),
@@ -585,6 +625,10 @@ export const upsertEntityAccountMappings = async (
         entity_account_id,
         gl_month,
         polarity,
+        original_polarity,
+        original_polarity_set,
+        modified_polarity,
+        modified_polarity_set,
         mapping_type,
         preset_id,
         mapping_status,
@@ -600,6 +644,14 @@ export const upsertEntityAccountMappings = async (
       WHEN MATCHED THEN
         UPDATE SET
           POLARITY = ISNULL(source.polarity, target.POLARITY),
+          ORIGINAL_POLARITY = CASE
+            WHEN source.original_polarity_set = 1 THEN source.original_polarity
+            ELSE target.ORIGINAL_POLARITY
+          END,
+          MODIFIED_POLARITY = CASE
+            WHEN source.modified_polarity_set = 1 THEN source.modified_polarity
+            ELSE target.MODIFIED_POLARITY
+          END,
           MAPPING_TYPE = ISNULL(source.mapping_type, target.MAPPING_TYPE),
           PRESET_GUID = ISNULL(source.preset_id, target.PRESET_GUID),
           MAPPING_STATUS = ISNULL(source.mapping_status, target.MAPPING_STATUS),
@@ -613,6 +665,8 @@ export const upsertEntityAccountMappings = async (
           ENTITY_ACCOUNT_ID,
           GL_MONTH,
           POLARITY,
+          ORIGINAL_POLARITY,
+          MODIFIED_POLARITY,
           MAPPING_TYPE,
           PRESET_GUID,
           MAPPING_STATUS,
@@ -624,6 +678,8 @@ export const upsertEntityAccountMappings = async (
           source.entity_account_id,
           source.gl_month,
           source.polarity,
+          source.original_polarity,
+          source.modified_polarity,
           source.mapping_type,
           source.preset_id,
           source.mapping_status,
@@ -636,6 +692,8 @@ export const upsertEntityAccountMappings = async (
         inserted.ENTITY_ACCOUNT_ID as entity_account_id,
         inserted.GL_MONTH as gl_month,
         inserted.POLARITY as polarity,
+        inserted.ORIGINAL_POLARITY as original_polarity,
+        inserted.MODIFIED_POLARITY as modified_polarity,
         inserted.MAPPING_TYPE as mapping_type,
         inserted.PRESET_GUID as preset_id,
         inserted.MAPPING_STATUS as mapping_status,
@@ -648,6 +706,29 @@ export const upsertEntityAccountMappings = async (
   );
 
   return (result.recordset ?? []).map(mapRow);
+};
+
+export const upsertEntityAccountMappings = async (
+  inputs: EntityAccountMappingUpsertInput[],
+): Promise<EntityAccountMappingRow[]> => {
+  if (!inputs.length) {
+    return [];
+  }
+
+  // If inputs fit in a single batch, execute directly
+  if (inputs.length <= UPSERT_BATCH_SIZE) {
+    return upsertEntityAccountMappingsBatch(inputs);
+  }
+
+  // Split into batches to avoid SQL Server 2100 parameter limit
+  const results: EntityAccountMappingRow[] = [];
+  for (let i = 0; i < inputs.length; i += UPSERT_BATCH_SIZE) {
+    const batch = inputs.slice(i, i + UPSERT_BATCH_SIZE);
+    const batchResults = await upsertEntityAccountMappingsBatch(batch);
+    results.push(...batchResults);
+  }
+
+  return results;
 };
 
 export const listEntityAccountMappingsForAccounts = async (
@@ -671,6 +752,8 @@ export const listEntityAccountMappingsForAccounts = async (
     entity_account_id: string;
     gl_month?: string | null;
     polarity?: string | null;
+    original_polarity?: string | null;
+    modified_polarity?: string | null;
     mapping_type?: string | null;
     preset_id?: string | null;
     mapping_status?: string | null;
@@ -684,6 +767,8 @@ export const listEntityAccountMappingsForAccounts = async (
       ENTITY_ACCOUNT_ID as entity_account_id,
       GL_MONTH as gl_month,
       POLARITY as polarity,
+      ORIGINAL_POLARITY as original_polarity,
+      MODIFIED_POLARITY as modified_polarity,
       MAPPING_TYPE as mapping_type,
       PRESET_GUID as preset_id,
       MAPPING_STATUS as mapping_status,

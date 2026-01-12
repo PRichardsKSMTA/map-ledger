@@ -78,6 +78,9 @@ const openApiSpec = {
       get: { summary: 'List client survey accounts and values for a client/month' },
       put: { summary: 'Update client survey GL values' }
     },
+    '/client-operational-stats': {
+      get: { summary: 'List operational statistics and GL values for a client' }
+    },
     '/file-records': {
       get: { summary: 'List ingested file records for a file upload or client aggregation' }
     },

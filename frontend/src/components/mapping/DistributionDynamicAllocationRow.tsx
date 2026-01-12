@@ -227,15 +227,21 @@ const DistributionDynamicAllocationRow = ({
         fallbackBasisAccount?.name ?? fallbackBasisAccount?.id ?? target.ratioMetric.name;
 
       if (fallbackBasisAccount) {
-        basisValue = getBasisValue(fallbackBasisAccount, selectedPeriod);
+        basisValue = getBasisValue(
+          fallbackBasisAccount,
+          selectedPeriod,
+          target.datapointId,
+        );
       }
 
       if (matchingRow) {
-        const basisAccount = basisAccounts.find(account => account.id === matchingRow.dynamicAccountId);
+        const basisAccount = basisAccounts.find(
+          account => account.id === matchingRow.dynamicAccountId,
+        );
         if (basisAccount) {
           basisAccountId = basisAccount.id;
           basisAccountName = basisAccount.name ?? basisAccount.id;
-          basisValue = getBasisValue(basisAccount, selectedPeriod);
+          basisValue = getBasisValue(basisAccount, selectedPeriod, target.datapointId);
         }
       }
 
@@ -444,85 +450,95 @@ const DistributionDynamicAllocationRow = ({
   // Track if a preset change is in progress to prevent effect from duplicating updates
   const presetChangeInProgressRef = useRef(false);
 
-const buildPresetOperations = useCallback(
-  (presetId: string | null) => {
-    if (!presetId) {
-      return [];
-    }
-    const preset = distributionContextPresets.find(item => item.id === presetId);
-    if (!preset) {
-      return [];
-    }
+  const buildPresetOperations = useCallback(
+    (presetId: string | null) => {
+      if (!presetId) {
+        return [];
+      }
+      const preset = distributionContextPresets.find(item => item.id === presetId);
+      if (!preset) {
+        return [];
+      }
 
-    // Calculate total basis value to derive allocation percentages
-    const rowsWithBasis = preset.rows.map(presetRow => {
-      const basisAccount = basisAccounts.find(acc => acc.id === presetRow.dynamicAccountId);
-      const basisValue = basisAccount ? getBasisValue(basisAccount, selectedPeriod) : 0;
-      return { presetRow, basisValue };
-    });
-    const totalBasis = rowsWithBasis.reduce((sum, item) => sum + item.basisValue, 0);
+      // Calculate total basis value to derive allocation percentages
+      const rowsWithBasis = preset.rows.map(presetRow => {
+        const basisAccount = basisAccounts.find(
+          acc => acc.id === presetRow.dynamicAccountId,
+        );
+        const basisValue = basisAccount
+          ? getBasisValue(basisAccount, selectedPeriod, presetRow.targetAccountId)
+          : 0;
+        return { presetRow, basisValue };
+      });
+      const totalBasis = rowsWithBasis.reduce((sum, item) => sum + item.basisValue, 0);
 
-    return rowsWithBasis
-      .map<DistributionOperationShare | null>(({ presetRow, basisValue }) => {
-        const targetId = normalizeOperationId(presetRow.targetAccountId);
-        if (!targetId) {
-          return null;
-        }
-        const catalogMatch = operationLabelLookup.get(targetId);
-        const code = targetId;
-        // Calculate allocation percentage based on basis value ratio
-        const allocationPct = totalBasis > 0 ? (basisValue / totalBasis) * 100 : 0;
-        return {
-          id: code,
-          code,
-          name: getOperationLabel({
+      return rowsWithBasis
+        .map<DistributionOperationShare | null>(({ presetRow, basisValue }) => {
+          const targetId = normalizeOperationId(presetRow.targetAccountId);
+          if (!targetId) {
+            return null;
+          }
+          const catalogMatch = operationLabelLookup.get(targetId);
+          const code = targetId;
+          // Calculate allocation percentage based on basis value ratio
+          const allocationPct = totalBasis > 0 ? (basisValue / totalBasis) * 100 : 0;
+          return {
+            id: code,
             code,
-            id: catalogMatch?.id ?? code,
-            name: catalogMatch?.name ?? code,
-          }),
-          basisDatapoint: presetRow.dynamicAccountId?.trim() || undefined,
-          allocation: allocationPct,
-        };
-      })
-      .filter((operation): operation is DistributionOperationShare => operation !== null)
-      .sort((a, b) => (a.code ?? a.id).localeCompare(b.code ?? b.id));
-  },
-  [distributionContextPresets, normalizeOperationId, operationLabelLookup, basisAccounts, selectedPeriod],
-);
+            name: getOperationLabel({
+              code,
+              id: catalogMatch?.id ?? code,
+              name: catalogMatch?.name ?? code,
+            }),
+            basisDatapoint: presetRow.dynamicAccountId?.trim() || undefined,
+            allocation: allocationPct,
+          };
+        })
+        .filter((operation): operation is DistributionOperationShare => operation !== null)
+        .sort((a, b) => (a.code ?? a.id).localeCompare(b.code ?? b.id));
+    },
+    [
+      distributionContextPresets,
+      normalizeOperationId,
+      operationLabelLookup,
+      basisAccounts,
+      selectedPeriod,
+    ],
+  );
 
-const operationsMatch = useCallback(
-  (next: DistributionOperationShare[] = []) => {
-    if (row.operations.length !== next.length) {
-      return false;
-    }
-    const normalize = (ops: DistributionOperationShare[]) =>
-      [...ops]
-        .map(op => ({
-          id: normalizeOperationId(op.id),
-          code: normalizeOperationId(op.code ?? op.id),
-          name: (op.name ?? '').trim(),
-          basis: (op.basisDatapoint ?? '').trim(),
-        }))
-        .sort((a, b) => a.code.localeCompare(b.code));
-
-    const current = normalize(row.operations);
-    const candidate = normalize(next);
-
-    return current.every((operation, index) => {
-      const comparison = candidate[index];
-      if (!comparison) {
+  const operationsMatch = useCallback(
+    (next: DistributionOperationShare[] = []) => {
+      if (row.operations.length !== next.length) {
         return false;
       }
-      return (
-        operation.id === comparison.id &&
-        operation.code === comparison.code &&
-        operation.name === comparison.name &&
-        operation.basis === comparison.basis
-      );
-    });
-  },
-  [normalizeOperationId, row.operations],
-);
+      const normalize = (ops: DistributionOperationShare[]) =>
+        [...ops]
+          .map(op => ({
+            id: normalizeOperationId(op.id),
+            code: normalizeOperationId(op.code ?? op.id),
+            name: (op.name ?? '').trim(),
+            basis: (op.basisDatapoint ?? '').trim(),
+          }))
+          .sort((a, b) => a.code.localeCompare(b.code));
+
+      const current = normalize(row.operations);
+      const candidate = normalize(next);
+
+      return current.every((operation, index) => {
+        const comparison = candidate[index];
+        if (!comparison) {
+          return false;
+        }
+        return (
+          operation.id === comparison.id &&
+          operation.code === comparison.code &&
+          operation.name === comparison.name &&
+          operation.basis === comparison.basis
+        );
+      });
+    },
+    [normalizeOperationId, row.operations],
+  );
 
   // Sync preset from ratioAllocationStore to distributionStore when it changes externally.
   // This handles the case where a preset is created via the RatioAllocationBuilder and

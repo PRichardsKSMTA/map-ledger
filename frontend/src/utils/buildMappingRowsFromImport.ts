@@ -1,10 +1,10 @@
 import type {
   EntitySummary,
   GLAccountMappingRow,
-  MappingPolarity,
   TrialBalanceRow,
 } from '../types';
 import { normalizeGlMonth } from './extractDateFromText';
+import { derivePolarityFromAmount } from './polarity';
 import { slugify } from './slugify';
 
 interface BuildMappingRowsFromImportOptions {
@@ -12,16 +12,6 @@ interface BuildMappingRowsFromImportOptions {
   clientId?: string | null;
   selectedEntities?: EntitySummary[];
 }
-
-const determinePolarity = (value: number): MappingPolarity => {
-  if (value > 0) {
-    return 'Debit';
-  }
-  if (value < 0) {
-    return 'Credit';
-  }
-  return 'Absolute';
-};
 
 const matchSelectedEntity = (
   entityId: string | null,
@@ -124,7 +114,7 @@ export const buildMappingRowsFromImport = (
     const rowId = options.uploadId ? `${options.uploadId}-${compositeKey}` : compositeKey;
     const rawNetChange = Number(row.netChange ?? 0);
     const netChange = Number.isFinite(rawNetChange) ? rawNetChange : 0;
-    const polarity = determinePolarity(netChange);
+    const polarity = derivePolarityFromAmount(netChange);
     const operation = resolveOperation(row, 'Imported');
     const normalizedGlMonth = normalizeGlMonth((row.glMonth ?? '').trim());
 
@@ -140,6 +130,7 @@ export const buildMappingRowsFromImport = (
       netChange,
       operation,
       polarity,
+      originalPolarity: polarity,
       splitDefinitions: [],
       entities:
         normalized.id && normalized.name

@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { useClientStore } from '../store/clientStore';
 import { useMappingStore } from '../store/mappingStore';
 import type { UserClientAccess } from '../types';
-import { render, screen } from './testUtils';
+import { fireEvent, render, screen, waitFor, within } from './testUtils';
 
 type MockOrganizationState = {
   companies: unknown[];
@@ -121,6 +121,10 @@ describe('Navbar client dropdown', () => {
           presets: [],
           exclusions: [],
         },
+        mappingSummary: {
+          totalAccounts: 2,
+          mappedAccounts: 1,
+        },
       },
     ];
 
@@ -137,10 +141,11 @@ describe('Navbar client dropdown', () => {
     const select = await screen.findByLabelText('Client');
     expect(select).toBeInTheDocument();
 
-    const optionTexts = Array.from(
-      select.querySelectorAll('option'),
-    ).map((option) => option.textContent?.replace(/\s+/g, ' ').trim());
-    expect(optionTexts).toContain('Client Alpha (ALPH)');
+    fireEvent.input(select, { target: { value: '' } });
+    const listbox = await waitFor(() => screen.getByRole('listbox'));
+    const listboxQueries = within(listbox);
+    expect(listboxQueries.getByText('Client Alpha')).toBeInTheDocument();
+    expect(listboxQueries.getByText('(1/2)')).toBeInTheDocument();
 
     const badge = await screen.findByText('ALPH');
     expect(badge).toBeInTheDocument();

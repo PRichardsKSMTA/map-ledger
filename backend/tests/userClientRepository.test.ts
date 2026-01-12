@@ -3,7 +3,6 @@ jest.mock('../src/utils/sqlClient', () => ({
 }));
 
 import { runQuery } from '../src/utils/sqlClient';
-import createFallbackUserClientAccess from '../src/repositories/userClientRepositoryFallback';
 import { fetchUserClientAccess } from '../src/repositories/userClientRepository';
 
 type RunQueryMock = jest.MockedFunction<typeof runQuery>;
@@ -26,7 +25,6 @@ describe('fetchUserClientAccess', () => {
     configureEnv({
       SQL_CONN_STR: 'Server=fake;Database=fake;User Id=fake;Password=fake;',
       NODE_ENV: 'test',
-      ALLOW_DEV_SQL_FALLBACK: 'true',
     });
   });
 
@@ -35,42 +33,49 @@ describe('fetchUserClientAccess', () => {
   });
 
   it('returns ordered client operations with operation codes', async () => {
-    mockedRunQuery.mockResolvedValue({
-      recordset: [
-        {
-          CLIENT_ID: 'C1',
-          CLIENT_NAME: 'Client Alpha',
-          CLIENT_SCAC: 'ALPH',
-          OPERATIONAL_SCAC: 'AL1',
-          OPERATION_CD: 'OPS-001',
-          OPERATION_NAME: 'Linehaul',
-        },
-        {
-          CLIENT_ID: 'C1',
-          CLIENT_NAME: 'Client Alpha',
-          CLIENT_SCAC: 'ALPH',
-          OPERATIONAL_SCAC: 'AL1',
-          OPERATION_CD: 'OPS-002',
-          OPERATION_NAME: null,
-        },
-        {
-          CLIENT_ID: 'C1',
-          CLIENT_NAME: 'Client Alpha',
-          CLIENT_SCAC: 'ALPH',
-          OPERATIONAL_SCAC: 'AL2',
-          OPERATION_CD: 'OPS-003',
-          OPERATION_NAME: 'Dedicated',
-        },
-        {
-          CLIENT_ID: 'C2',
-          CLIENT_NAME: 'Client Beta',
-          CLIENT_SCAC: 'BETA',
-          OPERATIONAL_SCAC: 'BE1',
-          OPERATION_CD: 'OPS-010',
-          OPERATION_NAME: 'International',
-        },
-      ],
-    } as any);
+    mockedRunQuery
+      .mockResolvedValueOnce({
+        recordset: [
+          {
+            CLIENT_ID: 'C1',
+            CLIENT_NAME: 'Client Alpha',
+            CLIENT_SCAC: 'ALPH',
+            OPERATIONAL_SCAC: 'AL1',
+            OPERATION_CD: 'OPS-001',
+            OPERATION_NAME: 'Linehaul',
+          },
+          {
+            CLIENT_ID: 'C1',
+            CLIENT_NAME: 'Client Alpha',
+            CLIENT_SCAC: 'ALPH',
+            OPERATIONAL_SCAC: 'AL1',
+            OPERATION_CD: 'OPS-002',
+            OPERATION_NAME: null,
+          },
+          {
+            CLIENT_ID: 'C1',
+            CLIENT_NAME: 'Client Alpha',
+            CLIENT_SCAC: 'ALPH',
+            OPERATIONAL_SCAC: 'AL2',
+            OPERATION_CD: 'OPS-003',
+            OPERATION_NAME: 'Dedicated',
+          },
+          {
+            CLIENT_ID: 'C2',
+            CLIENT_NAME: 'Client Beta',
+            CLIENT_SCAC: 'BETA',
+            OPERATIONAL_SCAC: 'BE1',
+            OPERATION_CD: 'OPS-010',
+            OPERATION_NAME: 'International',
+          },
+        ],
+      } as any)
+      .mockResolvedValueOnce({
+        recordset: [
+          { client_id: 'C1', total_accounts: 5, mapped_accounts: 3 },
+          { client_id: 'C2', total_accounts: 1, mapped_accounts: 1 },
+        ],
+      } as any);
 
     const result = await fetchUserClientAccess('User@Example.com');
 
@@ -106,7 +111,7 @@ describe('fetchUserClientAccess', () => {
   });
 
   it('returns an empty client list when no SQL rows are returned', async () => {
-    mockedRunQuery.mockResolvedValue({ recordset: [] } as any);
+    mockedRunQuery.mockResolvedValueOnce({ recordset: [] } as any);
 
     const result = await fetchUserClientAccess('user@example.com');
 
@@ -115,14 +120,11 @@ describe('fetchUserClientAccess', () => {
     expect(result.clients).toEqual([]);
   });
 
-  it('falls back to demo data when the SQL query fails and fallback is allowed', async () => {
+  it('throws an error when the SQL query fails', async () => {
     mockedRunQuery.mockRejectedValue(new Error('SQL unavailable'));
 
-    const normalizedEmail = 'user@example.com';
-    const fallback = createFallbackUserClientAccess(normalizedEmail);
-
-    const result = await fetchUserClientAccess('user@example.com');
-
-    expect(result).toEqual(fallback);
+    await expect(fetchUserClientAccess('user@example.com')).rejects.toThrow(
+      'SQL unavailable'
+    );
   });
 });

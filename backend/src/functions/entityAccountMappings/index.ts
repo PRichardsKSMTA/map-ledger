@@ -49,6 +49,8 @@ interface MappingSaveInput {
   entityAccountId?: string;
   accountName?: string | null;
   polarity?: string | null;
+  originalPolarity?: string | null;
+  modifiedPolarity?: string | null;
   mappingType?: string | null;
   mappingStatus?: string | null;
   presetId?: string | null;
@@ -90,6 +92,23 @@ const normalizeMappingType = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed.toLowerCase() : null;
+};
+
+const normalizePolarity = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'debit') {
+    return 'Debit';
+  }
+  if (normalized === 'credit') {
+    return 'Credit';
+  }
+  if (normalized === 'absolute') {
+    return 'Absolute';
+  }
+  return null;
 };
 
 const resolvePresetType = (value: string | null | undefined): string => {
@@ -241,8 +260,16 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
       const splitDefinitions = Array.isArray(entryRecord?.splitDefinitions)
         ? (entryRecord.splitDefinitions as IncomingSplitDefinition[])
         : undefined;
+      const hasOriginalPolarity = Object.prototype.hasOwnProperty.call(entryRecord, 'originalPolarity');
+      const hasModifiedPolarity = Object.prototype.hasOwnProperty.call(entryRecord, 'modifiedPolarity');
+      const originalPolarity = hasOriginalPolarity
+        ? normalizePolarity(entryRecord?.originalPolarity)
+        : undefined;
+      const modifiedPolarity = hasModifiedPolarity
+        ? normalizePolarity(entryRecord?.modifiedPolarity)
+        : undefined;
 
-      return {
+      const input: MappingSaveInput = {
         entityId: getFirstStringValue(entryRecord?.entityId),
         entityAccountId: getFirstStringValue(entryRecord?.entityAccountId),
         accountName: getFirstStringValue(entryRecord?.accountName),
@@ -257,6 +284,15 @@ const buildUpsertInputs = (payload: unknown): MappingSaveInput[] => {
         splitDefinitions,
         isChanged: entryRecord?.isChanged !== false,
       };
+
+      if (hasOriginalPolarity) {
+        input.originalPolarity = originalPolarity ?? null;
+      }
+      if (hasModifiedPolarity) {
+        input.modifiedPolarity = modifiedPolarity ?? null;
+      }
+
+      return input;
     })
     .filter(
       (item): item is MappingSaveInput =>
@@ -380,6 +416,68 @@ const buildExistingPresetLookup = async (
 const isValidRecordId = (value?: number | null): value is number =>
   Number.isFinite(value ?? NaN) && value! > 0;
 
+/**
+ * Normalizes a specifiedPct value for comparison.
+ * Database stores as 0.000-1.000, application uses 0-100.
+ * This normalizes to database format for accurate comparison.
+ */
+const normalizeSpecifiedPctForComparison = (value?: number | null): number | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  // If value > 1, assume it's in 0-100 format and convert to 0-1
+  // If value <= 1, assume it's already in database format
+  const normalized = parsed > 1 ? parsed / 100 : parsed;
+  // Round to 3 decimal places to match database precision
+  return Math.round(normalized * 1000) / 1000;
+};
+
+/**
+ * Checks if a preset detail row needs an update by comparing existing vs desired values.
+ */
+const presetDetailNeedsUpdate = (
+  existing: {
+    targetDatapoint: string;
+    basisDatapoint?: string | null;
+    isCalculated?: boolean | null;
+    specifiedPct?: number | null;
+  },
+  desired: EntityMappingPresetDetailInput,
+): boolean => {
+  // Compare targetDatapoint
+  if (existing.targetDatapoint !== desired.targetDatapoint) {
+    return true;
+  }
+
+  // Compare basisDatapoint (normalize nulls)
+  const existingBasis = existing.basisDatapoint ?? null;
+  const desiredBasis = desired.basisDatapoint ?? null;
+  if (existingBasis !== desiredBasis) {
+    return true;
+  }
+
+  // Compare isCalculated (normalize to boolean)
+  const existingCalc = existing.isCalculated ?? false;
+  const desiredCalc = desired.isCalculated ?? false;
+  if (existingCalc !== desiredCalc) {
+    return true;
+  }
+
+  // Compare specifiedPct (normalize to database format for comparison)
+  // Existing is already in 0-100 format (mapped by repository), desired is also 0-100
+  const existingPct = normalizeSpecifiedPctForComparison(existing.specifiedPct);
+  const desiredPct = normalizeSpecifiedPctForComparison(desired.specifiedPct);
+  if (existingPct !== desiredPct) {
+    return true;
+  }
+
+  return false;
+};
+
 const syncPresetDetails = async (
   presetGuid: string,
   desiredDetails: EntityMappingPresetDetailInput[],
@@ -417,6 +515,7 @@ const syncPresetDetails = async (
   const matchedRecordIds = new Set<number>();
   const creations: EntityMappingPresetDetailInput[] = [];
   const updates: Promise<unknown>[] = [];
+  let actualUpdateCount = 0;
 
   const findFallback = (detail: EntityMappingPresetDetailInput) =>
     existing.find(
@@ -432,6 +531,35 @@ const syncPresetDetails = async (
       const match = existingById.get(resolvedDetailRecordId);
       if (match) {
         matchedRecordIds.add(resolvedDetailRecordId);
+        // Only update if values actually changed
+        if (presetDetailNeedsUpdate(match, detail)) {
+          actualUpdateCount++;
+          updates.push(
+            updateEntityMappingPresetDetail(
+              presetGuid,
+              detail.basisDatapoint ?? null,
+              detail.targetDatapoint,
+              {
+                isCalculated: detail.isCalculated ?? undefined,
+                specifiedPct: detail.specifiedPct ?? undefined,
+                updatedBy: detail.updatedBy ?? null,
+              },
+              resolvedDetailRecordId,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    const fallback = findFallback(detail);
+    const fallbackRecordId = fallback?.recordId;
+    if (isValidRecordId(fallbackRecordId)) {
+      const resolvedFallbackRecordId = fallbackRecordId;
+      matchedRecordIds.add(resolvedFallbackRecordId);
+      // Only update if values actually changed
+      if (presetDetailNeedsUpdate(fallback!, detail)) {
+        actualUpdateCount++;
         updates.push(
           updateEntityMappingPresetDetail(
             presetGuid,
@@ -442,31 +570,10 @@ const syncPresetDetails = async (
               specifiedPct: detail.specifiedPct ?? undefined,
               updatedBy: detail.updatedBy ?? null,
             },
-          resolvedDetailRecordId,
+            resolvedFallbackRecordId,
           ),
         );
-        return;
       }
-    }
-
-    const fallback = findFallback(detail);
-    const fallbackRecordId = fallback?.recordId;
-    if (isValidRecordId(fallbackRecordId)) {
-      const resolvedFallbackRecordId = fallbackRecordId;
-      matchedRecordIds.add(resolvedFallbackRecordId);
-      updates.push(
-        updateEntityMappingPresetDetail(
-          presetGuid,
-          detail.basisDatapoint ?? null,
-          detail.targetDatapoint,
-          {
-            isCalculated: detail.isCalculated ?? undefined,
-            specifiedPct: detail.specifiedPct ?? undefined,
-            updatedBy: detail.updatedBy ?? null,
-          },
-          resolvedFallbackRecordId,
-        ),
-      );
       return;
     }
 
@@ -493,7 +600,9 @@ const syncPresetDetails = async (
     await deleteEntityMappingPresetDetailsByIds(deletions);
   }
 
-  if (!skipPresetMetadataUpdate && (creations.length > 0 || updates.length > 0 || deletions.length > 0)) {
+  // Only update preset metadata if there were ACTUAL changes (not just matched records)
+  const hasActualChanges = creations.length > 0 || actualUpdateCount > 0 || deletions.length > 0;
+  if (!skipPresetMetadataUpdate && hasActualChanges) {
     await updateEntityMappingPreset(presetGuid, { updatedBy: updatedBy ?? null });
   }
 };
@@ -728,6 +837,12 @@ const saveHandler = async (
           exclusionPct: input.exclusionPct,
           updatedBy: input.updatedBy,
         };
+        if (Object.prototype.hasOwnProperty.call(input, 'originalPolarity')) {
+          upsertPayload.originalPolarity = input.originalPolarity ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(input, 'modifiedPolarity')) {
+          upsertPayload.modifiedPolarity = input.modifiedPolarity ?? null;
+        }
         const existing = normalizedActivityMonth
           ? existingLookup.get(cacheKey)
           : existingLookup.get(cacheKey) ?? existingLookup.get(fallbackKey);
@@ -741,9 +856,18 @@ const saveHandler = async (
             presetLookup.has(cacheKey) ||
             (!normalizedActivityMonth && presetLookup.has(fallbackKey)));
 
+        const hasOriginalPolarityUpdate =
+          Object.prototype.hasOwnProperty.call(input, 'originalPolarity') &&
+          input.originalPolarity !== existing?.originalPolarity;
+        const hasModifiedPolarityUpdate =
+          Object.prototype.hasOwnProperty.call(input, 'modifiedPolarity') &&
+          input.modifiedPolarity !== existing?.modifiedPolarity;
+
         const hasChanges =
           !existing ||
           upsertPayload.polarity !== existing.polarity ||
+          hasOriginalPolarityUpdate ||
+          hasModifiedPolarityUpdate ||
           upsertPayload.mappingType !== existing.mappingType ||
           upsertPayload.presetId !== existing.presetId ||
           upsertPayload.mappingStatus !== existing.mappingStatus ||

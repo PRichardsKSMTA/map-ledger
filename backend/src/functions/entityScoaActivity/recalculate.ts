@@ -56,6 +56,35 @@ const normalizeTargetDatapoint = (value?: string | null): string | null => {
   return trimmed;
 };
 
+const normalizePolarity = (value?: string | null): 'Debit' | 'Credit' | 'Absolute' | null => {
+  if (!value) {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'debit') {
+    return 'Debit';
+  }
+  if (normalized === 'credit') {
+    return 'Credit';
+  }
+  if (normalized === 'absolute') {
+    return 'Absolute';
+  }
+  return null;
+};
+
+const applyModifiedPolarity = (amount: number, modifiedPolarity?: string | null): number => {
+  if (!Number.isFinite(amount)) {
+    return 0;
+  }
+  const normalized = normalizePolarity(modifiedPolarity);
+  if (!normalized) {
+    return amount;
+  }
+  const absolute = Math.abs(amount);
+  return normalized === 'Credit' ? -absolute : absolute;
+};
+
 const resolvePresetType = (value: string | null | undefined): string => {
   const normalized = value?.trim().toLowerCase();
   switch (normalized) {
@@ -143,11 +172,11 @@ const buildEntityScoaTotals = (
 
   rows.forEach(row => {
     const entityId = row.entityId?.trim();
-    const baseAmount = Number.isFinite(row.activityAmount ?? NaN)
+    const rawAmount = Number.isFinite(row.activityAmount ?? NaN)
       ? (row.activityAmount as number)
       : null;
     const activityMonth = normalizeActivityMonth(row.glMonth);
-    if (!entityId || baseAmount === null || !activityMonth) {
+    if (!entityId || rawAmount === null || !activityMonth) {
       return;
     }
 
@@ -160,6 +189,7 @@ const buildEntityScoaTotals = (
     }
 
     const resolvedType = resolvePresetType(row.mappingType);
+    const baseAmount = applyModifiedPolarity(rawAmount, row.modifiedPolarity ?? row.polarity);
     const splits =
       resolvedType === 'dynamic'
         ? buildDynamicSplits(row.presetId ?? null, row.presetDetails, presetMappingLookup)

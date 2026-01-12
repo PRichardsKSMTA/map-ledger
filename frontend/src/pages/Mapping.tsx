@@ -19,7 +19,6 @@ import {
 import { selectDistributionProgress, useDistributionStore } from '../store/distributionStore';
 import { useOrganizationStore } from '../store/organizationStore';
 import { useClientStore } from '../store/clientStore';
-import { useAuthStore } from '../store/authStore';
 import scrollPageToTop from '../utils/scroll';
 
 const normalizeEntityId = (value: string | null): string | null => {
@@ -63,10 +62,8 @@ type EntityStepCompletion = {
 export default function Mapping() {
   const { uploadId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const userEmail = useAuthStore(state => state.user?.email ?? null);
   const hydrateClients = useClientStore(state => state.hydrateFromAccessList);
   const clientAccess = useOrganizationStore(state => state.clientAccess);
-  const fetchOrganizations = useOrganizationStore(state => state.fetchForUser);
   const activeClientId = useClientStore(state => state.activeClientId);
   const activeUploadId = useMappingStore(state => state.activeUploadId);
   const mappingActiveClientId = useMappingStore(state => state.activeClientId);
@@ -102,6 +99,7 @@ export default function Mapping() {
     [availableEntities],
   );
   const lastActiveEntityId = useRef<string | null>(null);
+  const hasInitializedEntityFromUrl = useRef(false);
   const resolveSelectableEntityId = useCallback(
     (preferredId?: string | null) => {
       if (preferredId && availableEntityIds.has(preferredId)) {
@@ -159,17 +157,8 @@ export default function Mapping() {
     });
   }, [activeEntityId, distributionProgress, entityMappingProgress]);
 
-  useEffect(() => {
-    if (!userEmail) {
-      return;
-    }
-
-    if (clientAccess.length > 0) {
-      return;
-    }
-
-    fetchOrganizations(userEmail);
-  }, [clientAccess.length, fetchOrganizations, userEmail]);
+  // Note: fetchOrganizations is handled by Navbar component which mounts before pages.
+  // Removed duplicate call here to prevent redundant API requests on startup.
 
   useEffect(() => {
     if (clientAccess.length === 0) {
@@ -182,14 +171,10 @@ export default function Mapping() {
   useEffect(() => {
     setMappingActiveClientId(activeClientId ?? null);
   }, [activeClientId, setMappingActiveClientId]);
-  const normalizedEntityParam = useMemo(() => {
-    const param = searchParams.get('entityId');
-    const normalized = normalizeEntityId(param);
-    if (!normalized) {
-      return null;
-    }
-    return availableEntityIds.has(normalized) ? normalized : null;
-  }, [availableEntityIds, searchParams]);
+  // Entity param from URL - used for restoring entity selection on page refresh
+  const rawEntityParam = useMemo(() => {
+    return normalizeEntityId(searchParams.get('entityId'));
+  }, [searchParams]);
 
   useEffect(() => {
     if (activeStep === 'mapping') {
@@ -258,7 +243,15 @@ export default function Mapping() {
   ]);
 
   useEffect(() => {
-    lastClientIdRef.current = activeClientId ?? null;
+    const previousClientId = lastClientIdRef.current;
+    const currentClientId = activeClientId ?? null;
+    lastClientIdRef.current = currentClientId;
+
+    // Reset entity URL initialization flag when client changes
+    // so the new client's entities can be initialized from URL
+    if (previousClientId !== null && currentClientId !== previousClientId) {
+      hasInitializedEntityFromUrl.current = false;
+    }
   }, [activeClientId]);
 
   useEffect(() => {
@@ -300,17 +293,42 @@ export default function Mapping() {
       return;
     }
 
-    const fallbackEntityId = resolveSelectableEntityId(normalizedEntityParam ?? activeEntityId);
+    // Only initialize from URL once per page load to avoid flickering loops.
+    // After initialization, let the store be the source of truth.
+    if (hasInitializedEntityFromUrl.current) {
+      // After initial load, only update if current entity became invalid
+      if (activeEntityId && availableEntityIds.has(activeEntityId)) {
+        return;
+      }
+      // Current entity is invalid, fall back to first available
+      const fallbackEntityId = availableEntities[0]?.id ?? null;
+      if (fallbackEntityId && fallbackEntityId !== activeEntityId) {
+        setActiveEntityId(fallbackEntityId);
+      }
+      return;
+    }
+
+    // First initialization: prefer URL param (raw, before validation), then first entity.
+    // Use rawEntityParam here because normalizedEntityParam depends on availableEntityIds,
+    // which may not be populated yet when this effect first runs after page refresh.
+    // resolveSelectableEntityId will validate against available entities.
+    const preferredEntityId = rawEntityParam ?? activeEntityId;
+    const fallbackEntityId = resolveSelectableEntityId(preferredEntityId);
 
     if (fallbackEntityId !== activeEntityId) {
       setActiveEntityId(fallbackEntityId);
+    }
+
+    // Mark as initialized once we have entities and have made a selection
+    if (fallbackEntityId) {
+      hasInitializedEntityFromUrl.current = true;
     }
   }, [
     activeEntityId,
     activeStep,
     availableEntities,
     availableEntityIds,
-    normalizedEntityParam,
+    rawEntityParam,
     resolveSelectableEntityId,
     setActiveEntityId,
   ]);

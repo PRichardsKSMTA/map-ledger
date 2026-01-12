@@ -490,9 +490,6 @@ const DynamicAllocationRow = ({
                   <thead className="bg-slate-50 dark:bg-slate-900">
                     <tr>
                       <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                        Target account
-                      </th>
-                      <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                         Basis datapoint
                       </th>
                       <th scope="col" className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
@@ -500,6 +497,9 @@ const DynamicAllocationRow = ({
                       </th>
                       <th scope="col" className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                         Allocation percentage
+                      </th>
+                      <th scope="col" className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                        Target account
                       </th>
                       <th scope="col" className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                         Preview allocation
@@ -528,6 +528,21 @@ const DynamicAllocationRow = ({
                         : '';
                       return (
                         <tr key={`${detail.id}-${detail.basisAccountId ?? detail.metricName}-${index}`} className={rowClasses}>
+                          <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium">{basisLabel}</span>
+                            </div>
+                          </td>
+                          <td
+                            className={`px-4 py-3 text-right tabular-nums ${
+                              isExclusion ? 'text-rose-700 dark:text-rose-200' : 'text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
+                            {formatCurrencyAmount(detail.basisValue)}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                            {percent.toFixed(2)}%
+                          </td>
                           <td className="px-4 py-3 align-top">
                             <div className="flex flex-col gap-1">
                               <span className="font-semibold text-slate-900 dark:text-slate-100">
@@ -545,21 +560,6 @@ const DynamicAllocationRow = ({
                                 </span>
                               )}
                             </div>
-                          </td>
-                          <td className="px-4 py-3 align-top text-slate-700 dark:text-slate-200">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-medium">{basisLabel}</span>
-                            </div>
-                          </td>
-                          <td
-                            className={`px-4 py-3 text-right tabular-nums ${
-                              isExclusion ? 'text-rose-700 dark:text-rose-200' : 'text-slate-700 dark:text-slate-200'
-                            }`}
-                          >
-                            {formatCurrencyAmount(detail.basisValue)}
-                          </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                            {percent.toFixed(2)}%
                           </td>
                           <td
                             className={`px-4 py-3 text-right tabular-nums font-semibold ${

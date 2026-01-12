@@ -150,6 +150,8 @@ INSERT INTO ml.ENTITY_ACCOUNT_MAPPING (
     ENTITY_ID,
     ENTITY_ACCOUNT_ID, -- varchar(100); may contain dashes/alpha, do not cast to int
     POLARITY,
+    ORIGINAL_POLARITY,
+    MODIFIED_POLARITY,
     MAPPING_TYPE,
     PRESET_ID,
     MAPPING_STATUS,
@@ -158,6 +160,8 @@ INSERT INTO ml.ENTITY_ACCOUNT_MAPPING (
     UPDATED_BY
 )
 VALUES (
+    NULL,
+    NULL,
     NULL,
     NULL,
     NULL,
