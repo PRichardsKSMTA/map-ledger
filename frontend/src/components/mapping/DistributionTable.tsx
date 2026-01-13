@@ -1,6 +1,7 @@
 import { ChangeEvent, Fragment, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpDown, Check, ChevronRight, Filter, HelpCircle, Loader2, Minus, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import RatioAllocationManager from './RatioAllocationManager';
 import DistributionDynamicAllocationRow from './DistributionDynamicAllocationRow';
 import ClientSurveyModal from '../survey/ClientSurveyModal';
@@ -332,7 +333,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     setSaveContext,
     setOperationsCatalog,
     loadHistoryForEntity,
-  } = useDistributionStore(state => ({
+  } = useDistributionStore(useShallow(state => ({
     rows: state.rows,
     operationsCatalog: state.operationsCatalog,
     searchTerm: state.searchTerm,
@@ -349,7 +350,7 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
     setSaveContext: state.setSaveContext,
     setOperationsCatalog: state.setOperationsCatalog,
     loadHistoryForEntity: state.loadHistoryForEntity,
-  }));
+  })));
 
   const [expandedRows, setExpandedRows] = useState<Set<string>>(() => new Set());
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
@@ -407,12 +408,12 @@ const DistributionTable = ({ focusMappingId }: DistributionTableProps) => {
   }, [activeDynamicAccountId, selectedAccountIds]);
 
   const { getActivePresetForSource, basisAccounts, presets, selectedPeriod } =
-    useRatioAllocationStore(state => ({
+    useRatioAllocationStore(useShallow(state => ({
       getActivePresetForSource: state.getActivePresetForSource,
       basisAccounts: state.basisAccounts,
       presets: state.presets,
       selectedPeriod: state.selectedPeriod,
-    }));
+    })));
   const setDistributionPresets = useRatioAllocationStore(state => state.setContextPresets);
   const [distributionPresetLibrary, setDistributionPresetLibrary] = useState<
     MappingPresetLibraryEntry[]

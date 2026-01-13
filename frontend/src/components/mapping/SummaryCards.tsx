@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
   getAccountExcludedAmount,
   isDynamicAccountNonFinancial,
@@ -15,27 +16,18 @@ import { formatCurrencyAmount } from '../../utils/currency';
 
 const SummaryCards = () => {
   const accounts = useMappingStore(selectAccounts);
-  const { totalAccounts, mappedAccounts, grossTotal, excludedTotal } = useMappingStore(selectSummaryMetrics);
+  const { totalAccounts, mappedAccounts, grossTotal, excludedTotal, unmappedBalance } = useMappingStore(selectSummaryMetrics);
   const distributionTargets = useMappingStore(selectDistributionTargets);
   const activeEntityId = useMappingStore(selectActiveEntityId);
-  const { allocations, results, selectedPeriod, basisAccounts, groups } = useRatioAllocationStore(state => ({
+  const { allocations, results, selectedPeriod, basisAccounts, groups } = useRatioAllocationStore(useShallow(state => ({
     allocations: state.allocations,
     results: state.results,
     selectedPeriod: state.selectedPeriod,
     basisAccounts: state.basisAccounts,
     groups: state.groups,
-  }));
-  const {
-    rows: distributionRows,
-    syncRowsFromStandardTargets,
-    loadHistoryForEntity,
-    historyEntityId,
-  } = useDistributionStore(state => ({
-    rows: state.rows,
-    syncRowsFromStandardTargets: state.syncRowsFromStandardTargets,
-    loadHistoryForEntity: state.loadHistoryForEntity,
-    historyEntityId: state.historyEntityId,
-  }));
+  })));
+  const distributionRows = useDistributionStore(state => state.rows);
+  const syncRowsFromStandardTargets = useDistributionStore(state => state.syncRowsFromStandardTargets);
 
   const scoaSummarySignature = useMemo(
     () => distributionTargets.map(summary => `${summary.id}:${summary.mappedAmount}`).join('|'),
@@ -50,17 +42,6 @@ const SummaryCards = () => {
     previousScoaSignature.current = scoaSummarySignature;
     syncRowsFromStandardTargets(distributionTargets);
   }, [distributionTargets, scoaSummarySignature, syncRowsFromStandardTargets]);
-
-  useEffect(() => {
-    if (!activeEntityId) {
-      void loadHistoryForEntity(null);
-      return;
-    }
-    if (historyEntityId === activeEntityId) {
-      return;
-    }
-    void loadHistoryForEntity(activeEntityId);
-  }, [activeEntityId, historyEntityId, loadHistoryForEntity]);
 
   const dynamicAccounts = useMemo(
     () =>
@@ -111,17 +92,19 @@ const SummaryCards = () => {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <p className="text-sm text-gray-500 dark:text-gray-400">Total GL accounts</p>
-        <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{totalAccounts}</p>
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{mappedAccounts} mapped</p>
-      </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
         <p className="text-sm text-gray-500 dark:text-gray-400">Mapped accounts</p>
         <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-          {mappedAccounts.toLocaleString()}
+          {mappedAccounts} / {totalAccounts}
+        </p>
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{mappedCoverage}% coverage</p>
+      </div>
+      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <p className="text-sm text-gray-500 dark:text-gray-400">Unmapped balance</p>
+        <p className={`mt-2 text-2xl font-semibold ${unmappedBalance === 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'}`}>
+          {formatCurrencyAmount(unmappedBalance)}
         </p>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {`${mappedCoverage}% coverage`}
+          {unmappedBalance === 0 ? 'All accounts mapped' : `${totalAccounts - mappedAccounts} accounts remaining`}
         </p>
       </div>
       <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">

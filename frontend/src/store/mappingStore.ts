@@ -1856,6 +1856,7 @@ type SummarySelector = {
   grossTotal: number;
   excludedTotal: number;
   netTotal: number;
+  unmappedBalance: number;
 };
 
 type UploadMetadata = {
@@ -4688,12 +4689,15 @@ export const selectSummaryMetrics = (state: MappingState): SummarySelector => {
   const scopedAccounts = selectPeriodScopedAccounts(state);
   const grossTotal = calculateGrossTotal(scopedAccounts);
   const excludedTotal = calculateExcludedTotal(scopedAccounts);
+  const unmappedAccounts = scopedAccounts.filter(account => !isAccountResolvedForSummary(account));
+  const unmappedBalance = unmappedAccounts.reduce((sum, account) => sum + account.netChange, 0);
   return {
     totalAccounts: scopedAccounts.length,
     mappedAccounts: scopedAccounts.filter(isAccountResolvedForSummary).length,
     grossTotal,
     excludedTotal,
     netTotal: grossTotal - excludedTotal,
+    unmappedBalance,
   };
 };
 

@@ -22,28 +22,40 @@ const formatCurrency = (value: number): string =>
 const formatNumber = (value: number): string =>
   new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
 
-const hasNonZeroValue = (
-  account: DynamicBasisAccount,
-  periodId?: string | null,
-): boolean => {
-  const periodKey = typeof periodId === 'string' ? periodId.trim() : '';
-  const periodValue =
-    periodKey && account.valuesByPeriod
-      ? account.valuesByPeriod[periodKey]
-      : account.value;
-  return typeof periodValue === 'number' && Number.isFinite(periodValue) && Math.abs(periodValue) > 0;
-};
+/**
+ * Allowed non-survey operational account numbers.
+ * These are OTR (operational group 100) with Company Driver (labor group 100)
+ * and Owner Operator (labor group 200) accounts.
+ */
+const ALLOWED_NON_SURVEY_OPERATIONAL_ACCOUNTS = new Set([
+  '9000-100-100',
+  '9000-100-200',
+  '9010-100-100',
+  '9010-100-200',
+  '9020-100-100',
+  '9020-100-200',
+  '9030-100-100',
+  '9030-100-200',
+  '9050-100-100',
+  '9070-100-100',
+  '9070-100-200',
+]);
 
 /**
  * Determines if an operational account should be shown in basis datapoint dropdowns.
- * All operational accounts (survey and FM statistics) are always shown.
+ * Survey data is always shown. Non-survey operational data is only shown if it's
+ * in the allowed list (OTR Company Driver and Owner Operator accounts).
  */
 const shouldShowOperationalAccount = (
-  _account: DynamicBasisAccount,
+  account: DynamicBasisAccount,
   _periodId?: string | null,
 ): boolean => {
-  // All operational accounts are always shown regardless of value
-  return true;
+  // Survey data is always shown
+  if (account.isSurvey === true) {
+    return true;
+  }
+  // Non-survey operational data is only shown if it's in the allowed list
+  return ALLOWED_NON_SURVEY_OPERATIONAL_ACCOUNTS.has(account.id);
 };
 
 const normalizeAccountId = (value?: string | null): string => (value ?? '').trim();

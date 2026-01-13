@@ -378,7 +378,23 @@ const ensurePreset = async (
     (targetPresetGuid ? presetMetadata.get(targetPresetGuid) : undefined) ??
     (presetGuid && presetGuid !== targetPresetGuid ? presetMetadata.get(presetGuid) : undefined);
 
+  console.log('[ensurePreset] Looking up preset:', {
+    cacheKey,
+    cachedPresetGuid,
+    targetPresetGuid,
+    presetGuid,
+    foundPreset: Boolean(existingPreset),
+    presetMetadataSize: presetMetadata.size,
+  });
+
   if (existingPreset) {
+    console.log('[ensurePreset] Found existing preset:', {
+      presetGuid: existingPreset.presetGuid,
+      existingEntityAccountId: existingPreset.entityAccountId,
+      existingScoaAccountId: existingPreset.scoaAccountId,
+      incomingEntityAccountId: entityAccountId,
+      incomingScoaAccountId: scoaAccountId,
+    });
     const resolvedEntityAccountId = resolvePreferredValue(
       entityAccountId,
       existingPreset.entityAccountId,
@@ -400,9 +416,6 @@ const ensurePreset = async (
       existingPreset.presetDescription,
       resolvedPresetDescription,
     );
-    const needsEntityAccountUpdate =
-      existingPreset.entityAccountId !== resolvedEntityAccountId;
-    const needsScoaAccountUpdate = existingPreset.scoaAccountId !== resolvedScoaAccountId;
     const resolvedCacheKey = buildPresetKey(
       entityId,
       resolvedEntityAccountId,
@@ -413,15 +426,16 @@ const ensurePreset = async (
     if (
       needsTypeRepair ||
       needsTypeUpdate ||
-      needsDescriptionUpdate ||
-      needsEntityAccountUpdate ||
-      needsScoaAccountUpdate
+      needsDescriptionUpdate
     ) {
+      // Always pass all values to the UPDATE to fix any truncated values in the
+      // database. The SELECT query may return correct values from a JOIN, but the
+      // preset table itself may have truncated data.
       const updatedPreset = await updateEntityDistributionPreset(existingPreset.presetGuid, {
         presetType: needsTypeRepair || needsTypeUpdate ? distributionType : undefined,
-        presetDescription: needsDescriptionUpdate ? resolvedPresetDescription : undefined,
-        entityAccountId: needsEntityAccountUpdate ? resolvedEntityAccountId : undefined,
-        scoaAccountId: needsScoaAccountUpdate ? resolvedScoaAccountId : undefined,
+        presetDescription: resolvedPresetDescription,
+        entityAccountId: resolvedEntityAccountId,
+        scoaAccountId: resolvedScoaAccountId,
         updatedBy: updatedBy ?? null,
       });
 
@@ -674,6 +688,22 @@ const saveHandler = async (
         );
 
         // Use ensurePreset to create or update the preset (like mapping does)
+        console.log('[saveHandler] Calling ensurePreset with:', {
+          entityId,
+          normalizedEntityAccountId,
+          normalizedScoa,
+          normalizedType,
+          resolvedPresetGuid,
+          requestedPresetGuid,
+          existingPresetGuidForAccount,
+          presetKey,
+          presetLookupSize: presetLookup.size,
+          presetMetadataSize: presetMetadata.size,
+          existingPresetByGuid: existingPresetByGuid ? {
+            entityAccountId: existingPresetByGuid.entityAccountId,
+            scoaAccountId: existingPresetByGuid.scoaAccountId,
+          } : null,
+        });
         const { preset: currentPreset } = await ensurePreset(
           entityId,
           normalizedEntityAccountId,
