@@ -4784,6 +4784,15 @@ export const selectDistributionTargets = (
 ): DistributionSourceSummary[] =>
   buildDistributionSourceSummaries(selectPeriodScopedAccounts(state));
 
+/**
+ * Returns distribution source summaries for ALL periods (not filtered by activePeriod).
+ * Used by the Review tab to show period-independent distribution data across all GL months.
+ */
+export const selectAllPeriodDistributionTargets = (
+  state: MappingState,
+): DistributionSourceSummary[] =>
+  buildDistributionSourceSummaries(selectEntityScopedAccounts(state));
+
 export const selectReconciliationGroups = (
   state: MappingState,
 ): ReconciliationSubcategoryGroup[] => buildReconciliationGroups(
@@ -4803,6 +4812,9 @@ export const selectAccountsByPeriod = (state: MappingState): Map<string, GLAccou
   });
   return byPeriod;
 };
+
+export const selectOperationalBasisAccounts = (state: MappingState): DynamicBasisAccount[] =>
+  state.operationalBasisAccounts;
 
 export const selectAccountHasMultiplePeriods = (
   state: MappingState,
@@ -4957,6 +4969,81 @@ useRatioAllocationStore.subscribe(
       }
 
       return nextState;
+    });
+  },
+);
+
+// Subscribe to changes in mapping summary metrics and propagate to organizationStore
+// so the client dropdown counts update in real-time without requiring a page refresh.
+useMappingStore.subscribe(
+  (state) => {
+    const clientId = state.activeClientId;
+    if (!clientId) {
+      return null;
+    }
+    // Compute summary metrics for all accounts (not period-scoped) to match server behavior
+    const allAccounts = state.accounts;
+    const totalAccounts = allAccounts.length;
+    const mappedAccounts = allAccounts.filter((account) => {
+      // Inline the isAccountResolvedForSummary logic to avoid circular dependency issues
+      if (account.mappingType === 'exclude' || account.status === 'Excluded') {
+        return true;
+      }
+      if (isZeroValueAccount(account)) {
+        return true;
+      }
+      if (account.mappingType === 'dynamic') {
+        const ratioState = useRatioAllocationStore.getState();
+        const allocation = ratioState.allocations.find(
+          (alloc) => alloc.sourceAccount.id === account.id,
+        );
+        return (
+          allocation?.targetDatapoints?.length ||
+          account.splitDefinitions.some((split) => split.allocationType === 'dynamic')
+        );
+      }
+      if (account.mappingType === 'percentage') {
+        if (account.splitDefinitions.length === 0) {
+          return false;
+        }
+        const allSplitsConfigured = account.splitDefinitions.every((split) => {
+          if (split.isExclusion) {
+            return true;
+          }
+          const targetId = typeof split.targetId === 'string' ? split.targetId.trim() : '';
+          return targetId.length > 0 && isKnownChartOfAccount(targetId);
+        });
+        if (!allSplitsConfigured) {
+          return false;
+        }
+        const totalPercentage = account.splitDefinitions.reduce(
+          (sum, split) => sum + getSplitPercentage(account, split),
+          0,
+        );
+        return Math.abs(totalPercentage - 100) <= 0.01;
+      }
+      const manualTarget = account.manualCOAId?.trim();
+      return manualTarget ? isKnownChartOfAccount(manualTarget) : false;
+    }).length;
+
+    return { clientId, totalAccounts, mappedAccounts };
+  },
+  (current, previous) => {
+    if (!current) {
+      return;
+    }
+    // Only update if the values actually changed
+    if (
+      previous &&
+      current.clientId === previous.clientId &&
+      current.totalAccounts === previous.totalAccounts &&
+      current.mappedAccounts === previous.mappedAccounts
+    ) {
+      return;
+    }
+    useOrganizationStore.getState().updateClientMappingSummary(current.clientId, {
+      totalAccounts: current.totalAccounts,
+      mappedAccounts: current.mappedAccounts,
     });
   },
 );

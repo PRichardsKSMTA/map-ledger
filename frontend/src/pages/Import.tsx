@@ -254,6 +254,15 @@ export default function Import() {
         entities: entitiesForMetadata,
       });
 
+      // Build a lookup from sheet name to resolved GL month from sheetSelections
+      // sheetSelections contains the properly resolved GL months from ImportForm
+      const sheetGlMonthLookup = new Map<string, string | undefined>();
+      sheetSelections.forEach((selection) => {
+        if (selection.glMonth) {
+          sheetGlMonthLookup.set(selection.sheetName, selection.glMonth);
+        }
+      });
+
       const ingestPayload = {
         fileUploadId: importId,
         clientId,
@@ -261,7 +270,12 @@ export default function Import() {
         headerMap,
         sheets: sheetUploads.map((sheet) => ({
           sheetName: sheet.sheetName,
-          glMonth: sheet.metadata.glMonth || sheet.metadata.sheetNameDate || undefined,
+          // Use resolved GL month from sheetSelections first, then fall back to metadata
+          glMonth:
+            sheetGlMonthLookup.get(sheet.sheetName) ||
+            sheet.metadata.glMonth ||
+            sheet.metadata.sheetNameDate ||
+            undefined,
           isSelected: true,
           rows: sheet.rows,
           firstDataRowIndex: sheet.firstDataRowIndex,

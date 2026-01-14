@@ -41,6 +41,30 @@ describe('extractDateFromText', () => {
     });
   });
 
+  describe('M-YYYY sheet name format (e.g., "1-2024", "12-2024")', () => {
+    it('should extract single-digit month formats', () => {
+      expect(extractDateFromText('1-2024')).toBe('2024-01-01');
+      expect(extractDateFromText('2-2024')).toBe('2024-02-01');
+      expect(extractDateFromText('9-2024')).toBe('2024-09-01');
+    });
+
+    it('should extract double-digit month formats', () => {
+      expect(extractDateFromText('10-2024')).toBe('2024-10-01');
+      expect(extractDateFromText('11-2024')).toBe('2024-11-01');
+      expect(extractDateFromText('12-2024')).toBe('2024-12-01');
+    });
+
+    it('should extract M/YYYY with slash separator', () => {
+      expect(extractDateFromText('1/2024')).toBe('2024-01-01');
+      expect(extractDateFromText('12/2024')).toBe('2024-12-01');
+    });
+
+    it('should reject invalid months in M-YYYY format', () => {
+      expect(extractDateFromText('0-2024')).toBe('');
+      expect(extractDateFromText('13-2024')).toBe('');
+    });
+  });
+
   describe('MM.YY format', () => {
     it('should extract MM.YY format', () => {
       expect(extractDateFromText('NTS 11.25 TB')).toBe('2025-11-01');

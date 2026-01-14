@@ -127,6 +127,19 @@ export const extractDateFromText = (text: string): string => {
 
   const normalized = text.trim();
 
+  // Pattern 0: M-YYYY or MM-YYYY format (e.g., "1-2024", "12-2024")
+  // Must check this BEFORE ISO format to avoid misinterpreting as YYYY-MM
+  // Only match when it's the entire string or clearly a date pattern
+  const mYyyyMatch = normalized.match(/^(\d{1,2})[-/](\d{4})$/);
+  if (mYyyyMatch) {
+    const [, rawMonth, year] = mYyyyMatch;
+    const month = rawMonth.padStart(2, '0');
+    const monthNum = parseInt(month, 10);
+    if (monthNum >= 1 && monthNum <= 12) {
+      return formatMonthStart(year, month);
+    }
+  }
+
   const monthApostropheMatch = normalized.match(
     /(?:[()'"\s])([A-Za-z]{3,9})[''](\d{2})(?:[)'")\s]|$)/i,
   );
@@ -277,4 +290,95 @@ export const detectGlMonthFromRow = (row: Record<string, unknown>): string => {
   }
 
   return normalizeCandidate(row.glMonth);
+};
+
+/**
+ * Checks if a string is a standalone month name (e.g., "December", "Nov", "january")
+ * Returns the month number (01-12) if valid, or null if not a month name
+ */
+export const parseStandaloneMonthName = (text: string): string | null => {
+  if (!text) return null;
+  const normalized = text.trim().toLowerCase();
+  return monthNameMap[normalized] ?? null;
+};
+
+/**
+ * Determines the most recent *completed* occurrence of a given month relative to today's date.
+ * Since the current month hasn't closed yet, it cannot be in a file, so we always look at
+ * the previous completed instance of that month.
+ *
+ * @param monthNumber - Month as a string "01"-"12"
+ * @param referenceDate - Optional reference date (defaults to today)
+ * @returns Year as a 4-digit number
+ */
+const getMostRecentCompletedYearForMonth = (
+  monthNumber: string,
+  referenceDate?: Date,
+): number => {
+  const now = referenceDate ?? new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  const targetMonth = parseInt(monthNumber, 10);
+
+  // If the target month is >= current month, it must be from last year
+  // because the current month hasn't closed yet
+  // (e.g., if today is January 13, 2026 and we see "January", it's Jan 2025)
+  // (e.g., if today is January 13, 2026 and we see "February", it's Feb 2025)
+  if (targetMonth >= currentMonth) {
+    return currentYear - 1;
+  }
+  return currentYear;
+};
+
+/**
+ * Infers GL months from an array of sheet names that are standalone month names.
+ * Processes left-to-right, assigning the most recent occurrence of each month first,
+ * then going back in time for subsequent occurrences of the same month.
+ *
+ * Example: ["December", "November", "October", ..., "December"]
+ * - First "December" -> 2025-12-01 (most recent)
+ * - Thirteenth "December" -> 2024-12-01 (previous year)
+ *
+ * @param sheetNames - Array of sheet names in order (left to right)
+ * @param referenceDate - Optional reference date for determining "most recent" (defaults to today)
+ * @returns Array of GL months in YYYY-MM-01 format, or empty strings for non-month sheets
+ */
+export const inferGlMonthsFromMonthNames = (
+  sheetNames: string[],
+  referenceDate?: Date,
+): string[] => {
+  // Track how many times we've seen each month (to handle duplicates)
+  const monthOccurrences = new Map<string, number>();
+
+  return sheetNames.map((sheetName) => {
+    const monthNumber = parseStandaloneMonthName(sheetName);
+    if (!monthNumber) {
+      return '';
+    }
+
+    // Get how many times we've already seen this month
+    const occurrenceCount = monthOccurrences.get(monthNumber) ?? 0;
+    monthOccurrences.set(monthNumber, occurrenceCount + 1);
+
+    // Get the most recent completed year for this month, then subtract years for duplicates
+    const baseYear = getMostRecentCompletedYearForMonth(monthNumber, referenceDate);
+    const year = baseYear - occurrenceCount;
+
+    return formatMonthStart(year, monthNumber);
+  });
+};
+
+/**
+ * Checks if all non-empty sheet names in an array are standalone month names.
+ * Used to determine if we should use month name inference for the entire file.
+ *
+ * @param sheetNames - Array of sheet names to check
+ * @returns true if all non-empty sheet names are valid month names
+ */
+export const areAllSheetsMonthNames = (sheetNames: string[]): boolean => {
+  const nonEmptySheets = sheetNames.filter((name) => name.trim().length > 0);
+  if (nonEmptySheets.length === 0) {
+    return false;
+  }
+  return nonEmptySheets.every((name) => parseStandaloneMonthName(name) !== null);
 };

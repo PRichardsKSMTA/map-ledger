@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  ClientMappingSummary,
   DatapointConfiguration,
   UserClientAccess,
   UserClientMetadata,
@@ -51,6 +52,10 @@ interface OrganizationState {
   setClientConfigurations: (
     clientId: string,
     configs: DatapointConfiguration[]
+  ) => void;
+  updateClientMappingSummary: (
+    clientId: string,
+    summary: ClientMappingSummary
   ) => void;
 }
 
@@ -422,5 +427,40 @@ export const useOrganizationStore = create<OrganizationState>((set, get) => ({
         [clientId]: configs,
       },
     }));
+  },
+  updateClientMappingSummary: (clientId, summary) => {
+    set((state) => {
+      const existingAccess = state.clientAccess.find(
+        (access) => access.clientId === clientId
+      );
+      if (!existingAccess) {
+        logDebug('updateClientMappingSummary: client not found in clientAccess', {
+          clientId,
+        });
+        return state;
+      }
+
+      const currentSummary = existingAccess.mappingSummary;
+      if (
+        currentSummary?.totalAccounts === summary.totalAccounts &&
+        currentSummary?.mappedAccounts === summary.mappedAccounts
+      ) {
+        return state;
+      }
+
+      logDebug('updateClientMappingSummary: updating summary', {
+        clientId,
+        previousSummary: currentSummary,
+        newSummary: summary,
+      });
+
+      return {
+        clientAccess: state.clientAccess.map((access) =>
+          access.clientId === clientId
+            ? { ...access, mappingSummary: summary }
+            : access
+        ),
+      };
+    });
   },
 }));

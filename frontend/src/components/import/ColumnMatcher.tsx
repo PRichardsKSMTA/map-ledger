@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { GripVertical, Check, X, ChevronDown, Sparkles } from 'lucide-react';
 
 interface ColumnMatcherProps {
   sourceHeaders: string[];
@@ -6,6 +7,9 @@ interface ColumnMatcherProps {
   initialAssignments?: Record<string, string | null>;
   onComplete: (mapping: Record<string, string | null>) => void | Promise<void>;
 }
+
+// Required fields that must be mapped
+const REQUIRED_FIELDS = ['GL ID', 'Account Description', 'Net Change'];
 
 function normalize(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -48,9 +52,25 @@ export default function ColumnMatcher({
   onComplete,
 }: ColumnMatcherProps) {
   const [assignments, setAssignments] = useState<Record<string, string | null>>({});
+  const [autoMatched, setAutoMatched] = useState<Set<string>>(new Set());
   const [unassigned, setUnassigned] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  // Calculate progress
+  const progress = useMemo(() => {
+    const requiredMapped = REQUIRED_FIELDS.filter(field => assignments[field]).length;
+    const totalMapped = Object.values(assignments).filter(Boolean).length;
+    return {
+      requiredMapped,
+      requiredTotal: REQUIRED_FIELDS.length,
+      totalMapped,
+      totalFields: destinationHeaders.length,
+      isComplete: requiredMapped === REQUIRED_FIELDS.length,
+    };
+  }, [assignments, destinationHeaders.length]);
 
   useEffect(() => {
     const annotatedHeaders = sourceHeaders.map((label, idx, arr) => {
@@ -64,6 +84,7 @@ export default function ColumnMatcher({
 
     const seedAssignments: Record<string, string | null> = {};
     const used = new Set<string>();
+    const autoMatchedFields = new Set<string>();
 
     if (initialAssignments) {
       destinationHeaders.forEach((dest) => {
@@ -79,6 +100,7 @@ export default function ColumnMatcher({
         if (match) {
           seedAssignments[dest] = match;
           used.add(match);
+          autoMatchedFields.add(dest);
         }
       });
     }
@@ -87,12 +109,19 @@ export default function ColumnMatcher({
     const remainingDestinations = destinationHeaders.filter((dest) => !seedAssignments[dest]);
 
     const guesses = guessMatches(remainingSources, remainingDestinations);
+
+    // Track which fields were auto-matched
+    Object.entries(guesses).forEach(([dest, src]) => {
+      if (src) autoMatchedFields.add(dest);
+    });
+
     const mergedAssignments = { ...seedAssignments, ...guesses };
     const assignedSources = new Set(
       Object.values(mergedAssignments).filter(Boolean) as string[]
     );
 
     setAssignments(mergedAssignments);
+    setAutoMatched(autoMatchedFields);
     setUnassigned(annotatedHeaders.filter((header) => !assignedSources.has(header)));
   }, [sourceHeaders, destinationHeaders, initialAssignments]);
 
@@ -105,6 +134,12 @@ export default function ColumnMatcher({
       return updated;
     });
     setUnassigned(prev => prev.filter(h => h !== src));
+    setAutoMatched(prev => {
+      const next = new Set(prev);
+      next.delete(dest);
+      return next;
+    });
+    setDragOver(null);
   };
 
   const handleRemove = (dest: string) => {
@@ -115,55 +150,249 @@ export default function ColumnMatcher({
       if (removed) setUnassigned((prevUnassigned) => [...prevUnassigned, removed]);
       return updated;
     });
+    setAutoMatched(prev => {
+      const next = new Set(prev);
+      next.delete(dest);
+      return next;
+    });
+  };
+
+  const handleSelectFromDropdown = (dest: string, src: string | null) => {
+    if (src === null) {
+      handleRemove(dest);
+    } else {
+      handleDrop(src, dest);
+    }
+    setOpenDropdown(null);
+  };
+
+  // Get all available options for dropdown (unassigned + currently assigned to this field)
+  const getAvailableOptions = (dest: string) => {
+    const currentAssignment = assignments[dest];
+    const options = [...unassigned];
+    if (currentAssignment && !options.includes(currentAssignment)) {
+      options.unshift(currentAssignment);
+    }
+    return options;
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
-      <div>
-        <h3 className="font-semibold mb-2">Source Headers</h3>
-        {unassigned.map(header => (
-          <div
-            key={header}
-            className="p-2 bg-gray-100 border rounded cursor-move"
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData('text/plain', header)}
-          >
-            {header}
+    <div className="space-y-4">
+      {/* Header with progress */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            Map Your Columns
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Match your file columns to the template fields
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            {progress.requiredMapped}/{progress.requiredTotal} required
           </div>
-        ))}
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {progress.totalMapped}/{progress.totalFields} total mapped
+          </div>
+        </div>
       </div>
 
-      <div>
-        <h3 className="font-semibold mb-2">Match to Template</h3>
-        {destinationHeaders.map(dest => (
-          <div
-            key={dest}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              const src = e.dataTransfer.getData('text/plain');
-              handleDrop(src, dest);
-            }}
-            className="p-2 mb-2 min-h-[3rem] border border-dashed rounded bg-white"
-          >
-            <div className="text-sm font-medium text-gray-700 mb-1 flex justify-between items-center">
-              <span>{dest}</span>
-              {assignments[dest] && (
-                <button
-                  onClick={() => handleRemove(dest)}
-                  className="text-xs text-red-500 hover:underline ml-2"
-                  type="button"
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-            <div className="text-sm text-gray-900">
-              {assignments[dest] ?? <span className="italic text-gray-400">(unassigned)</span>}
-            </div>
-          </div>
-        ))}
+      {/* Progress bar */}
+      <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+        <div
+          className={`h-full transition-all duration-300 ${
+            progress.isComplete ? 'bg-green-500' : 'bg-blue-500'
+          }`}
+          style={{ width: `${(progress.requiredMapped / progress.requiredTotal) * 100}%` }}
+        />
+      </div>
 
-        <div className="space-y-2 mt-4">
+      {/* Main mapping area */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 items-start">
+        {/* Source headers (unassigned) */}
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+            Available Columns ({unassigned.length})
+          </h4>
+          <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+            {unassigned.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2 text-center">
+                All columns mapped
+              </p>
+            ) : (
+              unassigned.map(header => (
+                <div
+                  key={header}
+                  className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-md cursor-grab hover:border-blue-400 hover:shadow-sm transition-all group"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData('text/plain', header)}
+                >
+                  <GripVertical className="h-4 w-4 text-gray-400 group-hover:text-blue-500 flex-shrink-0" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{header}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Arrow indicator */}
+        <div className="hidden lg:flex items-center justify-center pt-8">
+          <div className="text-gray-300 dark:text-gray-600">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Template fields */}
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-3">
+          <h4 className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+            Template Fields
+          </h4>
+          <div className="space-y-2">
+            {destinationHeaders.map(dest => {
+              const isRequired = REQUIRED_FIELDS.includes(dest);
+              const isMapped = Boolean(assignments[dest]);
+              const isAutoMapped = autoMatched.has(dest);
+              const isDraggedOver = dragOver === dest;
+              const isDropdownOpen = openDropdown === dest;
+              const availableOptions = getAvailableOptions(dest);
+
+              return (
+                <div
+                  key={dest}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(dest);
+                  }}
+                  onDragLeave={() => setDragOver(null)}
+                  onDrop={(e) => {
+                    const src = e.dataTransfer.getData('text/plain');
+                    handleDrop(src, dest);
+                  }}
+                  className={`relative rounded-lg border-2 transition-all ${
+                    isDraggedOver
+                      ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                      : isMapped
+                        ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                        : isRequired
+                          ? 'border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/10 border-dashed'
+                          : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 border-dashed'
+                  }`}
+                >
+                  <div className="p-2.5">
+                    {/* Field label row */}
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2">
+                        {isMapped ? (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500">
+                            <Check className="h-3 w-3 text-white" />
+                          </div>
+                        ) : (
+                          <div className={`h-5 w-5 rounded-full border-2 ${
+                            isRequired
+                              ? 'border-amber-400 dark:border-amber-500'
+                              : 'border-gray-300 dark:border-gray-600'
+                          }`} />
+                        )}
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {dest}
+                        </span>
+                        {isRequired && !isMapped && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-medium">
+                            Required
+                          </span>
+                        )}
+                        {isAutoMapped && isMapped && (
+                          <span className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300">
+                            <Sparkles className="h-3 w-3" />
+                            Auto
+                          </span>
+                        )}
+                      </div>
+                      {isMapped && (
+                        <button
+                          onClick={() => handleRemove(dest)}
+                          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-400 hover:text-red-500 transition-colors"
+                          type="button"
+                          title="Remove mapping"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Mapped value or dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setOpenDropdown(isDropdownOpen ? null : dest)}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                          isMapped
+                            ? 'bg-white dark:bg-gray-800 border border-green-200 dark:border-green-700 text-gray-900 dark:text-gray-100'
+                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-400 dark:text-gray-500 hover:border-gray-300 dark:hover:border-gray-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={isMapped ? '' : 'italic'}>
+                            {assignments[dest] ?? 'Click or drag to assign...'}
+                          </span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+
+                      {/* Dropdown menu */}
+                      {isDropdownOpen && (
+                        <div className="absolute z-20 mt-1 w-full rounded-md bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-600 max-h-48 overflow-y-auto">
+                          {isMapped && (
+                            <button
+                              type="button"
+                              onClick={() => handleSelectFromDropdown(dest, null)}
+                              className="w-full text-left px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                            >
+                              Clear selection
+                            </button>
+                          )}
+                          {availableOptions.length === 0 ? (
+                            <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500 italic">
+                              No columns available
+                            </div>
+                          ) : (
+                            availableOptions.map(opt => (
+                              <button
+                                key={opt}
+                                type="button"
+                                onClick={() => handleSelectFromDropdown(dest, opt)}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                                  assignments[dest] === opt
+                                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                                    : 'text-gray-700 dark:text-gray-300'
+                                }`}
+                              >
+                                {opt}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Action button */}
+      <div className="flex items-center justify-between pt-2">
+        {error && (
+          <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="ml-auto">
           <button
             onClick={async () => {
               try {
@@ -180,16 +409,25 @@ export default function ColumnMatcher({
                 setIsSaving(false);
               }
             }}
-            disabled={isSaving}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            disabled={isSaving || !progress.isComplete}
+            className={`px-5 py-2.5 rounded-lg font-medium transition-all ${
+              progress.isComplete
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+            } disabled:opacity-50`}
           >
-            {isSaving ? 'Saving...' : 'Confirm Mappings'}
+            {isSaving ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Saving...
+              </span>
+            ) : (
+              'Confirm Mappings'
+            )}
           </button>
-          {error && (
-            <p className="text-sm text-red-600" role="alert">
-              {error}
-            </p>
-          )}
         </div>
       </div>
     </div>

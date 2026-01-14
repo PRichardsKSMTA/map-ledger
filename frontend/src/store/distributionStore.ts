@@ -39,6 +39,7 @@ interface DistributionState {
   currentUpdatedBy: string | null;
   historyByAccount: Record<string, DistributionHistorySuggestion>;
   historyEntityId: string | null;
+  loadedHistoryEntityIds: Set<string>;
   isAutoSaving: boolean;
   autoSaveMessage: string | null;
   syncRowsFromStandardTargets: (summaries: DistributionSourceSummary[]) => void;
@@ -576,6 +577,7 @@ const persistActivityForRows = async (
     currentUpdatedBy: null,
     historyByAccount: {},
     historyEntityId: null,
+    loadedHistoryEntityIds: new Set(),
     isAutoSaving: false,
     autoSaveMessage: null,
     isSavingDistributions: false,
@@ -877,15 +879,13 @@ const persistActivityForRows = async (
     loadHistoryForEntity: async entityId => {
       const normalized = entityId?.trim() ?? null;
       if (!normalized) {
-        set({ historyByAccount: {}, historyEntityId: null });
+        set({ historyByAccount: {}, historyEntityId: null, loadedHistoryEntityIds: new Set() });
         return;
       }
 
       const currentState = _get();
-      if (
-        currentState.historyEntityId === normalized &&
-        Object.keys(currentState.historyByAccount).length > 0
-      ) {
+      // Check if this entity's history has already been loaded
+      if (currentState.loadedHistoryEntityIds?.has(normalized)) {
         return;
       }
 
@@ -907,14 +907,26 @@ const persistActivityForRows = async (
             lookup[key] = { ...suggestion, entityAccountId: normalizedEntityAccountId };
           }
         });
-        set(state => ({
-          historyByAccount: lookup,
-          historyEntityId: normalized,
-          rows: applyHistorySuggestions(state.rows, lookup),
-        }));
+        set(state => {
+          // Merge new history with existing history instead of replacing
+          const mergedHistory = { ...state.historyByAccount, ...lookup };
+          const loadedEntityIds = new Set(state.loadedHistoryEntityIds ?? []);
+          loadedEntityIds.add(normalized);
+          return {
+            historyByAccount: mergedHistory,
+            historyEntityId: normalized,
+            loadedHistoryEntityIds: loadedEntityIds,
+            rows: applyHistorySuggestions(state.rows, mergedHistory),
+          };
+        });
       } catch (error) {
         console.error('Unable to load distribution history', error);
-        set({ historyByAccount: {}, historyEntityId: normalized });
+        // Don't clear existing history on error, just mark this entity as attempted
+        set(state => {
+          const loadedEntityIds = new Set(state.loadedHistoryEntityIds ?? []);
+          loadedEntityIds.add(normalized);
+          return { loadedHistoryEntityIds: loadedEntityIds };
+        });
       }
     },
     saveDistributions: async (entityId, updatedBy) => {

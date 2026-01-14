@@ -36,6 +36,8 @@ import {
   extractDateFromText,
   isValidNormalizedMonth,
   normalizeGlMonth,
+  parseStandaloneMonthName,
+  inferGlMonthsFromMonthNames,
 } from '../../utils/glMonth';
 import { getFirstStringValue } from '../../utils/requestParsers';
 import { initializeClientGlData } from '../../repositories/clientGlDataRepository';
@@ -99,27 +101,37 @@ const normalizeClientId = (value?: string | null): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
+// Threshold for treating values as zero (handles floating-point rounding errors like -5.82077E-11)
+const NEAR_ZERO_THRESHOLD = 1e-9;
+
 const parseNumber = (value: unknown): number => {
+  let result: number;
+
   if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
+    result = value;
+  } else if (typeof value !== 'string') {
+    return 0;
+  } else {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 0;
+    }
+
+    const normalized = trimmed
+      .replace(/[$,]/g, '')
+      .replace(/[()]/g, (match) => (match === '(' ? '-' : ''))
+      .replace(/\s+/g, '');
+
+    const parsed = Number(normalized);
+    result = Number.isFinite(parsed) ? parsed : 0;
   }
 
-  if (typeof value !== 'string') {
+  // Treat near-zero values (floating-point rounding errors) as exactly zero
+  if (Math.abs(result) < NEAR_ZERO_THRESHOLD) {
     return 0;
   }
 
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return 0;
-  }
-
-  const normalized = trimmed
-    .replace(/[$,]/g, '')
-    .replace(/[()]/g, (match) => (match === '(' ? '-' : ''))
-    .replace(/\s+/g, '');
-
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return result;
 };
 
 const parseBooleanValue = (value: unknown): boolean | undefined => {
@@ -152,7 +164,10 @@ const normalizeHeader = (value: string | null | undefined): string | null => {
     return null;
   }
 
-  const trimmed = value.trim();
+  // Strip " - Column X" suffix that ColumnMatcher adds to differentiate duplicate headers
+  // The actual row data uses original header names without this annotation
+  const stripped = value.replace(/\s*-\s*Column\s+[A-Z]+$/i, '');
+  const trimmed = stripped.trim();
   return trimmed.length > 0 ? trimmed : null;
 };
 
@@ -163,6 +178,10 @@ const IGNORED_ACCOUNT_ID_PATTERNS = [
   /^account\s*(id|number)?$/i,
   /^gl\s*id$/i,
   /\btrial\s+balance\b/i,
+  // Filter out print timestamps like "Printed 12/9/2025 2:06:36PM"
+  /^printed\s+\d{1,2}\/\d{1,2}\/\d{2,4}/i,
+  // Filter out standalone date/time patterns that aren't valid account IDs
+  /^\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/i,
 ];
 
 const shouldSkipAccountId = (value: string): boolean => {
@@ -653,6 +672,22 @@ const normalizePayload = (body: unknown): { payload: IngestPayload | null; error
 
   if (normalizedSheets.length === 0) {
     return { payload: null, errors: ['No sheets contained row data'] };
+  }
+
+  // If any sheets are missing GL months and their names are standalone month names,
+  // infer the GL months based on the most recent completed occurrence of each month
+  const sheetsNeedingInference = normalizedSheets.filter(
+    (sheet) => !sheet.glMonth && parseStandaloneMonthName(sheet.sheetName),
+  );
+  if (sheetsNeedingInference.length > 0) {
+    const allSheetNames = normalizedSheets.map((s) => s.sheetName);
+    const inferredMonths = inferGlMonthsFromMonthNames(allSheetNames);
+
+    normalizedSheets.forEach((sheet, index) => {
+      if (!sheet.glMonth && inferredMonths[index]) {
+        sheet.glMonth = inferredMonths[index];
+      }
+    });
   }
 
   const normalizedEntities: IngestEntity[] = Array.isArray(payload.entities)

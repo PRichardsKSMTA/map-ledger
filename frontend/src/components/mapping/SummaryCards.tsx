@@ -5,20 +5,28 @@ import {
   isDynamicAccountNonFinancial,
   selectAccounts,
   selectActiveEntityId,
+  selectAvailableEntities,
   selectDistributionTargets,
   selectSummaryMetrics,
   useMappingStore,
 } from '../../store/mappingStore';
 import { useDistributionStore } from '../../store/distributionStore';
 import { useRatioAllocationStore } from '../../store/ratioAllocationStore';
+import { useClientStore } from '../../store/clientStore';
 import { computeDynamicExclusionSummaries, sumDynamicExclusionAmounts } from '../../utils/dynamicExclusions';
 import { formatCurrencyAmount } from '../../utils/currency';
+import {
+  fetchDistributionPresetsFromApi,
+  mapDistributionPresetsToDynamic,
+} from '../../services/distributionPresetService';
 
 const SummaryCards = () => {
   const accounts = useMappingStore(selectAccounts);
   const { totalAccounts, mappedAccounts, grossTotal, excludedTotal, unmappedBalance } = useMappingStore(selectSummaryMetrics);
   const distributionTargets = useMappingStore(selectDistributionTargets);
   const activeEntityId = useMappingStore(selectActiveEntityId);
+  const availableEntities = useMappingStore(selectAvailableEntities);
+  const activeClientId = useClientStore(state => state.activeClientId);
   const { allocations, results, selectedPeriod, basisAccounts, groups } = useRatioAllocationStore(useShallow(state => ({
     allocations: state.allocations,
     results: state.results,
@@ -28,12 +36,73 @@ const SummaryCards = () => {
   })));
   const distributionRows = useDistributionStore(state => state.rows);
   const syncRowsFromStandardTargets = useDistributionStore(state => state.syncRowsFromStandardTargets);
+  const loadHistoryForEntity = useDistributionStore(state => state.loadHistoryForEntity);
+  const setDistributionPresets = useRatioAllocationStore(state => state.setContextPresets);
 
   const scoaSummarySignature = useMemo(
     () => distributionTargets.map(summary => `${summary.id}:${summary.mappedAmount}`).join('|'),
     [distributionTargets],
   );
   const previousScoaSignature = useRef<string | null>(null);
+
+  // Track which entities have been hydrated to avoid redundant API calls
+  const hydratedEntitiesRef = useRef<Set<string>>(new Set());
+  const lastClientIdRef = useRef<string | null>(null);
+
+  // Reset hydrated entities when client changes
+  useEffect(() => {
+    if (lastClientIdRef.current !== activeClientId) {
+      hydratedEntitiesRef.current = new Set();
+      lastClientIdRef.current = activeClientId ?? null;
+    }
+  }, [activeClientId]);
+
+  // Hydrate distribution data for all available entities
+  // This ensures Review tab has data even when activeEntityId is null
+  useEffect(() => {
+    let canceled = false;
+
+    const hydrateDistributionData = async () => {
+      if (availableEntities.length === 0) {
+        return;
+      }
+
+      // Find entities that haven't been hydrated yet
+      const entitiesToHydrate = availableEntities.filter(
+        entity => !hydratedEntitiesRef.current.has(entity.id)
+      );
+
+      if (entitiesToHydrate.length === 0) {
+        return;
+      }
+
+      // Hydrate each entity's distribution data
+      for (const entity of entitiesToHydrate) {
+        if (canceled) {
+          return;
+        }
+
+        try {
+          const payload = await fetchDistributionPresetsFromApi(entity.id);
+          if (canceled) {
+            return;
+          }
+          const dynamicPresets = mapDistributionPresetsToDynamic(payload);
+          setDistributionPresets('distribution', dynamicPresets);
+          await loadHistoryForEntity(entity.id);
+          hydratedEntitiesRef.current.add(entity.id);
+        } catch (error) {
+          console.error(`Unable to load distribution data for entity ${entity.id}`, error);
+        }
+      }
+    };
+
+    void hydrateDistributionData();
+
+    return () => {
+      canceled = true;
+    };
+  }, [availableEntities, loadHistoryForEntity, setDistributionPresets]);
 
   useEffect(() => {
     if (scoaSummarySignature === previousScoaSignature.current) {

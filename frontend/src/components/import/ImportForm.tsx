@@ -64,6 +64,12 @@ const IGNORED_ACCOUNT_ID_PATTERNS = [
   /^account\s*(id|number)?$/i,
   /^gl\s*id$/i,
   /\btrial\s+balance\b/i,
+  // Filter out print timestamps like "Printed 12/9/2025 2:06:36PM"
+  // After normalization (special chars -> spaces): "Printed 12 9 2025 2 06 36PM"
+  /^printed\s+\d{1,2}\s+\d{1,2}\s+\d{2,4}/i,
+  // Filter out standalone date/time patterns that aren't valid account IDs
+  // After normalization: "12 9 2025 2 06 36PM" or similar
+  /^\d{1,2}\s+\d{1,2}\s+\d{2,4}\s+\d{1,2}\s+\d{2}/i,
 ];
 const MAX_DETECTED_ACCOUNTS = 50;
 
@@ -657,6 +663,39 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     return `Previewing first sheet. ${selectedSheets.length} sheets selected with ${totalRows.toLocaleString()} total rows.`;
   }, [uploads, selectedSheets, previewSampleCount]);
 
+  // Filter out headers that have no values in any row of selected sheets
+  const headersWithValues = useMemo(() => {
+    if (uploads.length === 0 || selectedSheets.length === 0) return [];
+
+    // Get all headers from the first selected sheet (they should be consistent)
+    const allHeaders = uploads[selectedSheets[0]]?.headers ?? [];
+
+    // Check which headers have at least one non-empty value across all selected sheets
+    const headersWithData = new Set<string>();
+
+    selectedSheets.forEach(sheetIdx => {
+      const sheet = uploads[sheetIdx];
+      if (!sheet) return;
+
+      sheet.rows.forEach(row => {
+        allHeaders.forEach(header => {
+          if (headersWithData.has(header)) return; // Already confirmed this header has data
+
+          const value = row[header];
+          if (value !== undefined && value !== null && value !== '') {
+            const strValue = String(value).trim();
+            if (strValue.length > 0) {
+              headersWithData.add(header);
+            }
+          }
+        });
+      });
+    });
+
+    // Return headers in their original order, filtered to only those with data
+    return allHeaders.filter(header => headersWithData.has(header));
+  }, [uploads, selectedSheets]);
+
   const clientEntityOptions = useMemo(() => {
     if (!clientId) return [];
     return entitiesByClient[clientId] ?? [];
@@ -1142,12 +1181,75 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     }
   };
 
+  /**
+   * Strips the " - Column X" suffix from annotated header names.
+   * ColumnMatcher adds this suffix to differentiate duplicate headers,
+   * but the actual row data uses the original header names.
+   */
+  const stripColumnAnnotation = (header: string): string => {
+    // Match " - Column A" through " - Column Z" at the end
+    return header.replace(/\s*-\s*Column\s+[A-Z]+$/i, '');
+  };
+
+  /**
+   * Gets combined description value from a row.
+   * If the mapped description column has adjacent empty headers (like "Column E", "Column F"),
+   * this combines them into a single description string.
+   */
+  const getCombinedDescription = (
+    row: ParsedRow,
+    descriptionHeader: string | undefined,
+    allHeaders: string[],
+  ): string => {
+    if (!descriptionHeader) return '';
+
+    // Strip the column annotation to get the original header name
+    const originalHeader = stripColumnAnnotation(descriptionHeader);
+
+    const descIdx = allHeaders.indexOf(originalHeader);
+    if (descIdx === -1) {
+      // Fallback: just return the mapped column value using original header
+      const val = row[originalHeader];
+      return val !== undefined && val !== null ? val.toString().trim() : '';
+    }
+
+    // Collect values starting from the description column
+    const parts: string[] = [];
+    const primaryVal = row[originalHeader];
+    if (primaryVal !== undefined && primaryVal !== null) {
+      const trimmed = primaryVal.toString().trim();
+      if (trimmed) parts.push(trimmed);
+    }
+
+    // Check adjacent columns that look like placeholder headers (Column E, Column F, etc.)
+    // These might be continuation of the description due to merged cells or multi-column layout
+    for (let i = descIdx + 1; i < allHeaders.length; i++) {
+      const nextHeader = allHeaders[i];
+      // Stop if we hit a meaningful header (not a placeholder)
+      if (!nextHeader.match(/^Column [A-Z]+$/i)) {
+        break;
+      }
+      const nextVal = row[nextHeader];
+      if (nextVal !== undefined && nextVal !== null) {
+        const trimmed = nextVal.toString().trim();
+        if (trimmed) {
+          parts.push(trimmed);
+        }
+      }
+    }
+
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  };
+
   const handleColumnMatch = async (map: Record<string, string | null>) => {
     setHeaderMap(map);
 
+    // Strip column annotations from mapped header names
+    // ColumnMatcher annotates duplicate headers with " - Column X" suffix,
+    // but the actual row data uses the original header names
     const keyMap = Object.entries(map).reduce(
       (acc, [dest, src]) => {
-        if (src) acc[dest] = src;
+        if (src) acc[dest] = stripColumnAnnotation(src);
         return acc;
       },
       {} as Record<string, string>
@@ -1168,9 +1270,12 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
           const accountIdValue = keyMap['GL ID']
             ? row[keyMap['GL ID']]
             : '';
-          const descriptionValue = keyMap['Account Description']
-            ? row[keyMap['Account Description']]
-            : '';
+          // Use combined description to handle multi-column description layouts
+          const descriptionValue = getCombinedDescription(
+            row,
+            keyMap['Account Description'],
+            sheet.headers,
+          );
 
           const accountId =
             accountIdValue !== undefined && accountIdValue !== null
@@ -1370,25 +1475,68 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       </div>
 
       {uploads.length > 1 && (
-        <MultiSelect
-          label="Sheet Selection"
-          options={uploads.map((u, idx) => ({
-            value: idx.toString(),
-            label: u.sheetName,
-          }))}
-          value={selectedSheets.map(idx => idx.toString())}
-          onChange={(values: string[]) => {
-            setSelectedSheets(values.map((v: string) => parseInt(v, 10)));
-          }}
-        />
+        <div className="space-y-2">
+          <MultiSelect
+            label="Sheet Selection"
+            placeholder="Select sheets to import..."
+            options={uploads.map((u, idx) => ({
+              value: idx.toString(),
+              label: u.sheetName,
+            }))}
+            value={selectedSheets.map(idx => idx.toString())}
+            onChange={(values: string[]) => {
+              setSelectedSheets(values.map((v: string) => parseInt(v, 10)));
+            }}
+          />
+          {selectedSheets.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {selectedSheets.map(idx => {
+                const sheet = uploads[idx];
+                if (!sheet) return null;
+                return (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                  >
+                    {sheet.sheetName}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSheets(selectedSheets.filter(i => i !== idx))}
+                      className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-blue-200 dark:hover:bg-blue-800"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {uploads.length > 0 && selectedSheets.length > 0 && !headerMap && (
         <div className="space-y-6">
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <div className="space-y-3">
+          {/* Upload Preview - full width on its own line */}
+          <div className="flex flex-col">
+            <PreviewTable
+              className="mt-0"
+              rows={previewSampleRows}
+              sheetName={uploads[selectedSheets[0]]?.sheetName}
+              columnOrder={uploads[selectedSheets[0]]?.headers ?? []}
+              emptyStateMessage="Your upload data will appear here once we detect rows in the selected sheet."
+            />
+            {previewSummaryMessage && (
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                {previewSummaryMessage}
+              </p>
+            )}
+          </div>
+
+          {/* Header Mapping - centered */}
+          <div className="flex justify-center">
+            <div className="w-full max-w-4xl space-y-3">
               <ColumnMatcher
-                sourceHeaders={uploads[selectedSheets[0]].headers}
+                sourceHeaders={headersWithValues}
                 destinationHeaders={templateHeaders}
                 initialAssignments={savedHeaderAssignments}
                 onComplete={handleColumnMatch}
@@ -1400,21 +1548,6 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                   }`}
                 >
                   {headerMappingError ?? 'Loading saved header preferences…'}
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col">
-              <PreviewTable
-                className="mt-0"
-                rows={previewSampleRows}
-                sheetName={uploads[selectedSheets[0]]?.sheetName}
-                columnOrder={uploads[selectedSheets[0]]?.headers ?? []}
-                emptyStateMessage="Your upload data will appear here once we detect rows in the selected sheet."
-              />
-              {previewSummaryMessage && (
-                <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                  {previewSummaryMessage}
                 </p>
               )}
             </div>
@@ -1480,7 +1613,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                         </span>
                       </div>
 
-                      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                      <div className={`grid gap-3 ${assignment.isCustom ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}`}>
                         <Select
                           label="Choose an entity"
                           value={assignment.isCustom ? '__custom__' : assignment.entityId}
@@ -1500,22 +1633,24 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                           <option value="__custom__">Type a new entity</option>
                         </Select>
 
-                        <div className="space-y-1">
-                          <label
-                            className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-                            htmlFor={`custom-entity-${assignment.slot}`}
-                          >
-                            Entity name
-                          </label>
-                          <input
-                            id={`custom-entity-${assignment.slot}`}
-                            type="text"
-                            value={assignment.name}
-                            onChange={(e) => handleCustomEntityNameChange(assignment.slot, e.target.value)}
-                            placeholder="Enter an entity name"
-                            className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
-                          />
-                        </div>
+                        {assignment.isCustom && (
+                          <div className="space-y-1">
+                            <label
+                              className="block text-sm font-medium text-slate-900 dark:text-slate-100"
+                              htmlFor={`custom-entity-${assignment.slot}`}
+                            >
+                              Entity name
+                            </label>
+                            <input
+                              id={`custom-entity-${assignment.slot}`}
+                              type="text"
+                              value={assignment.name}
+                              onChange={(e) => handleCustomEntityNameChange(assignment.slot, e.target.value)}
+                              placeholder="Enter an entity name"
+                              className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

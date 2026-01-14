@@ -10,7 +10,12 @@
       "Bash(cat:*)",
       "Bash(dir:*)",
       "Bash(node node_modules/jest/bin/jest.js:*)",
-      "Bash(npx vitest run:*)"
+      "Bash(npx vitest run:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run:*)",
+      "Bash(npx eslint:*)",
+      "Bash(grep:*)",
+      "Bash(git log:*)"
     ]
   }
 }

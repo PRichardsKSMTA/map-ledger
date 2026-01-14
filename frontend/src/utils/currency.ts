@@ -32,4 +32,14 @@ export const formatCurrencyAmount = (value: number): string => {
   return centsFormatter.format(value);
 };
 
+/**
+ * Format currency as whole dollars (always rounded to nearest dollar)
+ */
+export const formatCurrencyWhole = (value: number): string => {
+  if (!Number.isFinite(value)) {
+    return wholeDollarFormatter.format(0);
+  }
+  return wholeDollarFormatter.format(Math.round(value));
+};
+
 export default formatCurrencyAmount;

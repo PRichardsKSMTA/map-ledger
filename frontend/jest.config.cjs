@@ -22,5 +22,5 @@ module.exports = {
     '\\.(svg)$': '<rootDir>/src/tests/__mocks__/fileMock.ts'
   },
   setupFilesAfterEnv: ['<rootDir>/src/tests/setupTests.ts'],
-  testMatch: ['<rootDir>/src/**/?(*.)+(spec|test).[tj]s?(x)']
+  testMatch: ['**/src/**/*.test.ts', '**/src/**/*.test.tsx', '**/src/**/*.spec.ts', '**/src/**/*.spec.tsx']
 };

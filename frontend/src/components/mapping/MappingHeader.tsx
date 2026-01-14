@@ -11,6 +11,7 @@ import { formatPeriodDate } from '../../utils/period';
 interface MappingHeaderProps {
   clientId?: string;
   glUploadId?: string;
+  hidePeriodSelector?: boolean;
 }
 
 export const formatUploadLabel = ({
@@ -66,7 +67,7 @@ export const formatUploadLabel = ({
   return uploadId ? `Upload ${uploadId}` : 'Latest general ledger import';
 };
 
-const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
+const MappingHeader = ({ clientId, glUploadId, hidePeriodSelector }: MappingHeaderProps) => {
   const clients = useClientStore(state => state.clients);
   const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore(selectActivePeriod);
@@ -155,34 +156,36 @@ const MappingHeader = ({ clientId, glUploadId }: MappingHeaderProps) => {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-4 lg:items-end">
-          <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
-            <CalendarDays className="h-4 w-4" />
-            <span>Reporting period</span>
-            <select
-              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100"
-              value={activePeriod ?? 'all'}
-              onChange={event => {
-                const next = event.target.value;
-                setActivePeriod(next === 'all' ? null : next);
-              }}
-              disabled={!hasAvailablePeriods}
-            >
-                {hasAvailablePeriods ? (
-                  <>
-                    <option value="all">All Periods</option>
-                    {sortedPeriods.map(period => (
-                      <option key={period} value={period}>
-                        {formatPeriodDate(period) || period}
-                      </option>
-                    ))}
-                  </>
-                ) : (
-                <option value="all">No periods available</option>
-              )}
-            </select>
-          </label>
-        </div>
+        {!hidePeriodSelector && (
+          <div className="flex flex-col gap-4 lg:items-end">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+              <CalendarDays className="h-4 w-4" />
+              <span>Reporting period</span>
+              <select
+                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-100"
+                value={activePeriod ?? 'all'}
+                onChange={event => {
+                  const next = event.target.value;
+                  setActivePeriod(next === 'all' ? null : next);
+                }}
+                disabled={!hasAvailablePeriods}
+              >
+                  {hasAvailablePeriods ? (
+                    <>
+                      <option value="all">All Periods</option>
+                      {sortedPeriods.map(period => (
+                        <option key={period} value={period}>
+                          {formatPeriodDate(period) || period}
+                        </option>
+                      ))}
+                    </>
+                  ) : (
+                  <option value="all">No periods available</option>
+                )}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
     </div>
   );

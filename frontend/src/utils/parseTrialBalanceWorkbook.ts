@@ -1,5 +1,9 @@
 import type { Worksheet } from 'exceljs';
-import { extractDateFromText } from './extractDateFromText';
+import {
+  extractDateFromText,
+  areAllSheetsMonthNames,
+  inferGlMonthsFromMonthNames,
+} from './extractDateFromText';
 
 export interface ParsedRow {
   [key: string]: string | number;
@@ -232,7 +236,22 @@ export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUploa
 
   const results: ParsedUpload[] = [];
 
-  workbook.worksheets.forEach((sheet) => {
+  // Collect all sheet names for potential month-name inference
+  const allSheetNames = workbook.worksheets.map((sheet) => sheet.name);
+
+  // Check if we can extract dates from sheet names using existing methods
+  const extractedDates = allSheetNames.map((name) => extractDateFromText(name));
+  const hasAnyExtractedDates = extractedDates.some((date) => date.length > 0);
+
+  // If no dates were extracted using existing methods and all sheets are month names,
+  // use month-name inference (e.g., "December" -> most recent December)
+  const useMonthNameInference =
+    !hasAnyExtractedDates && areAllSheetsMonthNames(allSheetNames);
+  const inferredMonthDates = useMonthNameInference
+    ? inferGlMonthsFromMonthNames(allSheetNames)
+    : [];
+
+  workbook.worksheets.forEach((sheet, sheetIndex) => {
     let headers: string[] = [];
     let headerRowFound = false;
     const headerExtensionRows = new Set<number>();
@@ -240,8 +259,13 @@ export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUploa
     let firstDataRowIndex: number | undefined;
     const forcedHeaderRowNumber = findTrialBalanceHeaderRow(sheet);
 
-    // Extract date from sheet name (e.g., "Trial balance report (Aug'24)" -> "2024-08")
-    const sheetNameDate = extractDateFromText(sheet.name);
+    // Extract date from sheet name using existing patterns first
+    let sheetNameDate = extractDateFromText(sheet.name);
+
+    // If no date was extracted and we're using month-name inference, use the inferred date
+    if (!sheetNameDate && useMonthNameInference && inferredMonthDates[sheetIndex]) {
+      sheetNameDate = inferredMonthDates[sheetIndex];
+    }
 
     const metadata: Record<string, string> = {
       entity: getCellValue(sheet, 'B1'),

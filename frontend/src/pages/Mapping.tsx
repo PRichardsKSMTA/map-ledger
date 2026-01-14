@@ -460,6 +460,7 @@ export default function Mapping() {
       <MappingHeader
         clientId={activeClientId ?? undefined}
         glUploadId={isUploadGuid && activeUploadId === uploadId ? uploadId : undefined}
+        hidePeriodSelector={activeStep === 'review'}
       />
       <SummaryCards />
       {activeStep !== 'review' && (
