@@ -549,6 +549,10 @@ const buildAssignmentsFromDetectedEntities = (
       };
     }
 
+    // When entities are detected from the file but don't match saved client entities,
+    // use the detected entity directly (it will be in availableEntityOptions dropdown).
+    // Don't set isCustom=true as that shows a text field which lets users change the name
+    // but the data is already associated with the original name from the file.
     const fallbackName = entity.displayName ?? entity.name ?? entity.id;
     const fallbackId = entity.id || slugify(fallbackName) || `custom-entity-${slot}`;
 
@@ -556,7 +560,7 @@ const buildAssignmentsFromDetectedEntities = (
       slot,
       entityId: fallbackId,
       name: fallbackName,
-      isCustom: true,
+      isCustom: false,
     };
   });
 };
@@ -1657,10 +1661,10 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                         </span>
                       </div>
 
-                      <div className={`grid gap-3 ${assignment.isCustom ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}`}>
+                      <div className={`grid gap-3 ${assignment.isCustom && !hasEntityColumnValues ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]' : ''}`}>
                         <Select
                           label="Choose an entity"
-                          value={assignment.isCustom ? '__custom__' : assignment.entityId}
+                          value={assignment.isCustom && !hasEntityColumnValues ? '__custom__' : assignment.entityId}
                           onChange={(e) => handleAssignmentSelection(assignment.slot, e.target.value)}
                           disabled={!clientId || isLoadingClients || isLoadingEntities}
                           required
@@ -1674,10 +1678,18 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                               {normalizeEntityLabel(entity)}
                             </option>
                           ))}
-                          <option value="__custom__">Type a new entity</option>
+                          {/* Only show "Type a new entity" option when entities are NOT detected from the file.
+                              When entities are detected from the file, users must select from the detected entities
+                              since each record is associated with the entity name from the file. */}
+                          {!hasEntityColumnValues && (
+                            <option value="__custom__">Type a new entity</option>
+                          )}
                         </Select>
 
-                        {assignment.isCustom && (
+                        {/* Only show custom entity name field when NOT detected from file.
+                            When entities come from the file, users can't change names since
+                            records are already associated with the original entity names. */}
+                        {assignment.isCustom && !hasEntityColumnValues && (
                           <div className="space-y-1">
                             <label
                               className="block text-sm font-medium text-slate-900 dark:text-slate-100"
