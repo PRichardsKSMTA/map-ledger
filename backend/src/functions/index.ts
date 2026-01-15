@@ -33,5 +33,7 @@ import './entityScoaActivity';
 import './entityScoaDistribution';
 import './operationScoaActivity';
 import './distributionActivity';
+import './appUsers';
+import './azureAdUsers';
 
 export default app;

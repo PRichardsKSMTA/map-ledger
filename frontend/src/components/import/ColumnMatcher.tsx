@@ -1,15 +1,19 @@
 import { useEffect, useState, useMemo } from 'react';
-import { GripVertical, Check, X, ChevronDown, Sparkles } from 'lucide-react';
+import { GripVertical, Check, X, ChevronDown, Sparkles, Calendar } from 'lucide-react';
 
 interface ColumnMatcherProps {
   sourceHeaders: string[];
   destinationHeaders: string[];
   initialAssignments?: Record<string, string | null>;
   onComplete: (mapping: Record<string, string | null>) => void | Promise<void>;
+  /** Detected GL month columns from the source headers (header name -> normalized GL month) */
+  detectedGlMonthColumns?: Map<string, string>;
 }
 
-// Required fields that must be mapped
-const REQUIRED_FIELDS = ['GL ID', 'Account Description', 'Net Change'];
+// Required fields that must be mapped (when no GL month columns detected)
+const REQUIRED_FIELDS_STANDARD = ['GL ID', 'Account Description', 'Net Change'];
+// Required fields when GL month columns are detected (Net Change not needed)
+const REQUIRED_FIELDS_WIDE_FORMAT = ['GL ID', 'Account Description'];
 
 function normalize(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -26,10 +30,19 @@ function guessMatches(source: string[], dest: string[]): Record<string, string |
     const available = source.filter(s => !used.has(s));
 
     if (normalizedDest === 'accountdescription') {
-      match = available.find(s => normalize(s).includes('description'));
+      // Match "Gl_Desc", "GL Desc", or any column containing "description"
+      match = available.find(s => normalize(s) === 'gldesc') ||
+              available.find(s => normalize(s).includes('description'));
     } else if (normalizedDest === 'netchange') {
+      // Match "Amount" or any column containing "netchange"
       const netChangeMatches = available.filter(s => normalize(s).includes('netchange'));
-      match = netChangeMatches.length > 0 ? netChangeMatches[netChangeMatches.length - 1] : undefined;
+      match = netChangeMatches.length > 0
+        ? netChangeMatches[netChangeMatches.length - 1]
+        : available.find(s => normalize(s) === 'amount');
+    } else if (normalizedDest === 'entity') {
+      // Match "Company_Id", "CompanyId", or exact match
+      match = available.find(s => normalize(s) === 'companyid') ||
+              available.find(s => normalize(s) === normalizedDest);
     } else {
       match = available.find(s => normalize(s) === normalizedDest);
     }
@@ -50,6 +63,7 @@ export default function ColumnMatcher({
   destinationHeaders,
   initialAssignments,
   onComplete,
+  detectedGlMonthColumns,
 }: ColumnMatcherProps) {
   const [assignments, setAssignments] = useState<Record<string, string | null>>({});
   const [autoMatched, setAutoMatched] = useState<Set<string>>(new Set());
@@ -59,18 +73,30 @@ export default function ColumnMatcher({
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
 
+  // Determine if we're in wide format mode (multiple GL month columns detected)
+  const isWideFormat = detectedGlMonthColumns && detectedGlMonthColumns.size >= 2;
+  const requiredFields = isWideFormat ? REQUIRED_FIELDS_WIDE_FORMAT : REQUIRED_FIELDS_STANDARD;
+
+  // Get sorted list of detected GL months for display
+  const sortedGlMonths = useMemo(() => {
+    if (!detectedGlMonthColumns || detectedGlMonthColumns.size === 0) return [];
+    return Array.from(detectedGlMonthColumns.entries())
+      .sort((a, b) => a[1].localeCompare(b[1])) // Sort by normalized date
+      .map(([header]) => header);
+  }, [detectedGlMonthColumns]);
+
   // Calculate progress
   const progress = useMemo(() => {
-    const requiredMapped = REQUIRED_FIELDS.filter(field => assignments[field]).length;
+    const requiredMapped = requiredFields.filter(field => assignments[field]).length;
     const totalMapped = Object.values(assignments).filter(Boolean).length;
     return {
       requiredMapped,
-      requiredTotal: REQUIRED_FIELDS.length,
+      requiredTotal: requiredFields.length,
       totalMapped,
       totalFields: destinationHeaders.length,
-      isComplete: requiredMapped === REQUIRED_FIELDS.length,
+      isComplete: requiredMapped === requiredFields.length,
     };
-  }, [assignments, destinationHeaders.length]);
+  }, [assignments, destinationHeaders.length, requiredFields]);
 
   useEffect(() => {
     const annotatedHeaders = sourceHeaders.map((label, idx, arr) => {
@@ -80,6 +106,14 @@ export default function ColumnMatcher({
         return `${label} - Column ${colLetter}`;
       }
       return label;
+    });
+
+    // Filter out GL month columns from available headers (they're auto-handled)
+    const glMonthHeaderSet = new Set(detectedGlMonthColumns?.keys() ?? []);
+    const availableHeaders = annotatedHeaders.filter(header => {
+      // Check both the annotated header and the original (without column suffix)
+      const originalHeader = header.replace(/ - Column [A-Z]+$/, '');
+      return !glMonthHeaderSet.has(header) && !glMonthHeaderSet.has(originalHeader);
     });
 
     const seedAssignments: Record<string, string | null> = {};
@@ -93,7 +127,7 @@ export default function ColumnMatcher({
           return;
         }
 
-        const match = annotatedHeaders.find(
+        const match = availableHeaders.find(
           (header) => !used.has(header) && (header === desired || normalize(header) === normalize(desired))
         );
 
@@ -105,7 +139,7 @@ export default function ColumnMatcher({
       });
     }
 
-    const remainingSources = annotatedHeaders.filter((header) => !used.has(header));
+    const remainingSources = availableHeaders.filter((header) => !used.has(header));
     const remainingDestinations = destinationHeaders.filter((dest) => !seedAssignments[dest]);
 
     const guesses = guessMatches(remainingSources, remainingDestinations);
@@ -122,8 +156,8 @@ export default function ColumnMatcher({
 
     setAssignments(mergedAssignments);
     setAutoMatched(autoMatchedFields);
-    setUnassigned(annotatedHeaders.filter((header) => !assignedSources.has(header)));
-  }, [sourceHeaders, destinationHeaders, initialAssignments]);
+    setUnassigned(availableHeaders.filter((header) => !assignedSources.has(header)));
+  }, [sourceHeaders, destinationHeaders, initialAssignments, detectedGlMonthColumns]);
 
   const handleDrop = (src: string, dest: string) => {
     setAssignments(prev => {
@@ -208,6 +242,38 @@ export default function ColumnMatcher({
         />
       </div>
 
+      {/* GL Month columns detected banner */}
+      {isWideFormat && sortedGlMonths.length > 0 && (
+        <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3">
+          <div className="flex items-start gap-2">
+            <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                Multi-Month Format Detected
+              </h4>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                Found {sortedGlMonths.length} GL month columns. Each row will be expanded into {sortedGlMonths.length} records (one per month).
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {sortedGlMonths.slice(0, 12).map(header => (
+                  <span
+                    key={header}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200"
+                  >
+                    {header}
+                  </span>
+                ))}
+                {sortedGlMonths.length > 12 && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200">
+                    +{sortedGlMonths.length - 12} more
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main mapping area */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 items-start">
         {/* Source headers (unassigned) */}
@@ -251,8 +317,11 @@ export default function ColumnMatcher({
             Template Fields
           </h4>
           <div className="space-y-2">
-            {destinationHeaders.map(dest => {
-              const isRequired = REQUIRED_FIELDS.includes(dest);
+            {destinationHeaders
+              // Hide "Net Change" field when in wide format mode
+              .filter(dest => !(isWideFormat && dest === 'Net Change'))
+              .map(dest => {
+              const isRequired = requiredFields.includes(dest);
               const isMapped = Boolean(assignments[dest]);
               const isAutoMapped = autoMatched.has(dest);
               const isDraggedOver = dragOver === dest;

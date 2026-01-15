@@ -39,6 +39,7 @@ const incrementQueryCount = () => {
 };
 
 let connectionPromise: Promise<sql.ConnectionPool> | null = null;
+let longRunningConnectionPromise: Promise<sql.ConnectionPool> | null = null;
 const toInt = (v: string | undefined, fallback: number) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -422,6 +423,44 @@ export const getSqlPool = async (): Promise<sql.ConnectionPool> => {
   return connectionPromise;
 };
 
+/**
+ * Gets a connection pool with a 10-minute request timeout for long-running queries.
+ * Uses a separate pool to avoid affecting regular query timeouts.
+ */
+const getLongRunningPool = async (): Promise<sql.ConnectionPool> => {
+  if (!longRunningConnectionPromise) {
+    const cfg = resolveSqlConfig();
+    // Set a 10-minute request timeout for long-running stored procedures
+    cfg.options = cfg.options || {};
+    (cfg.options as { requestTimeout?: number }).requestTimeout = 600000;
+    // Use a smaller pool since these are infrequent
+    cfg.pool = {
+      max: 2,
+      min: 0,
+      idleTimeoutMillis: 30000,
+    };
+
+    logInfo('Establishing long-running SQL connection pool (10 min timeout)');
+
+    longRunningConnectionPromise = new sql.ConnectionPool(cfg)
+      .connect()
+      .then((pool) => {
+        logInfo('Long-running SQL connection pool established');
+        pool.on('error', (err) => {
+          logError('Long-running SQL connection pool encountered an error', err);
+          longRunningConnectionPromise = null;
+        });
+        return pool;
+      })
+      .catch((error) => {
+        longRunningConnectionPromise = null;
+        logError('Failed to establish long-running SQL connection pool', error);
+        throw error;
+      });
+  }
+  return longRunningConnectionPromise;
+};
+
 export const runQuery = async <TRecord = Record<string, unknown>>(query: string, parameters: Record<string, unknown> = {}): Promise<sql.IResult<TRecord>> => {
   const pool = await getSqlPool();
   const request = pool.request();
@@ -481,6 +520,55 @@ export const runQuery = async <TRecord = Record<string, unknown>>(query: string,
   }
 };
 
+/**
+ * Executes a SQL query without waiting for the result (fire and forget).
+ * Useful for long-running stored procedures where we don't need the response.
+ * Uses a separate connection pool with a 10-minute timeout.
+ */
+export const runQueryFireAndForget = async (
+  query: string,
+  parameters: Record<string, unknown> = {},
+): Promise<void> => {
+  const pool = await getLongRunningPool();
+  const request = pool.request();
+
+  Object.entries(parameters).forEach(([name, value]) => {
+    if (typeof value === 'string') {
+      request.input(name, sql.NVarChar(sql.MAX), value);
+      return;
+    }
+    if (value === null) {
+      request.input(name, value as any);
+      return;
+    }
+    request.input(name, value as any);
+  });
+
+  const paramEntries = Object.entries(parameters);
+  const logParameters =
+    paramEntries.length > MAX_PARAM_LOG_ENTRIES
+      ? {
+          parameterCount: paramEntries.length,
+          sample: Object.fromEntries(paramEntries.slice(0, MAX_PARAM_LOG_ENTRIES)),
+        }
+      : parameters;
+
+  logInfo('Executing SQL query (fire and forget)', {
+    query,
+    parameters: logParameters,
+  });
+
+  // Start the query but don't await - let it run in the background
+  request.query(query).then(
+    () => {
+      logInfo('Fire-and-forget query completed successfully', { query });
+    },
+    (error) => {
+      logError('Fire-and-forget query failed', { query, error });
+    },
+  );
+};
+
 export const withQueryTracking = async <T>(fn: () => Promise<T>): Promise<{ result: T; queryCount: number }> => {
   const store = { count: 0 };
 
@@ -499,4 +587,4 @@ export const withQueryTracking = async <T>(fn: () => Promise<T>): Promise<{ resu
   }
 };
 
-export default { getSqlPool, runQuery, withQueryTracking };
+export default { getSqlPool, runQuery, runQueryFireAndForget, withQueryTracking };

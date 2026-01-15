@@ -17,7 +17,7 @@ import {
 import type { ClientHeaderMapping } from '../../utils/clientHeaderMappings';
 import PreviewTable from './PreviewTable';
 import type { ClientEntity, ImportSheet, TrialBalanceRow } from '../../types';
-import { normalizeGlMonth, isValidNormalizedMonth } from '../../utils/extractDateFromText';
+import { normalizeGlMonth, isValidNormalizedMonth, detectGlMonthColumns } from '../../utils/extractDateFromText';
 import { detectLikelyEntities } from '../../utils/detectClientEntities';
 import { useAuthStore } from '../../store/authStore';
 import { slugify } from '../../utils/slugify';
@@ -696,6 +696,12 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
     return allHeaders.filter(header => headersWithData.has(header));
   }, [uploads, selectedSheets]);
 
+  // Detect GL month columns from the headers (for wide-format imports)
+  const detectedGlMonthColumnsMap = useMemo(() => {
+    if (headersWithValues.length === 0) return new Map<string, string>();
+    return detectGlMonthColumns(headersWithValues);
+  }, [headersWithValues]);
+
   const clientEntityOptions = useMemo(() => {
     if (!clientId) return [];
     return entitiesByClient[clientId] ?? [];
@@ -1255,6 +1261,9 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       {} as Record<string, string>
     );
 
+    // Check if we're in wide format mode (multiple GL month columns detected)
+    const isWideFormat = detectedGlMonthColumnsMap.size >= 2;
+
     // Map all sheets (we'll filter by selectedSheets later)
     const mappedSheets = uploads.map((sheet) => {
       // Try to get GL month from metadata (cell B4)
@@ -1265,57 +1274,91 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
       // Try to get GL month from sheet name (e.g., "Trial balance report (Aug'24)")
       const sheetNameMonth = sheet.metadata.sheetNameDate || '';
 
-      return sheet.rows
-        .map((row) => {
-          const accountIdValue = keyMap['GL ID']
-            ? row[keyMap['GL ID']]
+      const processedRows: TrialBalanceRow[] = [];
+
+      sheet.rows.forEach((row) => {
+        const accountIdValue = keyMap['GL ID']
+          ? row[keyMap['GL ID']]
+          : '';
+        // Use combined description to handle multi-column description layouts
+        const descriptionValue = getCombinedDescription(
+          row,
+          keyMap['Account Description'],
+          sheet.headers,
+        );
+
+        const accountId =
+          accountIdValue !== undefined && accountIdValue !== null
+            ? accountIdValue.toString().trim()
             : '';
-          // Use combined description to handle multi-column description layouts
-          const descriptionValue = getCombinedDescription(
-            row,
-            keyMap['Account Description'],
-            sheet.headers,
-          );
-
-          const accountId =
-            accountIdValue !== undefined && accountIdValue !== null
-              ? accountIdValue.toString().trim()
-              : '';
-          const description =
-            descriptionValue !== undefined && descriptionValue !== null
-              ? descriptionValue.toString().trim()
-              : '';
-
-          if (!accountId || !description || shouldSkipAccountId(accountId)) {
-            return null;
-          }
-
-          const entityValue = keyMap['Entity']
-            ? row[keyMap['Entity']]
+        const description =
+          descriptionValue !== undefined && descriptionValue !== null
+            ? descriptionValue.toString().trim()
             : '';
+
+        if (!accountId || !description || shouldSkipAccountId(accountId)) {
+          return;
+        }
+
+        const entityValue = keyMap['Entity']
+          ? row[keyMap['Entity']]
+          : '';
+        const entity =
+          entityValue !== undefined && entityValue !== null
+            ? entityValue.toString().trim()
+            : '';
+
+        // Get optional user-defined fields
+        const userDefined1 = keyMap['User Defined 1'] ? row[keyMap['User Defined 1']] : undefined;
+        const userDefined2 = keyMap['User Defined 2'] ? row[keyMap['User Defined 2']] : undefined;
+        const userDefined3 = keyMap['User Defined 3'] ? row[keyMap['User Defined 3']] : undefined;
+
+        if (isWideFormat) {
+          // Wide format: expand each row into multiple rows, one per GL month column
+          detectedGlMonthColumnsMap.forEach((normalizedMonth, headerName) => {
+            const netChangeValue = row[headerName];
+            const parsedNetChange = parseCurrencyValue(netChangeValue);
+            // Skip if the value is empty, null, or zero (no activity for this month)
+            if (netChangeValue === undefined || netChangeValue === null || netChangeValue === '' || parsedNetChange === 0) {
+              return;
+            }
+
+            processedRows.push({
+              accountId,
+              description,
+              netChange: parsedNetChange,
+              entity,
+              glMonth: normalizedMonth,
+              ...(userDefined1 !== undefined && { userDefined1: String(userDefined1) }),
+              ...(userDefined2 !== undefined && { userDefined2: String(userDefined2) }),
+              ...(userDefined3 !== undefined && { userDefined3: String(userDefined3) }),
+            } as TrialBalanceRow);
+          });
+        } else {
+          // Standard format: single Net Change column
           const netChangeValue = keyMap['Net Change']
             ? row[keyMap['Net Change']]
             : 0;
-
-          const entity =
-            entityValue !== undefined && entityValue !== null
-              ? entityValue.toString().trim()
-              : '';
 
           // Extract GL month with priority: row data > cell B4 > sheet name
           const detectedRowMonth = extractRowGlMonth(row);
           const effectiveMonth = detectedRowMonth || normalizedSheetMonth || sheetNameMonth;
 
-          return {
+          processedRows.push({
             accountId,
             description,
             netChange: parseCurrencyValue(netChangeValue),
             entity,
             ...(effectiveMonth && { glMonth: effectiveMonth }),
+            ...(userDefined1 !== undefined && { userDefined1: String(userDefined1) }),
+            ...(userDefined2 !== undefined && { userDefined2: String(userDefined2) }),
+            ...(userDefined3 !== undefined && { userDefined3: String(userDefined3) }),
             ...row,
-          } as TrialBalanceRow;
-        })
-        .filter((row): row is TrialBalanceRow => row !== null);
+          } as TrialBalanceRow);
+        }
+      });
+
+      return processedRows;
     });
 
     // Combine selected sheets into one dataset
@@ -1540,6 +1583,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
                 destinationHeaders={templateHeaders}
                 initialAssignments={savedHeaderAssignments}
                 onComplete={handleColumnMatch}
+                detectedGlMonthColumns={detectedGlMonthColumnsMap}
               />
               {(isLoadingHeaderMappings || headerMappingError) && (
                 <p
@@ -1675,7 +1719,7 @@ export default function ImportForm({ onImport, isImporting }: ImportFormProps) {
           <PreviewTable
             rows={rowsWithEntityAssignments.slice(0, 20)}
             sheetName="Combined Data"
-            columnOrder={uploads[selectedSheets[0]]?.headers ?? []}
+            columnOrder={['accountId', 'description', 'netChange', 'entity', 'glMonth']}
           />
         </div>
       )}

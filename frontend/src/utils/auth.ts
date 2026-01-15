@@ -6,6 +6,10 @@ const COA_MANAGER_ALLOWLIST = [
   'chenry@ksmta.com',
 ];
 
+const USER_MANAGER_ALLOWLIST = [
+  'pete.richards@ksmcpa.com',
+];
+
 export const canAccessCoaManager = (user?: Pick<User, 'email'> | null): boolean => {
   const email = user?.email?.trim().toLowerCase();
   if (!email) {
@@ -13,4 +17,13 @@ export const canAccessCoaManager = (user?: Pick<User, 'email'> | null): boolean 
   }
 
   return COA_MANAGER_ALLOWLIST.includes(email);
+};
+
+export const canAccessUserManager = (user?: Pick<User, 'email'> | null): boolean => {
+  const email = user?.email?.trim().toLowerCase();
+  if (!email) {
+    return false;
+  }
+
+  return USER_MANAGER_ALLOWLIST.includes(email);
 };

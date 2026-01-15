@@ -263,23 +263,67 @@ export default function Import() {
         }
       });
 
+      // Check if we have wide-format expanded rows (rows have glMonth property directly set)
+      // In wide format, resolvedRows contains the expanded rows with glMonth set per row
+      const hasExpandedRows = resolvedRows.length > 0 && resolvedRows[0].glMonth;
+
+      // Convert expanded TrialBalanceRows to the format expected by the backend
+      // When rows have glMonth set (wide format), group them by glMonth and convert to sheet format
+      const buildSheetsFromExpandedRows = () => {
+        const rowsByMonth = new Map<string, typeof resolvedRows>();
+        resolvedRows.forEach(row => {
+          const month = row.glMonth ?? 'unknown';
+          const existing = rowsByMonth.get(month) ?? [];
+          existing.push(row);
+          rowsByMonth.set(month, existing);
+        });
+
+        return Array.from(rowsByMonth.entries()).map(([glMonth, monthRows]) => ({
+          sheetName: glMonth,
+          glMonth,
+          isSelected: true,
+          // Convert TrialBalanceRow format to the row format expected by backend
+          rows: monthRows.map(row => ({
+            'GL ID': row.accountId,
+            'Account Description': row.description,
+            'Net Change': row.netChange,
+            'Entity': row.entity,
+            'User Defined 1': row.userDefined1,
+            'User Defined 2': row.userDefined2,
+            'User Defined 3': row.userDefined3,
+          })),
+          firstDataRowIndex: 1,
+        }));
+      };
+
       const ingestPayload = {
         fileUploadId: importId,
         clientId,
         fileName,
-        headerMap,
-        sheets: sheetUploads.map((sheet) => ({
-          sheetName: sheet.sheetName,
-          // Use resolved GL month from sheetSelections first, then fall back to metadata
-          glMonth:
-            sheetGlMonthLookup.get(sheet.sheetName) ||
-            sheet.metadata.glMonth ||
-            sheet.metadata.sheetNameDate ||
-            undefined,
-          isSelected: true,
-          rows: sheet.rows,
-          firstDataRowIndex: sheet.firstDataRowIndex,
-        })),
+        headerMap: hasExpandedRows ? {
+          // When using expanded rows, we use standardized header names
+          'GL ID': 'GL ID',
+          'Account Description': 'Account Description',
+          'Net Change': 'Net Change',
+          'Entity': 'Entity',
+          'User Defined 1': 'User Defined 1',
+          'User Defined 2': 'User Defined 2',
+          'User Defined 3': 'User Defined 3',
+        } : headerMap,
+        sheets: hasExpandedRows
+          ? buildSheetsFromExpandedRows()
+          : sheetUploads.map((sheet) => ({
+              sheetName: sheet.sheetName,
+              // Use resolved GL month from sheetSelections first, then fall back to metadata
+              glMonth:
+                sheetGlMonthLookup.get(sheet.sheetName) ||
+                sheet.metadata.glMonth ||
+                sheet.metadata.sheetNameDate ||
+                undefined,
+              isSelected: true,
+              rows: sheet.rows,
+              firstDataRowIndex: sheet.firstDataRowIndex,
+            })),
         entities: ingestEntities,
       };
 

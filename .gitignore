@@ -8,6 +8,8 @@ lerna-debug.log*
 .pnpm-debug.log*
 
 tmpclaude*
+database/*
+optimization/*
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

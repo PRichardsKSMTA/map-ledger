@@ -375,3 +375,143 @@ export function areAllSheetsMonthNames(sheetNames: string[]): boolean {
   }
   return nonEmptySheets.every((name) => parseStandaloneMonthName(name) !== null);
 }
+
+/**
+ * Headers that should NOT be treated as GL month columns even if they look like dates.
+ * These are common accounting/report headers that might contain date-like text.
+ */
+const NON_GL_MONTH_HEADERS = new Set([
+  'account',
+  'accountid',
+  'glid',
+  'gl id',
+  'id',
+  'description',
+  'accountdescription',
+  'account description',
+  'name',
+  'accountname',
+  'account name',
+  'entity',
+  'entityid',
+  'entity id',
+  'entityname',
+  'entity name',
+  'netchange',
+  'net change',
+  'activity',
+  'amount',
+  'debit',
+  'credit',
+  'balance',
+  'beginningbalance',
+  'beginning balance',
+  'endingbalance',
+  'ending balance',
+  'openingbalance',
+  'opening balance',
+  'closingbalance',
+  'closing balance',
+  'userdefined1',
+  'user defined 1',
+  'userdefined2',
+  'user defined 2',
+  'userdefined3',
+  'user defined 3',
+]);
+
+/**
+ * Checks if a header looks like a clean GL month column (not mixed with other text).
+ * We want to match headers like "Jan-25", "Feb 2025", "1/1/2025" but NOT
+ * headers like "Jan-25 Budget" or "Net Change Jan".
+ *
+ * @param header - The header text to check
+ * @returns The normalized GL month (YYYY-MM-01) if it's a clean month column, null otherwise
+ */
+function extractCleanGlMonth(header: string): string | null {
+  if (!header) return null;
+
+  const trimmed = header.trim();
+
+  // Skip headers that are known non-month columns
+  const normalizedLower = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (NON_GL_MONTH_HEADERS.has(normalizedLower) || NON_GL_MONTH_HEADERS.has(trimmed.toLowerCase())) {
+    return null;
+  }
+
+  // Skip placeholder columns like "Column A", "Column B"
+  if (/^Column [A-Z]+$/i.test(trimmed)) {
+    return null;
+  }
+
+  // Skip headers with extra words that suggest it's not a pure month column
+  // e.g., "Jan-25 Budget", "Net Change Jan", "Jan 2025 Forecast"
+  const words = trimmed.split(/[\s_-]+/).filter(w => w.length > 0);
+  if (words.length > 3) {
+    // Too many words to be a clean month header
+    return null;
+  }
+
+  // Try to extract a date from the header
+  // First, try normalizeGlMonth for clean date formats
+  const normalized = normalizeGlMonth(trimmed);
+  if (normalized && isValidNormalizedMonth(normalized)) {
+    return normalized;
+  }
+
+  // Then try extractDateFromText for embedded dates
+  const extracted = extractDateFromText(trimmed);
+  if (extracted && isValidNormalizedMonth(extracted)) {
+    // Additional check: make sure the extracted date covers most of the header text
+    // to avoid false positives like "Revenue Jan-25 Report" extracting just "Jan-25"
+    const headerLength = trimmed.replace(/[\s_-]/g, '').length;
+    const monthPattern = /(?:\d{1,2}[-/]\d{2,4}|\d{4}[-/]\d{1,2}|[A-Za-z]{3,9}[-'\s]?\d{2,4}|\d{2,4}[-'\s]?[A-Za-z]{3,9})/;
+    const match = trimmed.match(monthPattern);
+    if (match) {
+      const matchLength = match[0].replace(/[\s_-]/g, '').length;
+      // If the date pattern covers at least 70% of the header, it's likely a month column
+      if (matchLength / headerLength >= 0.7) {
+        return extracted;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Detects GL month columns from an array of header strings.
+ * Returns a Map of header name to normalized GL month (YYYY-MM-01).
+ *
+ * This function identifies headers that represent specific months, such as:
+ * - "Jan-25", "Feb-25", "Mar-25" -> "2025-01-01", "2025-02-01", "2025-03-01"
+ * - "1/1/2025", "2/1/2025" -> "2025-01-01", "2025-02-01"
+ * - "January 2025", "February 2025" -> "2025-01-01", "2025-02-01"
+ *
+ * Headers that look like account IDs, descriptions, entities, etc. are excluded.
+ *
+ * @param headers - Array of header strings from the spreadsheet
+ * @returns Map where key is the original header name and value is the normalized GL month
+ *
+ * @example
+ * detectGlMonthColumns(["ID", "Description", "Jan-25", "Feb-25", "Mar-25"])
+ * // Returns: Map { "Jan-25" => "2025-01-01", "Feb-25" => "2025-02-01", "Mar-25" => "2025-03-01" }
+ */
+export function detectGlMonthColumns(headers: string[]): Map<string, string> {
+  const result = new Map<string, string>();
+
+  for (const header of headers) {
+    const glMonth = extractCleanGlMonth(header);
+    if (glMonth) {
+      result.set(header, glMonth);
+    }
+  }
+
+  // Only return if we found at least 2 month columns
+  // A single month column is more likely to be a coincidence or single-month format
+  if (result.size >= 2) {
+    return result;
+  }
+
+  return new Map();
+}

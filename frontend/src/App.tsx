@@ -16,7 +16,7 @@ import type { AuthenticationResult } from '@azure/msal-browser';
 
 const Login = React.lazy(() => import('./pages/Login'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
-const Users = React.lazy(() => import('./pages/Users'));
+const UserManager = React.lazy(() => import('./pages/UserManager'));
 const Clients = React.lazy(() => import('./pages/Clients'));
 const Templates = React.lazy(() => import('./pages/Templates'));
 const CoaManager = React.lazy(() => import('./pages/CoaManager'));
@@ -46,7 +46,7 @@ function ProtectedRoutes() {
           path="users"
           element={
             <React.Suspense fallback={<div>Loading...</div>}>
-              <Users />
+              <UserManager />
             </React.Suspense>
           }
         />

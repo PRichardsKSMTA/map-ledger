@@ -1,5 +1,5 @@
 import { normalizeGlMonth } from '../utils/glMonth';
-import { runQuery } from '../utils/sqlClient';
+import { runQuery, runQueryFireAndForget } from '../utils/sqlClient';
 
 export interface OperationalStatAccount {
   accountNumber: string;
@@ -119,18 +119,15 @@ export const executeDispatchMiles = async (
   })();
 
   // Fire and forget - start the stored procedure but don't wait for it to complete.
-  // This prevents timeout issues since the SP can take a while to run.
-  runQuery(
+  // Uses extended timeout (10 min) since the SP can take several minutes to run.
+  await runQueryFireAndForget(
     `EXEC dbo.UPDATE_DISPATCH_MILES @SCAC = @scac, @BeginDt = @beginDt, @EndDt = @endDt`,
     {
       scac: scac.trim(),
       beginDt,
       endDt,
     },
-  ).catch((error) => {
-    // Log but don't throw - this runs in the background
-    console.error('[executeDispatchMiles] Stored procedure failed:', error);
-  });
+  );
 
   return { success: true, message: 'FreightMath statistics update started.' };
 };

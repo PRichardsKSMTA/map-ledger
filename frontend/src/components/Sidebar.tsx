@@ -9,7 +9,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { canAccessCoaManager } from '../utils/auth';
+import { canAccessCoaManager, canAccessUserManager } from '../utils/auth';
 
 const linkBaseClass =
   'group flex items-center text-sm font-medium rounded-xl transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500';
@@ -37,15 +37,16 @@ export default function Sidebar({ isOpen }: SidebarProps) {
   const { user } = useAuthStore();
   const isSuperUser = user?.role === 'super';
   const hasCoaManagerAccess = canAccessCoaManager(user);
+  const hasUserManagerAccess = canAccessUserManager(user);
   const location = useLocation();
   const isMappingRoute = location.pathname.startsWith('/gl/mapping');
 
   const navItems: NavItem[] = [
     {
-      label: 'Users',
-      icon: <Users className="h-5 w-5" />, 
+      label: 'Manage Users',
+      icon: <Users className="h-5 w-5" />,
       to: '/users',
-      isVisible: isSuperUser,
+      isVisible: hasUserManagerAccess,
     },
     {
       label: 'Client Profiles',

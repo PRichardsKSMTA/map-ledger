@@ -45,6 +45,69 @@ function toTrimmedString(value: unknown): string {
   return '';
 }
 
+/**
+ * Formats a Date object as a month-year string for use as a header.
+ * E.g., Date(2025, 0, 1) -> "Jan-25"
+ */
+function formatDateAsMonthYear(date: Date): string {
+  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = monthNames[date.getMonth()];
+  const year = date.getFullYear().toString().slice(-2); // Last 2 digits of year
+  return `${month}-${year}`;
+}
+
+/**
+ * Converts a cell value to a header string, handling dates specially.
+ * Excel often stores dates like "Jan-25" as actual Date objects.
+ */
+function cellValueToHeaderString(value: unknown, columnIndex: number): string {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+
+  if (typeof value === 'number') {
+    // Check if this might be an Excel serial date number
+    // Excel serial dates are typically > 1 (days since 1900)
+    // and < 100000 (roughly year 2173)
+    if (value > 1 && value < 100000 && Number.isInteger(value) === false) {
+      // This might be a date stored as a serial number - skip conversion,
+      // let it fall through to placeholder since we can't reliably detect
+    }
+    return value.toString();
+  }
+
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return formatDateAsMonthYear(value);
+  }
+
+  // Handle ExcelJS CellValue objects that might contain dates
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+
+    // Check for formula result
+    if ('result' in record) {
+      const result = record['result'];
+      if (result instanceof Date && !isNaN(result.getTime())) {
+        return formatDateAsMonthYear(result);
+      }
+      if (typeof result === 'string') {
+        return result.trim();
+      }
+      if (typeof result === 'number') {
+        return result.toString();
+      }
+    }
+
+    // Check for text property
+    if ('text' in record && typeof record['text'] === 'string') {
+      return record['text'].trim();
+    }
+  }
+
+  // Fallback to column placeholder
+  return `Column ${String.fromCharCode(65 + columnIndex)}`;
+}
+
 const TRIAL_BALANCE_HEADER_SCAN_LIMIT = 25;
 const TRIAL_BALANCE_REQUIRED_HEADERS = ['ACCOUNT', 'DESCRIPTION'];
 const TRIAL_BALANCE_HEADERS = [
@@ -294,11 +357,7 @@ export async function parseTrialBalanceWorkbook(file: File): Promise<ParsedUploa
           : values.filter(Boolean).length > 2);
 
       if (isHeaderCandidate) {
-        const primaryHeader = values.map((val, i) => {
-          if (typeof val === 'string') return val.trim();
-          if (typeof val === 'number') return val.toString();
-          return `Column ${String.fromCharCode(65 + i)}`;
-        });
+        const primaryHeader = values.map((val, i) => cellValueToHeaderString(val, i));
 
         const combinedHeaderRows: string[][] = [primaryHeader];
 
