@@ -606,7 +606,7 @@ const upsertEntityAccountMappingsBatch = async (
     BEGIN TRANSACTION;
       DECLARE @payload TABLE (
         entity_id varchar(36),
-        entity_account_id varchar(36),
+        entity_account_id varchar(100),
         gl_month date,
         polarity varchar(50),
         original_polarity varchar(50),

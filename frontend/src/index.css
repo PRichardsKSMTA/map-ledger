@@ -211,6 +211,9 @@
   .table-scroll-x {
     overflow-x: auto;
     overflow-y: visible;
+    /* Add bottom padding to ensure dropdown menus on the last rows have room to open */
+    padding-bottom: 16rem;
+    margin-bottom: -16rem;
   }
 
   /*

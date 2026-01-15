@@ -63,6 +63,7 @@ interface CoaManagerState {
   clearCreateIndustryError: () => void;
   toggleRowSelection: (rowId: string) => void;
   toggleSelectAll: () => void;
+  setSelectedRowIds: (rowIds: string[]) => void;
   clearRowSelection: () => void;
   updateRowCostType: (rowId: string, costType: CoaManagerCostType) => Promise<void>;
   updateBatchCostType: (rowIds: string[], costType: CoaManagerCostType) => Promise<void>;
@@ -239,6 +240,9 @@ export const useCoaManagerStore = create<CoaManagerState>((set, get) => ({
         selectedRowIds: isAllSelected ? new Set() : new Set(state.rows.map(row => row.id)),
       };
     });
+  },
+  setSelectedRowIds: (rowIds: string[]) => {
+    set({ selectedRowIds: new Set(rowIds) });
   },
   clearRowSelection: () => set({ selectedRowIds: new Set() }),
   updateRowCostType: async (rowId: string, costType: CoaManagerCostType) => {

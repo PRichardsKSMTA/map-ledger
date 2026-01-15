@@ -7,6 +7,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Undo2,
   X,
@@ -58,7 +59,7 @@ type SortKey =
   | 'isSurvey'
   | 'costType';
 type SortDirection = 'asc' | 'desc';
-type FilterKey = 'laborGroup' | 'operationalGroup';
+type FilterKey = 'laborGroup' | 'operationalGroup' | 'category' | 'accountType' | 'subCategory';
 
 const resolveGroupValue = (value?: string | null) => {
   if (!value) {
@@ -120,7 +121,7 @@ export default function CoaManager() {
   const loadIndustries = useCoaManagerStore(state => state.loadIndustries);
   const selectIndustry = useCoaManagerStore(state => state.selectIndustry);
   const toggleRowSelection = useCoaManagerStore(state => state.toggleRowSelection);
-  const toggleSelectAll = useCoaManagerStore(state => state.toggleSelectAll);
+  const setSelectedRowIds = useCoaManagerStore(state => state.setSelectedRowIds);
   const clearRowSelection = useCoaManagerStore(state => state.clearRowSelection);
   const updateRowCostType = useCoaManagerStore(state => state.updateRowCostType);
   const updateBatchCostType = useCoaManagerStore(state => state.updateBatchCostType);
@@ -155,11 +156,21 @@ export default function CoaManager() {
   } | null>(null);
   const [laborGroupFilter, setLaborGroupFilter] = useState<string[] | null>(null);
   const [operationalGroupFilter, setOperationalGroupFilter] = useState<string[] | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string[] | null>(null);
+  const [accountTypeFilter, setAccountTypeFilter] = useState<string[] | null>(null);
+  const [subCategoryFilter, setSubCategoryFilter] = useState<string[] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
   const laborGroupMenuRef = useRef<HTMLDivElement | null>(null);
   const operationalGroupMenuRef = useRef<HTMLDivElement | null>(null);
+  const categoryMenuRef = useRef<HTMLDivElement | null>(null);
+  const accountTypeMenuRef = useRef<HTMLDivElement | null>(null);
+  const subCategoryMenuRef = useRef<HTMLDivElement | null>(null);
   const laborGroupSelectAllRef = useRef<HTMLInputElement | null>(null);
   const operationalGroupSelectAllRef = useRef<HTMLInputElement | null>(null);
+  const categorySelectAllRef = useRef<HTMLInputElement | null>(null);
+  const accountTypeSelectAllRef = useRef<HTMLInputElement | null>(null);
+  const subCategorySelectAllRef = useRef<HTMLInputElement | null>(null);
   const columnLabels = useMemo(() => {
     return new Map(columns.map(column => [column.key, column.label]));
   }, [columns]);
@@ -187,35 +198,38 @@ export default function CoaManager() {
     );
   }, [rows]);
 
-  // Dropdown options derived from current rows for inline editing
+  // Filter options for category, accountType, subCategory (includes '-' for empty values)
   const categoryOptions = useMemo(() => {
     const options = new Set<string>();
     rows.forEach(row => {
-      if (row.category?.trim()) {
-        options.add(row.category.trim());
-      }
+      const value = row.category?.trim();
+      options.add(value && value.length > 0 ? value : '-');
     });
-    return Array.from(options).sort((a, b) => a.localeCompare(b));
+    return Array.from(options).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+    );
   }, [rows]);
 
   const accountTypeOptions = useMemo(() => {
     const options = new Set<string>();
     rows.forEach(row => {
-      if (row.accountType?.trim()) {
-        options.add(row.accountType.trim());
-      }
+      const value = row.accountType?.trim();
+      options.add(value && value.length > 0 ? value : '-');
     });
-    return Array.from(options).sort((a, b) => a.localeCompare(b));
+    return Array.from(options).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+    );
   }, [rows]);
 
   const subCategoryOptions = useMemo(() => {
     const options = new Set<string>();
     rows.forEach(row => {
-      if (row.subCategory?.trim()) {
-        options.add(row.subCategory.trim());
-      }
+      const value = row.subCategory?.trim();
+      options.add(value && value.length > 0 ? value : '-');
     });
-    return Array.from(options).sort((a, b) => a.localeCompare(b));
+    return Array.from(options).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+    );
   }, [rows]);
 
   // Labor group dropdown options (name + code pairs)
@@ -256,6 +270,37 @@ export default function CoaManager() {
     return Array.from(options.entries()).map(([name, code]) => ({ name, code }));
   }, [operationalGroups, rows]);
 
+  // Dropdown options for inline editing (excludes '-' empty placeholder)
+  const categoryDropdownOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.category?.trim()) {
+        options.add(row.category.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const accountTypeDropdownOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.accountType?.trim()) {
+        options.add(row.accountType.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const subCategoryDropdownOptions = useMemo(() => {
+    const options = new Set<string>();
+    rows.forEach(row => {
+      if (row.subCategory?.trim()) {
+        options.add(row.subCategory.trim());
+      }
+    });
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
   useEffect(() => {
     setLaborGroupFilter(previous => {
       if (previous === null) {
@@ -285,6 +330,45 @@ export default function CoaManager() {
   }, [operationalGroupOptions]);
 
   useEffect(() => {
+    setCategoryFilter(previous => {
+      if (previous === null) {
+        return previous;
+      }
+      const filtered = previous.filter(option => categoryOptions.includes(option));
+      if (filtered.length === categoryOptions.length) {
+        return null;
+      }
+      return areSelectionsEqual(previous, filtered) ? previous : filtered;
+    });
+  }, [categoryOptions]);
+
+  useEffect(() => {
+    setAccountTypeFilter(previous => {
+      if (previous === null) {
+        return previous;
+      }
+      const filtered = previous.filter(option => accountTypeOptions.includes(option));
+      if (filtered.length === accountTypeOptions.length) {
+        return null;
+      }
+      return areSelectionsEqual(previous, filtered) ? previous : filtered;
+    });
+  }, [accountTypeOptions]);
+
+  useEffect(() => {
+    setSubCategoryFilter(previous => {
+      if (previous === null) {
+        return previous;
+      }
+      const filtered = previous.filter(option => subCategoryOptions.includes(option));
+      if (filtered.length === subCategoryOptions.length) {
+        return null;
+      }
+      return areSelectionsEqual(previous, filtered) ? previous : filtered;
+    });
+  }, [subCategoryOptions]);
+
+  useEffect(() => {
     const selectAll = laborGroupSelectAllRef.current;
     if (!selectAll) {
       return;
@@ -312,6 +396,45 @@ export default function CoaManager() {
   }, [operationalGroupFilter, operationalGroupOptions]);
 
   useEffect(() => {
+    const selectAll = categorySelectAllRef.current;
+    if (!selectAll) {
+      return;
+    }
+    if (categoryFilter === null) {
+      selectAll.indeterminate = false;
+      return;
+    }
+    selectAll.indeterminate =
+      categoryFilter.length > 0 && categoryFilter.length < categoryOptions.length;
+  }, [categoryFilter, categoryOptions]);
+
+  useEffect(() => {
+    const selectAll = accountTypeSelectAllRef.current;
+    if (!selectAll) {
+      return;
+    }
+    if (accountTypeFilter === null) {
+      selectAll.indeterminate = false;
+      return;
+    }
+    selectAll.indeterminate =
+      accountTypeFilter.length > 0 && accountTypeFilter.length < accountTypeOptions.length;
+  }, [accountTypeFilter, accountTypeOptions]);
+
+  useEffect(() => {
+    const selectAll = subCategorySelectAllRef.current;
+    if (!selectAll) {
+      return;
+    }
+    if (subCategoryFilter === null) {
+      selectAll.indeterminate = false;
+      return;
+    }
+    selectAll.indeterminate =
+      subCategoryFilter.length > 0 && subCategoryFilter.length < subCategoryOptions.length;
+  }, [subCategoryFilter, subCategoryOptions]);
+
+  useEffect(() => {
     if (!openFilter) {
       return;
     }
@@ -325,6 +448,15 @@ export default function CoaManager() {
         return;
       }
       if (operationalGroupMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (categoryMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (accountTypeMenuRef.current?.contains(target)) {
+        return;
+      }
+      if (subCategoryMenuRef.current?.contains(target)) {
         return;
       }
       if (target.closest('[data-filter-button]')) {
@@ -365,6 +497,13 @@ export default function CoaManager() {
   useEffect(() => {
     loadIndustries();
   }, [loadIndustries]);
+
+  // Auto-select first industry when industries are loaded and none is selected
+  useEffect(() => {
+    if (!industriesLoading && industries.length > 0 && !selectedIndustry) {
+      selectIndustry(industries[0]);
+    }
+  }, [industries, industriesLoading, selectedIndustry, selectIndustry]);
 
   // Exit edit mode when navigating away from the page
   useEffect(() => {
@@ -617,20 +756,124 @@ export default function CoaManager() {
     });
   };
 
+  const handleCategorySelectAllChange = (checked: boolean) => {
+    setCategoryFilter(checked ? null : []);
+  };
+
+  const handleCategoryValueToggle = (value: string, checked: boolean) => {
+    setCategoryFilter(previous => {
+      const current = previous ?? null;
+      const baseSelection = current === null ? categoryOptions : current;
+      const nextSelection = checked
+        ? Array.from(new Set([...baseSelection, value]))
+        : baseSelection.filter(option => option !== value);
+
+      if (nextSelection.length === categoryOptions.length) {
+        return null;
+      }
+
+      return nextSelection;
+    });
+  };
+
+  const handleAccountTypeSelectAllChange = (checked: boolean) => {
+    setAccountTypeFilter(checked ? null : []);
+  };
+
+  const handleAccountTypeValueToggle = (value: string, checked: boolean) => {
+    setAccountTypeFilter(previous => {
+      const current = previous ?? null;
+      const baseSelection = current === null ? accountTypeOptions : current;
+      const nextSelection = checked
+        ? Array.from(new Set([...baseSelection, value]))
+        : baseSelection.filter(option => option !== value);
+
+      if (nextSelection.length === accountTypeOptions.length) {
+        return null;
+      }
+
+      return nextSelection;
+    });
+  };
+
+  const handleSubCategorySelectAllChange = (checked: boolean) => {
+    setSubCategoryFilter(checked ? null : []);
+  };
+
+  const handleSubCategoryValueToggle = (value: string, checked: boolean) => {
+    setSubCategoryFilter(previous => {
+      const current = previous ?? null;
+      const baseSelection = current === null ? subCategoryOptions : current;
+      const nextSelection = checked
+        ? Array.from(new Set([...baseSelection, value]))
+        : baseSelection.filter(option => option !== value);
+
+      if (nextSelection.length === subCategoryOptions.length) {
+        return null;
+      }
+
+      return nextSelection;
+    });
+  };
+
   const filteredRows = useMemo(() => {
     const laborSelected = laborGroupFilter ? new Set(laborGroupFilter) : null;
     const operationalSelected = operationalGroupFilter
       ? new Set(operationalGroupFilter)
       : null;
+    const categorySelected = categoryFilter ? new Set(categoryFilter) : null;
+    const accountTypeSelected = accountTypeFilter ? new Set(accountTypeFilter) : null;
+    const subCategorySelected = subCategoryFilter ? new Set(subCategoryFilter) : null;
+    const searchLower = searchQuery.trim().toLowerCase();
+
     return rows.filter(row => {
       const laborValue = resolveGroupValue(row.laborGroup);
       const operationalValue = resolveGroupValue(row.operationalGroup);
+      const categoryValue = row.category?.trim() || '-';
+      const accountTypeValue = row.accountType?.trim() || '-';
+      const subCategoryValue = row.subCategory?.trim() || '-';
+
       const laborMatch = !laborSelected || laborSelected.has(laborValue);
       const operationalMatch =
         !operationalSelected || operationalSelected.has(operationalValue);
-      return laborMatch && operationalMatch;
+      const categoryMatch = !categorySelected || categorySelected.has(categoryValue);
+      const accountTypeMatch =
+        !accountTypeSelected || accountTypeSelected.has(accountTypeValue);
+      const subCategoryMatch =
+        !subCategorySelected || subCategorySelected.has(subCategoryValue);
+
+      // Search filter - search across multiple fields
+      let searchMatch = true;
+      if (searchLower) {
+        searchMatch =
+          row.accountNumber.toLowerCase().includes(searchLower) ||
+          row.accountName.toLowerCase().includes(searchLower) ||
+          laborValue.toLowerCase().includes(searchLower) ||
+          operationalValue.toLowerCase().includes(searchLower) ||
+          categoryValue.toLowerCase().includes(searchLower) ||
+          accountTypeValue.toLowerCase().includes(searchLower) ||
+          subCategoryValue.toLowerCase().includes(searchLower) ||
+          (row.costType?.toLowerCase().includes(searchLower) ?? false);
+      }
+
+      return (
+        laborMatch &&
+        operationalMatch &&
+        categoryMatch &&
+        accountTypeMatch &&
+        subCategoryMatch &&
+        searchMatch
+      );
     });
-  }, [laborGroupFilter, operationalGroupFilter, rows]);
+  }, [
+    laborGroupFilter,
+    operationalGroupFilter,
+    categoryFilter,
+    accountTypeFilter,
+    subCategoryFilter,
+    searchQuery,
+    rows,
+  ]);
 
   const sortedRows = useMemo(() => {
     if (!sortConfig) {
@@ -679,7 +922,44 @@ export default function CoaManager() {
   }, [filteredRows, sortConfig]);
 
   const selectedCount = selectedRowIds.size;
-  const isAllSelected = rows.length > 0 && selectedCount === rows.length;
+  // Check if all filtered/sorted rows are selected
+  const filteredRowIds = useMemo(() => sortedRows.map(row => row.id), [sortedRows]);
+  const isAllFilteredSelected = useMemo(() => {
+    if (sortedRows.length === 0) return false;
+    return filteredRowIds.every(id => selectedRowIds.has(id));
+  }, [filteredRowIds, selectedRowIds, sortedRows.length]);
+
+  const handleToggleSelectAll = useCallback(() => {
+    if (sortedRows.length === 0) return;
+    if (isAllFilteredSelected) {
+      // Deselect all filtered rows
+      const filteredSet = new Set(filteredRowIds);
+      const remaining = Array.from(selectedRowIds).filter(id => !filteredSet.has(id));
+      setSelectedRowIds(remaining);
+    } else {
+      // Select all filtered rows (add to existing selection)
+      const combined = new Set([...selectedRowIds, ...filteredRowIds]);
+      setSelectedRowIds(Array.from(combined));
+    }
+  }, [sortedRows.length, isAllFilteredSelected, filteredRowIds, selectedRowIds, setSelectedRowIds]);
+
+  // Check if any filters are active
+  const hasActiveFilters =
+    laborGroupFilter !== null ||
+    operationalGroupFilter !== null ||
+    categoryFilter !== null ||
+    accountTypeFilter !== null ||
+    subCategoryFilter !== null ||
+    searchQuery.trim() !== '';
+
+  const handleClearAllFilters = useCallback(() => {
+    setLaborGroupFilter(null);
+    setOperationalGroupFilter(null);
+    setCategoryFilter(null);
+    setAccountTypeFilter(null);
+    setSubCategoryFilter(null);
+    setSearchQuery('');
+  }, []);
 
   const renderSortableHeader = (key: SortKey, label: string, title?: string) => (
     <th
@@ -746,14 +1026,14 @@ export default function CoaManager() {
                 role="dialog"
                 aria-label="Labor group filters"
                 onClick={event => event.stopPropagation()}
-                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg"
+                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
               >
-                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500">
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
                   Filter values
                 </div>
                 {laborGroupOptions.length > 0 ? (
                   <div className="space-y-2 px-3 pt-2">
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                       <input
                         ref={laborGroupSelectAllRef}
                         type="checkbox"
@@ -761,7 +1041,7 @@ export default function CoaManager() {
                         onChange={event =>
                           handleLaborGroupSelectAllChange(event.target.checked)
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
                       />
                       Select all
                     </label>
@@ -772,7 +1052,7 @@ export default function CoaManager() {
                         return (
                           <label
                             key={option}
-                            className="flex items-center gap-2 text-xs text-slate-600"
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
                           >
                             <input
                               type="checkbox"
@@ -780,7 +1060,7 @@ export default function CoaManager() {
                               onChange={event =>
                                 handleLaborGroupValueToggle(option, event.target.checked)
                               }
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
                             />
                             {option}
                           </label>
@@ -789,7 +1069,7 @@ export default function CoaManager() {
                     </div>
                   </div>
                 ) : (
-                  <div className="px-3 pt-2 text-xs text-slate-500">
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
                     No labor group values.
                   </div>
                 )}
@@ -848,14 +1128,14 @@ export default function CoaManager() {
                 role="dialog"
                 aria-label="Operational group filters"
                 onClick={event => event.stopPropagation()}
-                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg"
+                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
               >
-                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500">
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
                   Filter values
                 </div>
                 {operationalGroupOptions.length > 0 ? (
                   <div className="space-y-2 px-3 pt-2">
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                       <input
                         ref={operationalGroupSelectAllRef}
                         type="checkbox"
@@ -863,7 +1143,7 @@ export default function CoaManager() {
                         onChange={event =>
                           handleOperationalGroupSelectAllChange(event.target.checked)
                         }
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
                       />
                       Select all
                     </label>
@@ -875,7 +1155,7 @@ export default function CoaManager() {
                         return (
                           <label
                             key={option}
-                            className="flex items-center gap-2 text-xs text-slate-600"
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
                           >
                             <input
                               type="checkbox"
@@ -886,7 +1166,7 @@ export default function CoaManager() {
                                   event.target.checked,
                                 )
                               }
-                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
                             />
                             {option}
                           </label>
@@ -895,8 +1175,312 @@ export default function CoaManager() {
                     </div>
                   </div>
                 ) : (
-                  <div className="px-3 pt-2 text-xs text-slate-500">
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
                     No operational group values.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
+  const renderCategoryHeader = () => {
+    const isFilterActive = categoryFilter !== null;
+    const isOpen = openFilter === 'category';
+    const filterId = 'category-filter';
+    return (
+      <th
+        scope="col"
+        aria-sort={getAriaSort('category')}
+        className="bg-gray-50 px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSort('category')}
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            {resolveLabel('category', 'Category')}
+            <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          <div className="relative flex items-center">
+            <button
+              type="button"
+              data-filter-button="category"
+              aria-label="Filter category"
+              aria-expanded={isOpen}
+              aria-controls={filterId}
+              onClick={event => {
+                event.stopPropagation();
+                setOpenFilter(previous => (previous === 'category' ? null : 'category'));
+              }}
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                isFilterActive
+                  ? 'text-blue-600 hover:text-blue-700'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Filter className="h-4 w-4" aria-hidden="true" />
+            </button>
+            {isOpen && (
+              <div
+                ref={categoryMenuRef}
+                id={filterId}
+                role="dialog"
+                aria-label="Category filters"
+                onClick={event => event.stopPropagation()}
+                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
+              >
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                  Filter values
+                </div>
+                {categoryOptions.length > 0 ? (
+                  <div className="space-y-2 px-3 pt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      <input
+                        ref={categorySelectAllRef}
+                        type="checkbox"
+                        checked={categoryFilter === null}
+                        onChange={event =>
+                          handleCategorySelectAllChange(event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                      />
+                      Select all
+                    </label>
+                    <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                      {categoryOptions.map(option => {
+                        const isChecked =
+                          categoryFilter === null || categoryFilter.includes(option);
+                        return (
+                          <label
+                            key={option}
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={event =>
+                                handleCategoryValueToggle(option, event.target.checked)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                            />
+                            {option}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No category values.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
+  const renderAccountTypeHeader = () => {
+    const isFilterActive = accountTypeFilter !== null;
+    const isOpen = openFilter === 'accountType';
+    const filterId = 'account-type-filter';
+    return (
+      <th
+        scope="col"
+        aria-sort={getAriaSort('accountType')}
+        className="bg-gray-50 px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSort('accountType')}
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            {resolveLabel('accountType', 'Account Type')}
+            <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          <div className="relative flex items-center">
+            <button
+              type="button"
+              data-filter-button="accountType"
+              aria-label="Filter account type"
+              aria-expanded={isOpen}
+              aria-controls={filterId}
+              onClick={event => {
+                event.stopPropagation();
+                setOpenFilter(previous =>
+                  previous === 'accountType' ? null : 'accountType',
+                );
+              }}
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                isFilterActive
+                  ? 'text-blue-600 hover:text-blue-700'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Filter className="h-4 w-4" aria-hidden="true" />
+            </button>
+            {isOpen && (
+              <div
+                ref={accountTypeMenuRef}
+                id={filterId}
+                role="dialog"
+                aria-label="Account type filters"
+                onClick={event => event.stopPropagation()}
+                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
+              >
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                  Filter values
+                </div>
+                {accountTypeOptions.length > 0 ? (
+                  <div className="space-y-2 px-3 pt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      <input
+                        ref={accountTypeSelectAllRef}
+                        type="checkbox"
+                        checked={accountTypeFilter === null}
+                        onChange={event =>
+                          handleAccountTypeSelectAllChange(event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                      />
+                      Select all
+                    </label>
+                    <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                      {accountTypeOptions.map(option => {
+                        const isChecked =
+                          accountTypeFilter === null || accountTypeFilter.includes(option);
+                        return (
+                          <label
+                            key={option}
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={event =>
+                                handleAccountTypeValueToggle(option, event.target.checked)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                            />
+                            {option}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No account type values.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </th>
+    );
+  };
+
+  const renderSubCategoryHeader = () => {
+    const isFilterActive = subCategoryFilter !== null;
+    const isOpen = openFilter === 'subCategory';
+    const filterId = 'sub-category-filter';
+    return (
+      <th
+        scope="col"
+        aria-sort={getAriaSort('subCategory')}
+        className="bg-gray-50 px-4 py-3"
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSort('subCategory')}
+            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 transition hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            {resolveLabel('subCategory', 'SUB_CATEGORY')}
+            <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+          <div className="relative flex items-center">
+            <button
+              type="button"
+              data-filter-button="subCategory"
+              aria-label="Filter sub category"
+              aria-expanded={isOpen}
+              aria-controls={filterId}
+              onClick={event => {
+                event.stopPropagation();
+                setOpenFilter(previous =>
+                  previous === 'subCategory' ? null : 'subCategory',
+                );
+              }}
+              className={`rounded p-1 transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                isFilterActive
+                  ? 'text-blue-600 hover:text-blue-700'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Filter className="h-4 w-4" aria-hidden="true" />
+            </button>
+            {isOpen && (
+              <div
+                ref={subCategoryMenuRef}
+                id={filterId}
+                role="dialog"
+                aria-label="Sub category filters"
+                onClick={event => event.stopPropagation()}
+                className="absolute left-0 top-full z-20 mt-2 w-56 rounded-md border border-slate-200 bg-white py-2 text-sm shadow-lg dark:border-slate-600 dark:bg-slate-800"
+              >
+                <div className="border-b border-slate-100 px-3 pb-2 text-xs font-semibold uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                  Filter values
+                </div>
+                {subCategoryOptions.length > 0 ? (
+                  <div className="space-y-2 px-3 pt-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                      <input
+                        ref={subCategorySelectAllRef}
+                        type="checkbox"
+                        checked={subCategoryFilter === null}
+                        onChange={event =>
+                          handleSubCategorySelectAllChange(event.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                      />
+                      Select all
+                    </label>
+                    <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                      {subCategoryOptions.map(option => {
+                        const isChecked =
+                          subCategoryFilter === null || subCategoryFilter.includes(option);
+                        return (
+                          <label
+                            key={option}
+                            className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={event =>
+                                handleSubCategoryValueToggle(option, event.target.checked)
+                              }
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-500 dark:bg-slate-700"
+                            />
+                            {option}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-3 pt-2 text-xs text-slate-500 dark:text-slate-400">
+                    No sub category values.
                   </div>
                 )}
               </div>
@@ -1039,6 +1623,42 @@ export default function CoaManager() {
             </div>
           )}
 
+          {/* Search Input and Clear Filters */}
+          <div className="flex items-center gap-3">
+            <div className="relative max-w-md">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search className="h-4 w-4 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search accounts..."
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-10 text-sm text-gray-900 placeholder-gray-500 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:placeholder-gray-400"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleClearAllFilters}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+                Clear all filters
+              </button>
+            )}
+          </div>
+
           {rowsLoading ? (
             <div className="flex items-center gap-2 rounded-lg border border-dashed border-gray-200 bg-white p-6 text-sm text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
@@ -1057,9 +1677,9 @@ export default function CoaManager() {
                       <div className="flex items-center gap-2">
                         <input
                           type="checkbox"
-                          checked={isAllSelected}
-                          onChange={toggleSelectAll}
-                          aria-label="Select all rows"
+                          checked={isAllFilteredSelected}
+                          onChange={handleToggleSelectAll}
+                          aria-label="Select all filtered rows"
                           className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                         />
                         <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -1077,15 +1697,9 @@ export default function CoaManager() {
                     )}
                     {renderLaborGroupHeader()}
                     {renderOperationalGroupHeader()}
-                    {renderSortableHeader('category', resolveLabel('category', 'Category'))}
-                    {renderSortableHeader(
-                      'accountType',
-                      resolveLabel('accountType', 'Account Type'),
-                    )}
-                    {renderSortableHeader(
-                      'subCategory',
-                      resolveLabel('subCategory', 'SUB_CATEGORY'),
-                    )}
+                    {renderCategoryHeader()}
+                    {renderAccountTypeHeader()}
+                    {renderSubCategoryHeader()}
                     {renderSortableHeader(
                       'isFinancial',
                       resolveLabel('isFinancial', 'IS_FINANCIAL'),
@@ -1235,7 +1849,7 @@ export default function CoaManager() {
                               className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                               <option value="">-</option>
-                              {categoryOptions.map(opt => (
+                              {categoryDropdownOptions.map(opt => (
                                 <option key={opt} value={opt}>
                                   {opt}
                                 </option>
@@ -1254,7 +1868,7 @@ export default function CoaManager() {
                               className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                               <option value="">-</option>
-                              {accountTypeOptions.map(opt => (
+                              {accountTypeDropdownOptions.map(opt => (
                                 <option key={opt} value={opt}>
                                   {opt}
                                 </option>
@@ -1273,7 +1887,7 @@ export default function CoaManager() {
                               className="w-full min-w-[100px] rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             >
                               <option value="">-</option>
-                              {subCategoryOptions.map(opt => (
+                              {subCategoryDropdownOptions.map(opt => (
                                 <option key={opt} value={opt}>
                                   {opt}
                                 </option>
@@ -1297,7 +1911,7 @@ export default function CoaManager() {
                                 event.target.value as FlagValue,
                               )
                             }
-                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
                           >
                             {flagOptions.map(option => (
                               <option key={option.label} value={option.value}>
@@ -1320,7 +1934,7 @@ export default function CoaManager() {
                                 event.target.value as FlagValue,
                               )
                             }
-                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
                           >
                             {flagOptions.map(option => (
                               <option key={option.label} value={option.value}>

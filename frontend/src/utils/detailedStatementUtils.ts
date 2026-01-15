@@ -601,6 +601,7 @@ export const calculateReviewMetrics = (
 
   // Calculate operating ratio (expenses / revenue * 100)
   const operatingRatio = currentRevenue > 0 ? (currentExpenses / currentRevenue) * 100 : 0;
+  const previousOperatingRatio = previousRevenue > 0 ? (previousExpenses / previousRevenue) * 100 : 0;
 
   // Get miles data
   const currentMiles = milesByPeriod?.[mostRecentMonth] ?? 0;
@@ -616,6 +617,7 @@ export const calculateReviewMetrics = (
     margin,
     operatingRatio,
     operatingRatioTarget,
+    operatingRatioChange: calculatePercentChange(operatingRatio, previousOperatingRatio),
   };
 };
 
