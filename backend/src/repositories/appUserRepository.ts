@@ -10,9 +10,13 @@ export interface AppUser {
   lastName: string;
   displayName: string;
   role: AppUserRole;
+  clientName: string | null;
+  clientScac: string | null;
+  monthlyClosingDate: number | null;
   isActive: boolean;
+  surveyNotify: boolean;
   createdDttm: string;
-  updatedDttm: string;
+  updatedDttm: string | null;
   createdBy: string | null;
   updatedBy: string | null;
 }
@@ -33,6 +37,8 @@ export interface UpdateAppUserInput {
   lastName?: string;
   displayName?: string;
   role?: AppUserRole;
+  monthlyClosingDate?: number | null;
+  surveyNotify?: boolean;
   isActive?: boolean;
   updatedBy?: string;
 }
@@ -45,9 +51,13 @@ interface AppUserRow {
   LAST_NAME: string;
   DISPLAY_NAME: string;
   USER_ROLE: string;
+  CLIENT_NAME: string | null;
+  CLIENT_SCAC: string | null;
+  MONTHLY_CLOSING_DATE: number | null;
   IS_ACTIVE: boolean;
+  SURVEY_NOTIFY: boolean;
   CREATED_DTTM: Date;
-  UPDATED_DTTM: Date;
+  UPDATED_DTTM: Date | null;
   CREATED_BY: string | null;
   UPDATED_BY: string | null;
 }
@@ -60,12 +70,38 @@ const mapRowToAppUser = (row: AppUserRow): AppUser => ({
   lastName: row.LAST_NAME,
   displayName: row.DISPLAY_NAME,
   role: row.USER_ROLE as AppUserRole,
+  clientName: row.CLIENT_NAME,
+  clientScac: row.CLIENT_SCAC,
+  monthlyClosingDate: row.MONTHLY_CLOSING_DATE ?? null,
   isActive: row.IS_ACTIVE,
+  surveyNotify: row.SURVEY_NOTIFY,
   createdDttm: row.CREATED_DTTM.toISOString(),
-  updatedDttm: row.UPDATED_DTTM.toISOString(),
+  updatedDttm: row.UPDATED_DTTM ? row.UPDATED_DTTM.toISOString() : null,
   createdBy: row.CREATED_BY,
   updatedBy: row.UPDATED_BY,
 });
+
+interface ClientLookupRow {
+  CLIENT_NAME: string;
+  CLIENT_SCAC: string;
+}
+
+const getClientInfoByEmail = async (
+  email: string
+): Promise<{ clientName: string; clientScac: string } | null> => {
+  const result = await runQuery<ClientLookupRow>(
+    `SELECT DISTINCT CLIENT_NAME, CLIENT_SCAC
+     FROM dbo.v_USER_CLIENT_COMPANY_OPERATIONS
+     WHERE EMAIL = @email
+     ORDER BY CLIENT_NAME ASC`,
+    { email }
+  );
+  const row = result.recordset?.[0];
+  if (!row) {
+    return null;
+  }
+  return { clientName: row.CLIENT_NAME, clientScac: row.CLIENT_SCAC };
+};
 
 export const listAppUsers = async (includeInactive = false): Promise<AppUser[]> => {
   const query = includeInactive
@@ -106,13 +142,18 @@ export const getAppUserByAadId = async (aadUserId: string): Promise<AppUser | nu
 export const createAppUser = async (input: CreateAppUserInput): Promise<AppUser | null> => {
   const id = crypto.randomUUID();
   const now = new Date();
+  const clientInfo = await getClientInfoByEmail(input.email.toLowerCase());
 
   const result = await runQuery<AppUserRow>(
     `INSERT INTO ml.APP_USER (
-      USER_GUID, AAD_USER_ID, USER_EMAIL, FIRST_NAME, LAST_NAME, DISPLAY_NAME, USER_ROLE, IS_ACTIVE, CREATED_DTTM, UPDATED_DTTM, CREATED_BY, UPDATED_BY
+      USER_GUID, AAD_USER_ID, USER_EMAIL, FIRST_NAME, LAST_NAME, DISPLAY_NAME, USER_ROLE,
+      CLIENT_NAME, CLIENT_SCAC, MONTHLY_CLOSING_DATE, IS_ACTIVE, SURVEY_NOTIFY,
+      CREATED_DTTM, UPDATED_DTTM, CREATED_BY, UPDATED_BY
     ) OUTPUT INSERTED.*
     VALUES (
-      @id, @aadUserId, @email, @firstName, @lastName, @displayName, @role, 1, @now, @now, @createdBy, @createdBy
+      @id, @aadUserId, @email, @firstName, @lastName, @displayName, @role,
+      @clientName, @clientScac, @monthlyClosingDate, 1, @surveyNotify,
+      @now, NULL, @createdBy, NULL
     )`,
     {
       id,
@@ -122,6 +163,10 @@ export const createAppUser = async (input: CreateAppUserInput): Promise<AppUser 
       lastName: input.lastName,
       displayName: input.displayName,
       role: input.role,
+      clientName: clientInfo?.clientName ?? null,
+      clientScac: clientInfo?.clientScac ?? null,
+      monthlyClosingDate: null,
+      surveyNotify: 0,
       now,
       createdBy: input.createdBy ?? null,
     }
@@ -150,6 +195,14 @@ export const updateAppUser = async (input: UpdateAppUserInput): Promise<AppUser 
   if (input.role !== undefined) {
     updates.push('USER_ROLE = @role');
     params.role = input.role;
+  }
+  if (input.monthlyClosingDate !== undefined) {
+    updates.push('MONTHLY_CLOSING_DATE = @monthlyClosingDate');
+    params.monthlyClosingDate = input.monthlyClosingDate;
+  }
+  if (input.surveyNotify !== undefined) {
+    updates.push('SURVEY_NOTIFY = @surveyNotify');
+    params.surveyNotify = input.surveyNotify ? 1 : 0;
   }
   if (input.isActive !== undefined) {
     updates.push('IS_ACTIVE = @isActive');

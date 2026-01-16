@@ -41,6 +41,7 @@ import type {
   DistributionStatus,
   DistributionType,
   MappingPresetLibraryEntry,
+  UserDefinedHeaderKey,
 } from '../../types';
 import { getOperationLabel } from '../../utils/operationLabel';
 import { getBasisValue } from '../../utils/dynamicAllocation';
@@ -84,7 +85,8 @@ type SortKey =
   | 'activity'
   | 'type'
   | 'operations'
-  | 'status';
+  | 'status'
+  | UserDefinedHeaderKey;
 type SortDirection = 'asc' | 'desc';
 
 type SegmentFilterState = Array<string[] | null>;
@@ -216,6 +218,9 @@ const resolveUserDefinedValue = (value: unknown): string => {
     typeof value === 'string' ? value.trim() : String(value).trim();
   return normalized.length > 0 ? normalized : '-';
 };
+
+const isUserDefinedKey = (key: SortKey): key is UserDefinedHeaderKey =>
+  key === 'userDefined1' || key === 'userDefined2' || key === 'userDefined3';
 
 const splitGlAccountSegments = (value?: string | null): string[] => {
   if (!value) {
@@ -1015,6 +1020,10 @@ const buildDistributionPresetLibraryEntries = (
         const segment = glSegments[segmentIndex] ?? '-';
         return segment === '-' ? '' : segment;
       }
+      if (isUserDefinedKey(key)) {
+        const value = resolveUserDefinedValue(mappingRow?.[key]);
+        return value === '-' ? '' : value;
+      }
 
       switch (key) {
         case 'glAccount':
@@ -1517,15 +1526,13 @@ const buildDistributionPresetLibraryEntries = (
                 className: `normal-case ${GL_COLUMN_WIDTH_CLASSES.description}`,
               })}
               {COLUMNS_BEFORE_USER_DEFINED.map(renderSortableHeader)}
-              {visibleUserDefinedHeaders.map(header => (
-                <th
-                  key={header.key}
-                  scope="col"
-                  className={`px-3 py-3 text-left normal-case ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
-                >
-                  {header.label}
-                </th>
-              ))}
+              {visibleUserDefinedHeaders.map(header =>
+                renderSortableHeader({
+                  key: header.key,
+                  label: header.label,
+                  className: `normal-case ${USER_DEFINED_COLUMN_WIDTH_CLASS}`,
+                }),
+              )}
               {COLUMNS_AFTER_USER_DEFINED.map(renderSortableHeader)}
             </tr>
           </thead>

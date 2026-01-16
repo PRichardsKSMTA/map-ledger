@@ -1,13 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useAppUserStore } from '../store/appUserStore';
 import { canAccessUserManager } from '../utils/auth';
-import { Users as UsersIcon, UserPlus, X, AlertCircle } from 'lucide-react';
+import { Users as UsersIcon, X, AlertCircle } from 'lucide-react';
 import UserSearch from '../components/users/UserSearch';
 import AppUserList from '../components/users/AppUserList';
 import AppUserForm from '../components/users/AppUserForm';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
-import Select from '../components/ui/Select';
+import Input from '../components/ui/Input';
 import type { AppUser, AppUserRole, AzureAdUser } from '../services/appUserService';
 
 export default function UserManager() {
@@ -19,7 +19,6 @@ export default function UserManager() {
     error,
     searchResults,
     isSearching,
-    showInactive,
     fetchUsers,
     addUser,
     editUser,
@@ -27,16 +26,28 @@ export default function UserManager() {
     restoreUser,
     searchUsers,
     clearSearch,
-    setShowInactive,
     clearError,
   } = useAppUserStore();
 
-  const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
-  const [selectedAzureUser, setSelectedAzureUser] = useState<AzureAdUser | null>(null);
-  const [newUserRole, setNewUserRole] = useState<AppUserRole>('viewer');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [roleOverrides, setRoleOverrides] = useState<Record<string, AppUserRole | undefined>>({});
+  const [roleUpdating, setRoleUpdating] = useState<Record<string, boolean | undefined>>({});
+  const [monthlyClosingDateOverrides, setMonthlyClosingDateOverrides] = useState<
+    Record<string, number | null | undefined>
+  >({});
+  const [monthlyClosingDateUpdating, setMonthlyClosingDateUpdating] = useState<
+    Record<string, boolean | undefined>
+  >({});
+  const [surveyNotifyOverrides, setSurveyNotifyOverrides] = useState<
+    Record<string, boolean | undefined>
+  >({});
+  const [surveyNotifyUpdating, setSurveyNotifyUpdating] = useState<
+    Record<string, boolean | undefined>
+  >({});
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [isEditingPermissions, setIsEditingPermissions] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -58,13 +69,10 @@ export default function UserManager() {
     );
   }
 
-  const handleSelectAzureUser = (user: AzureAdUser) => {
-    setSelectedAzureUser(user);
-    setLocalError(null);
-  };
-
-  const handleAddUser = async () => {
-    if (!selectedAzureUser) return;
+  const handleAddUser = async (selectedAzureUser: AzureAdUser) => {
+    if (isSubmitting) {
+      return;
+    }
 
     setIsSubmitting(true);
     setLocalError(null);
@@ -77,12 +85,8 @@ export default function UserManager() {
         firstName: selectedAzureUser.givenName || selectedAzureUser.displayName.split(' ')[0] || '',
         lastName: selectedAzureUser.surname || selectedAzureUser.displayName.split(' ').slice(1).join(' ') || '',
         displayName: selectedAzureUser.displayName,
-        role: newUserRole,
+        role: 'viewer',
       });
-
-      setSelectedAzureUser(null);
-      setNewUserRole('viewer');
-      setIsAddingUser(false);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to add user');
     } finally {
@@ -111,6 +115,72 @@ export default function UserManager() {
     }
   };
 
+  const handleRoleChange = async (user: AppUser, role: AppUserRole) => {
+    if (user.role === role) {
+      return;
+    }
+
+    setRoleOverrides((prev) => ({ ...prev, [user.id]: role }));
+    setRoleUpdating((prev) => ({ ...prev, [user.id]: true }));
+    setLocalError(null);
+
+    try {
+      await editUser(user.id, { role });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update role');
+    } finally {
+      setRoleUpdating((prev) => ({ ...prev, [user.id]: false }));
+      setRoleOverrides((prev) => {
+        const { [user.id]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  const handleMonthlyClosingDateChange = async (user: AppUser, value: number | null) => {
+    if (user.monthlyClosingDate === value) {
+      return;
+    }
+
+    setMonthlyClosingDateOverrides((prev) => ({ ...prev, [user.id]: value }));
+    setMonthlyClosingDateUpdating((prev) => ({ ...prev, [user.id]: true }));
+    setLocalError(null);
+
+    try {
+      await editUser(user.id, { monthlyClosingDate: value });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update monthly closing date');
+    } finally {
+      setMonthlyClosingDateUpdating((prev) => ({ ...prev, [user.id]: false }));
+      setMonthlyClosingDateOverrides((prev) => {
+        const { [user.id]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  const handleSurveyNotifyChange = async (user: AppUser, value: boolean) => {
+    if (user.surveyNotify === value) {
+      return;
+    }
+
+    setSurveyNotifyOverrides((prev) => ({ ...prev, [user.id]: value }));
+    setSurveyNotifyUpdating((prev) => ({ ...prev, [user.id]: true }));
+    setLocalError(null);
+
+    try {
+      await editUser(user.id, { surveyNotify: value });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to update survey notify');
+    } finally {
+      setSurveyNotifyUpdating((prev) => ({ ...prev, [user.id]: false }));
+      setSurveyNotifyOverrides((prev) => {
+        const { [user.id]: _removed, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
   const handleDeactivate = async (userId: string) => {
     if (!confirm('Are you sure you want to deactivate this user? They will no longer be able to access the application.')) {
       return;
@@ -133,6 +203,76 @@ export default function UserManager() {
 
   const existingEmails = users.map((u) => u.email);
   const displayError = localError || error;
+  const isSuperUser = currentUser?.role === 'super';
+
+  const permissionCatalog = [
+    {
+      id: 'view_data',
+      label: 'View data',
+      description: 'Access dashboards, reports, and read-only data.',
+    },
+    {
+      id: 'edit_data',
+      label: 'Edit data',
+      description: 'Create or update mappings, distributions, and configurations.',
+    },
+    {
+      id: 'manage_coa',
+      label: 'COA Manager',
+      description: 'Access and manage chart of accounts tooling.',
+    },
+    {
+      id: 'manage_users',
+      label: 'Manage users',
+      description: 'Access user management and role assignments.',
+    },
+  ];
+
+  const [rolePermissions, setRolePermissions] = useState<Record<AppUserRole, string[]>>({
+    viewer: ['view_data'],
+    admin: ['view_data', 'edit_data', 'manage_coa'],
+    super: ['view_data', 'edit_data', 'manage_coa', 'manage_users'],
+  });
+
+  const roleSummaries = [
+    {
+      role: 'Viewer',
+      key: 'viewer' as AppUserRole,
+      description: 'View data only. No edits or administrative actions.',
+    },
+    {
+      role: 'Admin',
+      key: 'admin' as AppUserRole,
+      description: 'View and edit data across MapLedger features.',
+    },
+    {
+      role: 'Super User',
+      key: 'super' as AppUserRole,
+      description: 'Full access, including user management and administrative settings.',
+    },
+  ];
+
+  const filteredUsers = useMemo(() => {
+    if (!userSearchQuery.trim()) {
+      return users;
+    }
+    const query = userSearchQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      const status = user.isActive ? 'active' : 'inactive';
+      const monthlyClosingDate = user.monthlyClosingDate?.toString() ?? '';
+      const surveyNotify = user.surveyNotify ? 'true' : 'false';
+      return (
+        user.displayName.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query) ||
+        user.role.toLowerCase().includes(query) ||
+        (user.clientName ?? '').toLowerCase().includes(query) ||
+        (user.clientScac ?? '').toLowerCase().includes(query) ||
+        monthlyClosingDate.includes(query) ||
+        surveyNotify.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [userSearchQuery, users]);
 
   return (
     <div className="py-6 space-y-6">
@@ -145,15 +285,6 @@ export default function UserManager() {
             Manage user access and permissions for MapLedger
           </p>
         </div>
-        {!isAddingUser && !editingUser && (
-          <button
-            onClick={() => setIsAddingUser(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add User
-          </button>
-        )}
       </div>
 
       {displayError && (
@@ -176,98 +307,138 @@ export default function UserManager() {
         </div>
       )}
 
-      {isAddingUser && (
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                Add New User
-              </h2>
-              <button
-                onClick={() => {
-                  setIsAddingUser(false);
-                  setSelectedAzureUser(null);
-                  setNewUserRole('viewer');
-                  clearSearch();
-                }}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Search for a user in your organization
-                </label>
-                <UserSearch
-                  onSelect={handleSelectAzureUser}
-                  searchResults={searchResults}
-                  isSearching={isSearching}
-                  onSearch={searchUsers}
-                  onClear={clearSearch}
-                  existingEmails={existingEmails}
-                  placeholder="Start typing a name or email..."
-                />
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              Add users
+            </h2>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Search for a user in your organization
+          </label>
+          <div className="max-w-xl">
+            <UserSearch
+              onSelect={handleAddUser}
+              searchResults={searchResults}
+              isSearching={isSearching}
+              onSearch={searchUsers}
+              onClear={clearSearch}
+              existingEmails={existingEmails}
+              placeholder="Start typing a name or email..."
+            />
+          </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            New users are added with View only permissions. Update roles inline in the table.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              Role permissions
+            </h2>
+            {isSuperUser && (
+              <div className="flex items-center space-x-3">
+                {isEditingPermissions ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPermissions(false)}
+                      className="text-sm font-medium text-gray-600 hover:text-gray-500"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingPermissions(false)}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                    >
+                      Save changes
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingPermissions(true)}
+                    className="text-sm font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    Manage permissions
+                  </button>
+                )}
               </div>
-
-              {selectedAzureUser && (
-                <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-                        <span className="text-lg font-medium text-blue-600 dark:text-blue-300">
-                          {(selectedAzureUser.givenName?.[0] || selectedAzureUser.displayName[0]).toUpperCase()}
-                          {(selectedAzureUser.surname?.[0] || selectedAzureUser.displayName.split(' ')[1]?.[0] || '').toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="ml-4">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {selectedAzureUser.displayName}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
-                          {selectedAzureUser.mail || selectedAzureUser.userPrincipalName}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => setSelectedAzureUser(null)}
-                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  <div className="mt-4">
-                    <Select
-                      label="Assign Role"
-                      value={newUserRole}
-                      onChange={(e) => setNewUserRole(e.target.value as AppUserRole)}
-                    >
-                      <option value="viewer">Viewer - Can view data but cannot make changes</option>
-                      <option value="admin">Admin - Can view and edit data</option>
-                      <option value="super">Super User - Full access including user management</option>
-                    </Select>
-                  </div>
-
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      onClick={handleAddUser}
-                      disabled={isSubmitting}
-                      className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                    >
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      {isSubmitting ? 'Adding...' : 'Add User'}
-                    </button>
-                  </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            {roleSummaries.map((summary) => (
+              <div
+                key={summary.role}
+                className="rounded-lg border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900/40"
+              >
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {summary.role}
+                </h3>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {summary.description}
+                </p>
+                <div className="mt-3 space-y-2">
+                  {permissionCatalog.map((permission) => {
+                    const isEnabled = rolePermissions[summary.key].includes(permission.id);
+                    if (!isEditingPermissions || !isSuperUser) {
+                      return isEnabled ? (
+                        <div key={permission.id} className="text-xs text-gray-600 dark:text-gray-300">
+                          {permission.label}
+                        </div>
+                      ) : null;
+                    }
+                    return (
+                      <label
+                        key={permission.id}
+                        className="flex items-start space-x-2 text-xs text-gray-600 dark:text-gray-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isEnabled}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setRolePermissions((prev) => {
+                              const next = new Set(prev[summary.key]);
+                              if (checked) {
+                                next.add(permission.id);
+                              } else {
+                                next.delete(permission.id);
+                              }
+                              return { ...prev, [summary.key]: Array.from(next) };
+                            });
+                          }}
+                          className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>{permission.label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              </div>
+            ))}
+          </div>
+          {!isSuperUser && (
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Only Super Users can adjust role permissions.
+            </p>
+          )}
+          {isSuperUser && isEditingPermissions && (
+            <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              Changes are saved locally for now. Backend permissions storage will be added next.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {editingUser && (
         <Card>
@@ -295,43 +466,44 @@ export default function UserManager() {
         </Card>
       )}
 
-      {!isAddingUser && !editingUser && (
-        <>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <label className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                <input
-                  type="checkbox"
-                  checked={showInactive}
-                  onChange={(e) => setShowInactive(e.target.checked)}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>Show inactive users</span>
-              </label>
-            </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {users.length} user{users.length !== 1 ? 's' : ''}
-            </p>
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="max-w-sm w-full">
+          <Input
+            value={userSearchQuery}
+            onChange={(e) => setUserSearchQuery(e.target.value)}
+            placeholder="Search users by name, email, role, or status..."
+          />
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
+        </p>
+      </div>
 
-          {isLoading ? (
-            <Card>
-              <div className="py-12 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading users...</p>
-              </div>
-            </Card>
-          ) : (
-            <AppUserList
-              users={users}
-              currentUserEmail={currentUser?.email}
-              onEdit={setEditingUser}
-              onDeactivate={handleDeactivate}
-              onReactivate={handleReactivate}
-              showInactive={showInactive}
-            />
-          )}
-        </>
+      {isLoading ? (
+        <Card>
+          <div className="py-12 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Loading users...</p>
+          </div>
+        </Card>
+      ) : (
+        <AppUserList
+          users={filteredUsers}
+          currentUserEmail={currentUser?.email}
+          onEdit={setEditingUser}
+          onDeactivate={handleDeactivate}
+          onReactivate={handleReactivate}
+          onRoleChange={handleRoleChange}
+          onMonthlyClosingDateChange={handleMonthlyClosingDateChange}
+          onSurveyNotifyChange={handleSurveyNotifyChange}
+          roleOverrides={roleOverrides}
+          roleUpdating={roleUpdating}
+          monthlyClosingDateOverrides={monthlyClosingDateOverrides}
+          monthlyClosingDateUpdating={monthlyClosingDateUpdating}
+          surveyNotifyOverrides={surveyNotifyOverrides}
+          surveyNotifyUpdating={surveyNotifyUpdating}
+          showInactive={false}
+        />
       )}
     </div>
   );

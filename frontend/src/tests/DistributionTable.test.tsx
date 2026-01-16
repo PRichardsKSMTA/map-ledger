@@ -216,6 +216,62 @@ const applyNoBalanceRows = () => {
   });
 };
 
+const USER_DEFINED_ROWS: DistributionRow[] = [
+  {
+    id: 'custom-user-row-1',
+    mappingRowId: 'user-mapping-1',
+    accountId: 'ACC-101',
+    description: 'User defined account 1',
+    activity: 150,
+    type: 'direct',
+    operations: [],
+    presetId: null,
+    notes: undefined,
+    status: 'Distributed',
+    isDirty: false,
+    autoSaveState: 'idle',
+    autoSaveError: null,
+  },
+  {
+    id: 'custom-user-row-2',
+    mappingRowId: 'user-mapping-2',
+    accountId: 'ACC-102',
+    description: 'User defined account 2',
+    activity: 250,
+    type: 'direct',
+    operations: [],
+    presetId: null,
+    notes: undefined,
+    status: 'Distributed',
+    isDirty: false,
+    autoSaveState: 'idle',
+    autoSaveError: null,
+  },
+];
+
+const seedUserDefinedMappingAccounts = () => {
+  const baseAccounts = createInitialMappingAccounts().slice(0, 2);
+  const accounts = baseAccounts.map((account, index) => ({
+    ...account,
+    id: `user-mapping-${index + 1}`,
+    userDefined1: index === 0 ? 'Beta' : 'Alpha',
+  }));
+  useMappingStore.setState({
+    accounts,
+    userDefinedHeaders: [{ key: 'userDefined1', label: 'Custom Field' }],
+  });
+};
+
+const applyUserDefinedRows = () => {
+  act(() => {
+    useDistributionStore.setState({
+      rows: USER_DEFINED_ROWS,
+      searchTerm: '',
+      statusFilters: [],
+    });
+  });
+};
+
 describe('DistributionTable', () => {
   beforeEach(() => {
     resetDistributionStore();
@@ -353,6 +409,32 @@ describe('DistributionTable', () => {
     expect(getVisibleAccountOrder()).toEqual(['ACC-002', 'ACC-001']);
     fireEvent.click(activityHeader);
     expect(getVisibleAccountOrder()).toEqual(['ACC-001', 'ACC-002']);
+  });
+
+  test('sorts distribution rows by user defined columns when the header is clicked', async () => {
+    seedUserDefinedMappingAccounts();
+    const { container } = render(<DistributionTable />);
+    applyUserDefinedRows();
+    await screen.findByText('User defined account 1');
+
+    const columnIndex =
+      Array.from(container.querySelectorAll('thead th')).findIndex(header =>
+        header.textContent?.includes('SCoA ID'),
+      ) + 1;
+    expect(columnIndex).toBeGreaterThan(0);
+
+    const getVisibleAccountOrder = (): string[] =>
+      Array.from(container.querySelectorAll('tbody tr'))
+        .map(row => row.querySelector(`td:nth-child(${columnIndex})`))
+        .filter((cell): cell is HTMLElement => cell !== null)
+        .map(cell => cell.textContent?.trim() ?? '')
+        .filter(Boolean);
+
+    const userDefinedHeader = screen.getByRole('button', { name: /Custom Field/i });
+    fireEvent.click(userDefinedHeader);
+    expect(getVisibleAccountOrder()).toEqual(['ACC-102', 'ACC-101']);
+    fireEvent.click(userDefinedHeader);
+    expect(getVisibleAccountOrder()).toEqual(['ACC-101', 'ACC-102']);
   });
 
   test('filters distribution rows based on status toggles', async () => {

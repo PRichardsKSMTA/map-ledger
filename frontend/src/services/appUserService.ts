@@ -12,9 +12,13 @@ export interface AppUser {
   lastName: string;
   displayName: string;
   role: AppUserRole;
+  clientName: string | null;
+  clientScac: string | null;
+  monthlyClosingDate: number | null;
   isActive: boolean;
+  surveyNotify: boolean;
   createdDttm: string;
-  updatedDttm: string;
+  updatedDttm: string | null;
   createdBy: string | null;
   updatedBy: string | null;
 }
@@ -42,6 +46,8 @@ export interface UpdateAppUserInput {
   lastName?: string;
   displayName?: string;
   role?: AppUserRole;
+  monthlyClosingDate?: number | null;
+  surveyNotify?: boolean;
   isActive?: boolean;
 }
 

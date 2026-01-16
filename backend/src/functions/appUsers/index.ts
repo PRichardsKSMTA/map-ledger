@@ -154,9 +154,38 @@ export const updateAppUserHandler = async (
     const displayName = getFirstStringValue(payload.displayName);
     const role = getFirstStringValue(payload.role) as AppUserRole | undefined;
     const isActive = payload.isActive;
+    const monthlyClosingDateRaw = payload.monthlyClosingDate;
+    const surveyNotifyRaw = payload.surveyNotify;
 
     if (role && !['super', 'admin', 'viewer'].includes(role)) {
       return json({ message: 'Invalid role. Must be super, admin, or viewer' }, 400);
+    }
+    if (
+      monthlyClosingDateRaw !== undefined &&
+      monthlyClosingDateRaw !== null &&
+      (typeof monthlyClosingDateRaw !== 'number' ||
+        !Number.isInteger(monthlyClosingDateRaw) ||
+        monthlyClosingDateRaw < 1 ||
+        monthlyClosingDateRaw > 28)
+    ) {
+      return json({ message: 'monthlyClosingDate must be an integer between 1 and 28' }, 400);
+    }
+    if (surveyNotifyRaw !== undefined && typeof surveyNotifyRaw !== 'boolean') {
+      return json({ message: 'surveyNotify must be a boolean' }, 400);
+    }
+
+    if (role && role !== 'super') {
+      const principal = getClientPrincipal(request);
+      const currentEmail = principal?.userDetails?.toLowerCase();
+      if (currentEmail) {
+        const existingUser = await getAppUserById(userId);
+        if (existingUser && existingUser.email.toLowerCase() === currentEmail) {
+          return json(
+            { message: 'You cannot change your own role to less than Super User' },
+            400
+          );
+        }
+      }
     }
 
     const user = await updateAppUser({
@@ -165,6 +194,9 @@ export const updateAppUserHandler = async (
       lastName: lastName || undefined,
       displayName: displayName || undefined,
       role,
+      monthlyClosingDate:
+        monthlyClosingDateRaw === undefined ? undefined : (monthlyClosingDateRaw as number | null),
+      surveyNotify: surveyNotifyRaw === undefined ? undefined : (surveyNotifyRaw as boolean),
       isActive: typeof isActive === 'boolean' ? isActive : undefined,
       updatedBy: resolveUpdatedBy(request),
     });
