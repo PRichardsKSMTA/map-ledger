@@ -24,6 +24,9 @@ import {
   IndustryAlreadyExistsError,
   type CoaManagerAccountCreateInput,
 } from '../services/coaManagerService';
+import { useAuthStore } from '../store/authStore';
+import { getCurrentAppUser } from '../services/appUserService';
+import type { AppUserRole } from '../services/appUserService';
 import { useCoaManagerStore } from '../store/coaManagerStore';
 import toProperCase from '../utils/properCase';
 import scrollPageToTop from '../utils/scroll';
@@ -108,6 +111,9 @@ const parseFlagValue = (value: FlagValue): boolean | null => {
 };
 
 export default function CoaManager() {
+  const { user } = useAuthStore();
+  const [currentAppUserRole, setCurrentAppUserRole] = useState<AppUserRole | null>(null);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
   const industries = useCoaManagerStore(state => state.industries);
   const industriesLoading = useCoaManagerStore(state => state.industriesLoading);
   const industriesError = useCoaManagerStore(state => state.industriesError);
@@ -497,6 +503,29 @@ export default function CoaManager() {
   useEffect(() => {
     loadIndustries();
   }, [loadIndustries]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUser = async () => {
+      try {
+        const appUser = await getCurrentAppUser(user?.email);
+        if (isMounted) {
+          setCurrentAppUserRole(appUser?.role ?? null);
+          setIsCheckingAccess(false);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentAppUserRole(null);
+          setIsCheckingAccess(false);
+        }
+      }
+    };
+
+    loadCurrentUser();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email]);
 
   // Auto-select first industry when industries are loaded and none is selected
   useEffect(() => {
@@ -1490,6 +1519,33 @@ export default function CoaManager() {
       </th>
     );
   };
+
+  if (isCheckingAccess) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentAppUserRole !== 'super') {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            Access Denied
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            You don't have permission to access this page.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">

@@ -1,18 +1,17 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useAppUserStore } from '../store/appUserStore';
-import { canAccessUserManager } from '../utils/auth';
 import { Users as UsersIcon, X, AlertCircle } from 'lucide-react';
 import UserSearch from '../components/users/UserSearch';
 import AppUserList from '../components/users/AppUserList';
 import AppUserForm from '../components/users/AppUserForm';
 import { Card, CardHeader, CardContent } from '../components/ui/Card';
 import Input from '../components/ui/Input';
+import { getCurrentAppUser } from '../services/appUserService';
 import type { AppUser, AppUserRole, AzureAdUser } from '../services/appUserService';
 
 export default function UserManager() {
   const { user: currentUser } = useAuthStore();
-  const hasAccess = canAccessUserManager(currentUser);
   const {
     users,
     isLoading,
@@ -48,10 +47,116 @@ export default function UserManager() {
   >({});
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [isEditingPermissions, setIsEditingPermissions] = useState(false);
+  const [currentAppUserRole, setCurrentAppUserRole] = useState<AppUserRole | null>(null);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
+  const [rolePermissions, setRolePermissions] = useState<Record<AppUserRole, string[]>>({
+    viewer: ['view_data'],
+    admin: ['view_data', 'edit_data', 'manage_coa'],
+    super: ['view_data', 'edit_data', 'manage_coa', 'manage_users'],
+  });
+
+  const permissionCatalog = [
+    {
+      id: 'view_data',
+      label: 'View data',
+      description: 'Access dashboards, reports, and read-only data.',
+    },
+    {
+      id: 'edit_data',
+      label: 'Edit data',
+      description: 'Create or update mappings, distributions, and configurations.',
+    },
+    {
+      id: 'manage_coa',
+      label: 'COA Manager',
+      description: 'Access and manage chart of accounts tooling.',
+    },
+    {
+      id: 'manage_users',
+      label: 'Manage users',
+      description: 'Access user management and role assignments.',
+    },
+  ];
+
+  const roleSummaries = [
+    {
+      role: 'Viewer',
+      key: 'viewer' as AppUserRole,
+      description: 'View data only. No edits or administrative actions.',
+    },
+    {
+      role: 'Admin',
+      key: 'admin' as AppUserRole,
+      description: 'View and edit data across MapLedger features.',
+    },
+    {
+      role: 'Super User',
+      key: 'super' as AppUserRole,
+      description: 'Full access, including user management and administrative settings.',
+    },
+  ];
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUser = async () => {
+      try {
+        const appUser = await getCurrentAppUser(currentUser?.email);
+        if (isMounted) {
+          setCurrentAppUserRole(appUser?.role ?? null);
+          setIsCheckingAccess(false);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentAppUserRole(null);
+          setIsCheckingAccess(false);
+        }
+      }
+    };
+
+    loadCurrentUser();
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.email]);
+
+  const hasAccess = currentAppUserRole === 'super';
+
+  const filteredUsers = useMemo(() => {
+    if (!userSearchQuery.trim()) {
+      return users;
+    }
+    const query = userSearchQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      const status = user.isActive ? 'active' : 'inactive';
+      const monthlyClosingDate = user.monthlyClosingDate?.toString() ?? '';
+      const surveyNotify = user.surveyNotify ? 'true' : 'false';
+      return (
+        user.displayName.toLowerCase().includes(query) ||
+        user.email.toLowerCase().includes(query) ||
+        user.role.toLowerCase().includes(query) ||
+        (user.clientName ?? '').toLowerCase().includes(query) ||
+        (user.clientScac ?? '').toLowerCase().includes(query) ||
+        monthlyClosingDate.includes(query) ||
+        surveyNotify.includes(query) ||
+        status.includes(query)
+      );
+    });
+  }, [userSearchQuery, users]);
+
+  if (isCheckingAccess) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Checking access...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!hasAccess) {
     return (
@@ -86,6 +191,7 @@ export default function UserManager() {
         lastName: selectedAzureUser.surname || selectedAzureUser.displayName.split(' ').slice(1).join(' ') || '',
         displayName: selectedAzureUser.displayName,
         role: 'viewer',
+        createdBy: currentUser?.email ?? undefined,
       });
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to add user');
@@ -106,7 +212,7 @@ export default function UserManager() {
     setLocalError(null);
 
     try {
-      await editUser(editingUser.id, data);
+      await editUser(editingUser.id, { ...data, updatedBy: currentUser?.email ?? undefined });
       setEditingUser(null);
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to update user');
@@ -125,7 +231,7 @@ export default function UserManager() {
     setLocalError(null);
 
     try {
-      await editUser(user.id, { role });
+      await editUser(user.id, { role, updatedBy: currentUser?.email ?? undefined });
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to update role');
     } finally {
@@ -147,7 +253,10 @@ export default function UserManager() {
     setLocalError(null);
 
     try {
-      await editUser(user.id, { monthlyClosingDate: value });
+      await editUser(user.id, {
+        monthlyClosingDate: value,
+        updatedBy: currentUser?.email ?? undefined,
+      });
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to update monthly closing date');
     } finally {
@@ -169,7 +278,7 @@ export default function UserManager() {
     setLocalError(null);
 
     try {
-      await editUser(user.id, { surveyNotify: value });
+      await editUser(user.id, { surveyNotify: value, updatedBy: currentUser?.email ?? undefined });
     } catch (err) {
       setLocalError(err instanceof Error ? err.message : 'Failed to update survey notify');
     } finally {
@@ -182,7 +291,7 @@ export default function UserManager() {
   };
 
   const handleDeactivate = async (userId: string) => {
-    if (!confirm('Are you sure you want to deactivate this user? They will no longer be able to access the application.')) {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       return;
     }
 
@@ -203,76 +312,7 @@ export default function UserManager() {
 
   const existingEmails = users.map((u) => u.email);
   const displayError = localError || error;
-  const isSuperUser = currentUser?.role === 'super';
-
-  const permissionCatalog = [
-    {
-      id: 'view_data',
-      label: 'View data',
-      description: 'Access dashboards, reports, and read-only data.',
-    },
-    {
-      id: 'edit_data',
-      label: 'Edit data',
-      description: 'Create or update mappings, distributions, and configurations.',
-    },
-    {
-      id: 'manage_coa',
-      label: 'COA Manager',
-      description: 'Access and manage chart of accounts tooling.',
-    },
-    {
-      id: 'manage_users',
-      label: 'Manage users',
-      description: 'Access user management and role assignments.',
-    },
-  ];
-
-  const [rolePermissions, setRolePermissions] = useState<Record<AppUserRole, string[]>>({
-    viewer: ['view_data'],
-    admin: ['view_data', 'edit_data', 'manage_coa'],
-    super: ['view_data', 'edit_data', 'manage_coa', 'manage_users'],
-  });
-
-  const roleSummaries = [
-    {
-      role: 'Viewer',
-      key: 'viewer' as AppUserRole,
-      description: 'View data only. No edits or administrative actions.',
-    },
-    {
-      role: 'Admin',
-      key: 'admin' as AppUserRole,
-      description: 'View and edit data across MapLedger features.',
-    },
-    {
-      role: 'Super User',
-      key: 'super' as AppUserRole,
-      description: 'Full access, including user management and administrative settings.',
-    },
-  ];
-
-  const filteredUsers = useMemo(() => {
-    if (!userSearchQuery.trim()) {
-      return users;
-    }
-    const query = userSearchQuery.trim().toLowerCase();
-    return users.filter((user) => {
-      const status = user.isActive ? 'active' : 'inactive';
-      const monthlyClosingDate = user.monthlyClosingDate?.toString() ?? '';
-      const surveyNotify = user.surveyNotify ? 'true' : 'false';
-      return (
-        user.displayName.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query) ||
-        user.role.toLowerCase().includes(query) ||
-        (user.clientName ?? '').toLowerCase().includes(query) ||
-        (user.clientScac ?? '').toLowerCase().includes(query) ||
-        monthlyClosingDate.includes(query) ||
-        surveyNotify.includes(query) ||
-        status.includes(query)
-      );
-    });
-  }, [userSearchQuery, users]);
+  const isSuperUser = currentAppUserRole === 'super';
 
   return (
     <div className="py-6 space-y-6">

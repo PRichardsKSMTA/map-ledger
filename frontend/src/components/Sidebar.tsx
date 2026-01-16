@@ -8,8 +8,10 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { canAccessCoaManager, canAccessUserManager } from '../utils/auth';
+import { getCurrentAppUser } from '../services/appUserService';
+import type { AppUserRole } from '../services/appUserService';
 
 const linkBaseClass =
   'group flex items-center text-sm font-medium rounded-xl transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500';
@@ -35,11 +37,33 @@ interface NavItem {
 
 export default function Sidebar({ isOpen }: SidebarProps) {
   const { user } = useAuthStore();
-  const isSuperUser = user?.role === 'super';
-  const hasCoaManagerAccess = canAccessCoaManager(user);
-  const hasUserManagerAccess = canAccessUserManager(user);
+  const [currentAppUserRole, setCurrentAppUserRole] = useState<AppUserRole | null>(null);
+  const isSuperUser = currentAppUserRole === 'super';
+  const hasCoaManagerAccess = isSuperUser;
+  const hasUserManagerAccess = isSuperUser;
   const location = useLocation();
   const isMappingRoute = location.pathname.startsWith('/gl/mapping');
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUser = async () => {
+      try {
+        const appUser = await getCurrentAppUser(user?.email);
+        if (isMounted) {
+          setCurrentAppUserRole(appUser?.role ?? null);
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentAppUserRole(null);
+        }
+      }
+    };
+
+    loadCurrentUser();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.email]);
 
   const navItems: NavItem[] = [
     {
@@ -52,12 +76,6 @@ export default function Sidebar({ isOpen }: SidebarProps) {
       label: 'Client Profiles',
       icon: <Building2 className="h-5 w-5" />,
       to: '/clients',
-    },
-    {
-      label: 'COA Templates',
-      icon: <FileSpreadsheet className="h-5 w-5" />, 
-      to: '/templates',
-      isVisible: isSuperUser,
     },
     {
       label: 'COA Manager',

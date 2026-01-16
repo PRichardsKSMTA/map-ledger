@@ -86,13 +86,26 @@ interface ClientLookupRow {
   CLIENT_SCAC: string;
 }
 
+const isKsmEmail = (email: string): boolean => {
+  const normalizedEmail = email.toLowerCase();
+  return (
+    normalizedEmail.includes('@ksmta') ||
+    normalizedEmail.includes('@ksmcpa') ||
+    normalizedEmail.includes('@ksm')
+  );
+};
+
 const getClientInfoByEmail = async (
   email: string
-): Promise<{ clientName: string; clientScac: string } | null> => {
+): Promise<{ clientName: string; clientScac: string | null } | null> => {
+  if (isKsmEmail(email)) {
+    return { clientName: 'KSM', clientScac: null };
+  }
+
   const result = await runQuery<ClientLookupRow>(
     `SELECT DISTINCT CLIENT_NAME, CLIENT_SCAC
      FROM dbo.v_USER_CLIENT_COMPANY_OPERATIONS
-     WHERE EMAIL = @email
+     WHERE LOWER(EMAIL) = LOWER(@email)
      ORDER BY CLIENT_NAME ASC`,
     { email }
   );

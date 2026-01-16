@@ -8,7 +8,6 @@ import {
 import Layout from './components/Layout';
 import { useAuthStore } from './store/authStore';
 import { useChartOfAccountsStore } from './store/chartOfAccountsStore';
-import { canAccessCoaManager } from './utils/auth';
 import { msalInstance } from './utils/msal';
 import { env } from './utils/env';
 import type { GroupTokenClaims } from './types';
@@ -28,9 +27,6 @@ const QuickBooks = React.lazy(() => import('./pages/integrations/QuickBooks'));
 const SageIntacct = React.lazy(() => import('./pages/integrations/SageIntacct'));
 
 function ProtectedRoutes() {
-  const { user } = useAuthStore();
-  const hasCoaManagerAccess = canAccessCoaManager(user);
-
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -69,13 +65,9 @@ function ProtectedRoutes() {
         <Route
           path="coa-manager"
           element={
-            hasCoaManagerAccess ? (
-              <React.Suspense fallback={<div>Loading...</div>}>
-                <CoaManager />
-              </React.Suspense>
-            ) : (
-              <Navigate to="/" replace />
-            )
+            <React.Suspense fallback={<div>Loading...</div>}>
+              <CoaManager />
+            </React.Suspense>
           }
         />
         <Route

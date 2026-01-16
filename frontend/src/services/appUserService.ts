@@ -39,6 +39,7 @@ export interface CreateAppUserInput {
   lastName: string;
   displayName?: string;
   role?: AppUserRole;
+  createdBy?: string;
 }
 
 export interface UpdateAppUserInput {
@@ -49,6 +50,7 @@ export interface UpdateAppUserInput {
   monthlyClosingDate?: number | null;
   surveyNotify?: boolean;
   isActive?: boolean;
+  updatedBy?: string;
 }
 
 export const listAppUsers = async (includeInactive = false): Promise<AppUser[]> => {
@@ -79,8 +81,13 @@ export const getAppUser = async (userId: string): Promise<AppUser | null> => {
   return data.item ?? null;
 };
 
-export const getCurrentAppUser = async (): Promise<AppUser | null> => {
-  const response = await fetch(`${API_BASE_URL}/app-users/me`);
+export const getCurrentAppUser = async (email?: string): Promise<AppUser | null> => {
+  const url = new URL(`${API_BASE_URL}/app-users/me`, window.location.origin);
+  if (email) {
+    url.searchParams.set('email', email);
+  }
+
+  const response = await fetch(url.toString());
   if (!response.ok) {
     throw new Error('Failed to fetch current user');
   }
@@ -149,6 +156,17 @@ export const reactivateAppUser = async (userId: string): Promise<AppUser> => {
   return data.item;
 };
 
+export const deleteAppUser = async (userId: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/app-users/${userId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message || 'Failed to delete user');
+  }
+};
+
 export const searchAzureAdUsers = async (query: string): Promise<AzureAdUser[]> => {
   if (!query || query.trim().length < 2) {
     return [];
@@ -174,5 +192,6 @@ export default {
   updateAppUser,
   deactivateAppUser,
   reactivateAppUser,
+  deleteAppUser,
   searchAzureAdUsers,
 };

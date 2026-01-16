@@ -5,6 +5,7 @@ import {
   updateAppUser,
   deactivateAppUser,
   reactivateAppUser,
+  deleteAppUser,
   searchAzureAdUsers,
   type AppUser,
   type AzureAdUser,
@@ -84,11 +85,9 @@ export const useAppUserStore = create<AppUserState>((set, get) => ({
   removeUser: async (userId: string) => {
     set({ error: null });
     try {
-      const updatedUser = await deactivateAppUser(userId);
+      await deleteAppUser(userId);
       set((state) => ({
-        users: state.showInactive
-          ? state.users.map((u) => (u.id === userId ? updatedUser : u))
-          : state.users.filter((u) => u.id !== userId),
+        users: state.users.filter((u) => u.id !== userId),
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to remove user';

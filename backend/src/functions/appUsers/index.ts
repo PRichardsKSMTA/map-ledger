@@ -4,10 +4,13 @@ import {
   listAppUsers,
   getAppUserById,
   getAppUserByEmail,
+  getAppUserByAadId,
   createAppUser,
   updateAppUser,
   deactivateAppUser,
   reactivateAppUser,
+  deleteAppUser,
+  type AppUser,
   type AppUserRole,
 } from '../../repositories/appUserRepository';
 import { getFirstStringValue } from '../../utils/requestParsers';
@@ -16,6 +19,20 @@ import { buildErrorResponse } from '../datapointConfigs/utils';
 const resolveUpdatedBy = (request: HttpRequest): string | undefined => {
   const principal = getClientPrincipal(request);
   return principal?.userDetails || principal?.userId;
+};
+
+const rolePriority: Record<AppUserRole, number> = {
+  viewer: 1,
+  admin: 2,
+  super: 3,
+};
+
+const resolveHighestRoleUser = (users: Array<AppUser | null>): AppUser | null => {
+  const filtered = users.filter((user): user is AppUser => Boolean(user));
+  if (filtered.length === 0) {
+    return null;
+  }
+  return filtered.sort((a, b) => rolePriority[b.role] - rolePriority[a.role])[0];
 };
 
 export const listAppUsersHandler = async (
@@ -44,6 +61,10 @@ export const getAppUserHandler = async (
       return json({ message: 'userId is required' }, 400);
     }
 
+    if (userId.toLowerCase() === 'me') {
+      return getCurrentUserHandler(request, context);
+    }
+
     const user = await getAppUserById(userId);
     if (!user) {
       return json({ message: 'User not found' }, 404);
@@ -63,12 +84,26 @@ export const getCurrentUserHandler = async (
   try {
     const principal = getClientPrincipal(request);
     const email = principal?.userDetails;
+    const aadUserId = principal?.userId;
+    const emailOverride = request.query.get('email') || undefined;
+    const effectiveEmail = emailOverride || email;
 
-    if (!email) {
+    if (!effectiveEmail && !aadUserId) {
       return json({ message: 'User not authenticated' }, 401);
     }
 
-    const user = await getAppUserByEmail(email);
+    let user = effectiveEmail ? await getAppUserByEmail(effectiveEmail) : null;
+    if (effectiveEmail && effectiveEmail.toLowerCase().endsWith('@ksmcpa.com')) {
+      const ksmtaEmail = effectiveEmail.replace(/@ksmcpa\.com$/i, '@ksmta.com');
+      const [primaryMatch, alternateMatch] = await Promise.all([
+        getAppUserByEmail(effectiveEmail),
+        getAppUserByEmail(ksmtaEmail),
+      ]);
+      user = resolveHighestRoleUser([primaryMatch, alternateMatch]);
+    }
+    if (!user && aadUserId) {
+      user = await getAppUserByAadId(aadUserId);
+    }
     if (!user) {
       return json({ item: null, message: 'User not registered in app' }, 200);
     }
@@ -96,6 +131,7 @@ export const createAppUserHandler = async (
     const lastName = getFirstStringValue(payload.lastName);
     const displayName = getFirstStringValue(payload.displayName);
     const role = getFirstStringValue(payload.role) as AppUserRole | undefined;
+    const createdBy = getFirstStringValue(payload.createdBy);
 
     if (!aadUserId || !email || !firstName || !lastName) {
       return json({ message: 'aadUserId, email, firstName, and lastName are required' }, 400);
@@ -118,7 +154,7 @@ export const createAppUserHandler = async (
       lastName,
       displayName: displayName || `${firstName} ${lastName}`,
       role: role || 'viewer',
-      createdBy: resolveUpdatedBy(request),
+      createdBy: createdBy || resolveUpdatedBy(request),
     });
 
     if (!user) {
@@ -156,6 +192,7 @@ export const updateAppUserHandler = async (
     const isActive = payload.isActive;
     const monthlyClosingDateRaw = payload.monthlyClosingDate;
     const surveyNotifyRaw = payload.surveyNotify;
+    const updatedBy = getFirstStringValue(payload.updatedBy);
 
     if (role && !['super', 'admin', 'viewer'].includes(role)) {
       return json({ message: 'Invalid role. Must be super, admin, or viewer' }, 400);
@@ -198,7 +235,7 @@ export const updateAppUserHandler = async (
         monthlyClosingDateRaw === undefined ? undefined : (monthlyClosingDateRaw as number | null),
       surveyNotify: surveyNotifyRaw === undefined ? undefined : (surveyNotifyRaw as boolean),
       isActive: typeof isActive === 'boolean' ? isActive : undefined,
-      updatedBy: resolveUpdatedBy(request),
+      updatedBy: updatedBy || resolveUpdatedBy(request),
     });
 
     if (!user) {
@@ -260,6 +297,30 @@ export const reactivateAppUserHandler = async (
   }
 };
 
+export const deleteAppUserHandler = async (
+  request: HttpRequest,
+  context: InvocationContext
+): Promise<HttpResponseInit> => {
+  try {
+    const params = request.params as Partial<{ userId?: string }> | undefined;
+    const userId = getFirstStringValue(params?.userId);
+
+    if (!userId) {
+      return json({ message: 'userId is required' }, 400);
+    }
+
+    const deleted = await deleteAppUser(userId);
+    if (!deleted) {
+      return json({ message: 'User not found' }, 404);
+    }
+
+    return json({ message: 'User deleted' }, 200);
+  } catch (error) {
+    context.error('Failed to delete app user', error);
+    return json(buildErrorResponse('Failed to delete app user', error), 500);
+  }
+};
+
 // Register routes
 app.http('listAppUsers', {
   methods: ['GET'],
@@ -308,6 +369,13 @@ app.http('reactivateAppUser', {
   authLevel: 'anonymous',
   route: 'app-users/{userId}/reactivate',
   handler: reactivateAppUserHandler,
+});
+
+app.http('deleteAppUser', {
+  methods: ['DELETE'],
+  authLevel: 'anonymous',
+  route: 'app-users/{userId}',
+  handler: deleteAppUserHandler,
 });
 
 export default listAppUsersHandler;
