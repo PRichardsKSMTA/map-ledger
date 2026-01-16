@@ -15,9 +15,10 @@ export default function Layout() {
           onToggleSidebar={() => setIsSidebarOpen((open) => !open)}
         />
         <main id="app-scroll-container" className="relative flex-1 overflow-y-auto p-6">
-          <div className="mx-auto flex h-full w-full min-h-0 max-w-8xl flex-col">
+          <div className="mx-auto flex min-h-full w-full max-w-8xl flex-col">
             <Outlet />
           </div>
+          <footer aria-hidden="true" className="h-64" />
         </main>
       </div>
     </div>

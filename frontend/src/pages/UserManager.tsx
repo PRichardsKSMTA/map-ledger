@@ -139,7 +139,7 @@ export default function UserManager() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-            User Manager
+            Manage Users
           </h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
             Manage user access and permissions for MapLedger

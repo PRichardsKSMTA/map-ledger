@@ -38,6 +38,7 @@ import type {
   MappingStatus,
   MappingType,
   TargetScoaOption,
+  UserDefinedHeaderKey,
 } from '../../types';
 import MappingSplitRow from './MappingSplitRow';
 import MappingExclusionCell from './MappingExclusionCell';
@@ -64,7 +65,8 @@ type SortKey =
   | 'mappingType'
   | 'targetScoa'
   | 'polarity'
-  | 'aiConfidence';
+  | 'aiConfidence'
+  | UserDefinedHeaderKey;
 
 type SortDirection = 'asc' | 'desc';
 
@@ -131,6 +133,17 @@ const COLUMN_DEFINITIONS: { key: SortKey; label: string }[] = [
   { key: 'status', label: 'Status' },
 ];
 
+const DESCRIPTION_COLUMN_INDEX = COLUMN_DEFINITIONS.findIndex(
+  (column) => column.key === 'accountName'
+);
+const COLUMNS_BEFORE_USER_DEFINED = COLUMN_DEFINITIONS.slice(
+  0,
+  DESCRIPTION_COLUMN_INDEX + 1
+);
+const COLUMNS_AFTER_USER_DEFINED = COLUMN_DEFINITIONS.slice(
+  DESCRIPTION_COLUMN_INDEX + 1
+);
+
 const COLUMN_WIDTH_CLASSES: Partial<Record<SortKey, string>> = {
   targetScoa:
     'min-w-[18rem] md:min-w-[22rem] lg:min-w-[26rem] xl:min-w-[30rem] max-w-[36rem]',
@@ -146,12 +159,26 @@ const HEADER_BUTTON_ALIGNMENT: Partial<Record<SortKey, string>> = {
   exclusion: 'justify-center',
 };
 
+const USER_DEFINED_COLUMN_WIDTH_CLASS = 'min-w-[8rem]';
+
 const POLARITY_OPTIONS: MappingPolarity[] = ['Debit', 'Credit', 'Absolute'];
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const buildAccountIdentityKey = (
   account: Pick<GLAccountMappingRow, 'entityId' | 'accountId'>,
 ) => `${account.entityId ?? ''}__${account.accountId ?? ''}`;
+
+const resolveUserDefinedValue = (value: unknown): string => {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  const normalized =
+    typeof value === 'string' ? value.trim() : String(value).trim();
+  return normalized.length > 0 ? normalized : '-';
+};
+
+const isUserDefinedKey = (key: SortKey): key is UserDefinedHeaderKey =>
+  key === 'userDefined1' || key === 'userDefined2' || key === 'userDefined3';
 
 export default function MappingTable() {
   const {
@@ -180,6 +207,7 @@ export default function MappingTable() {
   );
   const accounts = useMappingStore(selectFilteredAccounts);
   const allAccounts = useMappingStore(state => state.accounts);
+  const userDefinedHeaders = useMappingStore(state => state.userDefinedHeaders);
   const availablePeriods = useMappingStore(selectAvailablePeriods);
   const activePeriod = useMappingStore((state) => state.activePeriod);
   const accountLookup = useMemo(
@@ -281,6 +309,8 @@ export default function MappingTable() {
   const [pageIndex, setPageIndex] = useState(0);
   const [isApplyAcrossOpen, setApplyAcrossOpen] = useState(false);
   const [isApplyToFutureOpen, setApplyToFutureOpen] = useState(false);
+  const [showUserDefinedColumns, setShowUserDefinedColumns] = useState(false);
+  const [hasUserDefinedPreference, setHasUserDefinedPreference] = useState(false);
 
   const latestPeriod = useMemo(() => {
     if (availablePeriods.length === 0) {
@@ -426,9 +456,36 @@ export default function MappingTable() {
     setPageIndex(0);
   }, [activeStatusKey, pageSize, searchTerm, sortConfig?.direction, sortConfig?.key]);
 
+  const hasUserDefinedData = useMemo(() => {
+    if (userDefinedHeaders.length === 0) {
+      return false;
+    }
+    return allAccounts.some((account) =>
+      userDefinedHeaders.some(
+        (header) => resolveUserDefinedValue(account[header.key]) !== '-'
+      )
+    );
+  }, [allAccounts, userDefinedHeaders]);
+
+  useEffect(() => {
+    if (!hasUserDefinedPreference && hasUserDefinedData) {
+      setShowUserDefinedColumns(true);
+    }
+  }, [hasUserDefinedData, hasUserDefinedPreference]);
+
+  const visibleUserDefinedHeaders = showUserDefinedColumns ? userDefinedHeaders : [];
+  const showUserDefinedToggleLabel = showUserDefinedColumns
+    ? 'Hide user defined columns'
+    : 'Show user defined columns';
+  const totalColumnSpan =
+    COLUMN_DEFINITIONS.length + 2 + visibleUserDefinedHeaders.length;
+
   const filteredAccounts = useMemo(() => {
     const normalizedQuery = searchTerm.trim().toLowerCase();
     return accounts.filter((account) => {
+      const userDefinedValues = userDefinedHeaders
+        .map((header) => resolveUserDefinedValue(account[header.key]))
+        .filter((value) => value !== '-');
       const matchesSearch =
         !normalizedQuery ||
         [
@@ -438,6 +495,7 @@ export default function MappingTable() {
           account.activity,
           account.netChange.toString(),
           formatNetChange(account.netChange),
+          ...userDefinedValues,
         ]
           .join(' ')
           .toLowerCase()
@@ -447,7 +505,7 @@ export default function MappingTable() {
         activeStatuses.length === 0 || activeStatuses.includes(displayStatus);
       return matchesSearch && matchesStatus;
     });
-  }, [accounts, searchTerm, activeStatuses, getDisplayStatus]);
+  }, [accounts, searchTerm, activeStatuses, getDisplayStatus, userDefinedHeaders]);
   const filteredAccountIds = useMemo(
     () => filteredAccounts.map(account => account.id),
     [filteredAccounts],
@@ -660,6 +718,29 @@ export default function MappingTable() {
     return sortConfig.direction === 'asc' ? 'ascending' : 'descending';
   };
 
+  const renderSortableHeader = (column: { key: SortKey; label: string }) => {
+    const headerLabel = column.key === 'aiConfidence' ? 'Confidence' : column.label;
+    return (
+      <th
+        key={column.key}
+        scope="col"
+        aria-sort={getAriaSort(column.key)}
+        className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''} ${COLUMN_ALIGNMENT_CLASSES[column.key] ?? ''}`}
+      >
+        <button
+          type="button"
+          onClick={() => handleSort(column.key)}
+          className={`flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${HEADER_BUTTON_ALIGNMENT[column.key] ?? ''}`}
+          aria-label={column.label}
+          title={column.label}
+        >
+          {headerLabel}
+          <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </th>
+    );
+  };
+
   const renderedPeriods = new Set<string>();
 
   return (
@@ -674,6 +755,21 @@ export default function MappingTable() {
         }
         canApplyToFuturePeriods={canApplyToFuturePeriods}
       />
+      {userDefinedHeaders.length > 0 && (
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setHasUserDefinedPreference(true);
+              setShowUserDefinedColumns((previous) => !previous);
+            }}
+            aria-pressed={showUserDefinedColumns}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:focus:ring-offset-slate-900"
+          >
+            {showUserDefinedToggleLabel}
+          </button>
+        </div>
+      )}
       <div className="table-scroll-x">
         <table
           className="min-w-full table-compact divide-y divide-slate-200 text-sm dark:divide-slate-700"
@@ -694,29 +790,27 @@ export default function MappingTable() {
               <th scope="col" className="w-8 table-cell-tight text-left">
                 <span className="sr-only">Toggle split details</span>
               </th>
-              {COLUMN_DEFINITIONS.map((column) => {
-                const headerLabel =
-                  column.key === 'aiConfidence' ? 'Confidence' : column.label;
-                return (
-                  <th
-                    key={column.key}
-                    scope="col"
-                    aria-sort={getAriaSort(column.key)}
-                    className={`whitespace-nowrap px-3 py-3 ${COLUMN_WIDTH_CLASSES[column.key] ?? ''} ${COLUMN_ALIGNMENT_CLASSES[column.key] ?? ''}`}
+              {COLUMNS_BEFORE_USER_DEFINED.map(renderSortableHeader)}
+              {visibleUserDefinedHeaders.map((header) => (
+                <th
+                  key={header.key}
+                  scope="col"
+                  aria-sort={getAriaSort(header.key)}
+                  className={`px-3 py-3 ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort(header.key)}
+                    className="flex w-full items-center gap-1 text-left font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900"
+                    aria-label={header.label}
+                    title={header.label}
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleSort(column.key)}
-                      className={`flex items-center gap-1 font-semibold text-slate-700 transition hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:text-slate-200 dark:hover:text-blue-300 dark:focus:ring-offset-slate-900 ${HEADER_BUTTON_ALIGNMENT[column.key] ?? ''}`}
-                      aria-label={column.label}
-                      title={column.label}
-                    >
-                      {headerLabel}
-                      <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                  </th>
-                );
-              })}
+                    {header.label}
+                    <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </th>
+              ))}
+              {COLUMNS_AFTER_USER_DEFINED.map(renderSortableHeader)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-700 dark:bg-slate-900">
@@ -848,7 +942,7 @@ export default function MappingTable() {
                     <tr className="bg-slate-100 dark:bg-slate-800/60">
                       <td
                         className="px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-200"
-                        colSpan={12}
+                        colSpan={totalColumnSpan}
                       >
                         {isCurrentPeriod
                           ? `Current GL month ${getGlMonthLabel(normalizedAccountPeriod)}`
@@ -901,6 +995,25 @@ export default function MappingTable() {
                         {account.accountName}
                       </div>
                     </td>
+                    {visibleUserDefinedHeaders.map((header) => {
+                      const value = resolveUserDefinedValue(account[header.key]);
+                      return (
+                        <td
+                          key={`${account.id}-${header.key}`}
+                          className={`px-3 py-4 align-top ${USER_DEFINED_COLUMN_WIDTH_CLASS}`}
+                        >
+                          <span
+                            className={`text-sm ${
+                              value === '-'
+                                ? 'text-slate-400 dark:text-slate-500'
+                                : 'text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
+                            {value}
+                          </span>
+                        </td>
+                      );
+                    })}
                     <td className="px-3 py-4">
                       <div className="font-medium text-slate-900 dark:text-slate-100">
                         {formatNetChange(adjustedActivity)}
@@ -1093,7 +1206,7 @@ export default function MappingTable() {
                         account.mappingType === 'dynamic' ? (
                           <DynamicAllocationRow
                             account={account}
-                            colSpan={COLUMN_DEFINITIONS.length + 2}
+                            colSpan={totalColumnSpan}
                             panelId={`split-panel-${account.id}`}
                             onOpenBuilder={() => setActiveDynamicAccountId(account.id)}
                             batchAccountIds={
@@ -1115,7 +1228,7 @@ export default function MappingTable() {
                             }
                             applyPresetToAccounts([account.id], presetId);
                           }}
-                          colSpan={COLUMN_DEFINITIONS.length + 2}
+                          colSpan={totalColumnSpan}
                           panelId={`split-panel-${account.id}`}
                           onAddSplit={() =>
                             hasBatchSelection
@@ -1150,7 +1263,7 @@ export default function MappingTable() {
             {sortedAccounts.length === 0 && (
               <tr>
                 <td
-                  colSpan={COLUMN_DEFINITIONS.length + 2}
+                  colSpan={totalColumnSpan}
                   className="px-3 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
                 >
                   No mapping rows match your filters.
@@ -1295,6 +1408,10 @@ function getSortValue(
   key: SortKey,
   resolveStatus?: StatusResolver
 ): string | number {
+  if (isUserDefinedKey(key)) {
+    const value = resolveUserDefinedValue(account[key]);
+    return value === '-' ? '' : value;
+  }
   switch (key) {
     case 'accountId':
       return account.accountId;
